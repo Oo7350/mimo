@@ -1,0 +1,108 @@
+package com.mimo.service;
+
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.mimo.dto.DashboardDTO.*;
+import com.mimo.entity.*;
+import com.mimo.mapper.*;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+import java.util.stream.Collectors;
+
+@Service
+@RequiredArgsConstructor
+public class DashboardService {
+
+    private final IssueMapper issueMapper;
+    private final SprintMapper sprintMapper;
+    private final ProjectMapper projectMapper;
+    private final ProjectMemberMapper projectMemberMapper;
+    private final ActivityLogMapper activityLogMapper;
+    private final TeamMapper teamMapper;
+
+    public DashboardVO getDashboard(Long userId) {
+        // 获取用户参与的所有项目ID
+        List<Long> projectIds = projectMemberMapper.selectList(
+                new LambdaQueryWrapper<ProjectMember>().eq(ProjectMember::getUserId, userId))
+                .stream().map(ProjectMember::getProjectId).collect(Collectors.toList());
+
+        // 我的任务统计
+        LambdaQueryWrapper<Issue> issueQw = new LambdaQueryWrapper<Issue>();
+        if (!projectIds.isEmpty()) {
+            issueQw.in(Issue::getProjectId, projectIds);
+        }
+        int totalIssues = issueMapper.selectCount(issueQw).intValue();
+        int inProgressIssues = issueMapper.selectCount(
+                issueQw.clone().eq(Issue::getStatus, "IN_PROGRESS")).intValue();
+        int doneIssues = issueMapper.selectCount(
+                issueQw.clone().eq(Issue::getStatus, "DONE")).intValue();
+
+        // 活跃 Sprint
+        List<SprintInfo> activeSprints = List.of();
+        if (!projectIds.isEmpty()) {
+            List<Sprint> sprints = sprintMapper.selectList(
+                    new LambdaQueryWrapper<Sprint>()
+                            .in(Sprint::getProjectId, projectIds)
+                            .eq(Sprint::getIsActive, 1));
+            activeSprints = sprints.stream().map(s -> {
+                Project p = projectMapper.selectById(s.getProjectId());
+                long total = issueMapper.selectCount(
+                        new LambdaQueryWrapper<Issue>().eq(Issue::getSprintId, s.getId()));
+                long done = issueMapper.selectCount(
+                        new LambdaQueryWrapper<Issue>().eq(Issue::getSprintId, s.getId())
+                                .eq(Issue::getStatus, "DONE"));
+                return SprintInfo.builder()
+                        .id(s.getId()).name(s.getName())
+                        .projectId(s.getProjectId())
+                        .projectName(p != null ? p.getName() : "")
+                        .startDate(s.getStartDate().toString())
+                        .endDate(s.getEndDate().toString())
+                        .totalIssues((int) total).completedIssues((int) done)
+                        .build();
+            }).collect(Collectors.toList());
+        }
+
+        // 我的项目
+        List<ProjectInfo> myProjects = List.of();
+        if (!projectIds.isEmpty()) {
+            List<Project> projects = projectMapper.selectBatchIds(projectIds);
+            myProjects = projects.stream().map(p -> {
+                Team t = teamMapper.selectById(p.getTeamId());
+                return ProjectInfo.builder()
+                        .id(p.getId()).name(p.getName()).key(p.getKey())
+                        .template(p.getTemplate())
+                        .teamName(t != null ? t.getName() : "")
+                        .build();
+            }).collect(Collectors.toList());
+        }
+
+        // 近期动态
+        List<ActivityInfo> recentActivities = List.of();
+        if (!projectIds.isEmpty()) {
+            List<ActivityLog> logs = activityLogMapper.selectList(
+                    new LambdaQueryWrapper<ActivityLog>()
+                            .in(ActivityLog::getProjectId, projectIds)
+                            .orderByDesc(ActivityLog::getCreatedAt)
+                            .last("LIMIT 10"));
+            DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+            recentActivities = logs.stream().map(l -> ActivityInfo.builder()
+                    .id(l.getId()).username(l.getUsername())
+                    .targetType(l.getTargetType()).action(l.getAction())
+                    .detail(l.getDetail())
+                    .createdAt(l.getCreatedAt() != null ? l.getCreatedAt().format(fmt) : "")
+                    .build()).collect(Collectors.toList());
+        }
+
+        return DashboardVO.builder()
+                .totalIssues(totalIssues)
+                .inProgressIssues(inProgressIssues)
+                .doneIssues(doneIssues)
+                .activeSprints(activeSprints)
+                .myProjects(myProjects)
+                .recentActivities(recentActivities)
+                .build();
+    }
+}

@@ -1,0 +1,79 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #app {
+  height: 100%;
+  font-family: "Helvetica Neue", Helvetica, "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+}
+
+a {
+  text-decoration: none;
+  color: #409EFF;
+}
+
+/* 登录/注册页全屏背景 */
+.login-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.login-card {
+  width: 420px;
+  padding: 40px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}
+
+.login-card h2 {
+  text-align: center;
+  margin-bottom: 30px;
+  color: #303133;
+  font-size: 24px;
+}
+
+/* 主布局 */
+.mimo-layout {
+  height: 100vh;
+}
+
+.mimo-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  background: #409EFF;
+  color: #fff;
+  height: 56px;
+}
+
+.mimo-header .logo {
+  font-size: 20px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mimo-header .header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.mimo-sidebar {
+  background: #fff;
+  border-right: 1px solid #e6e6e6;
+}
+
+.mimo-content {
+  padding: 20px;
+  background: #f5f7fa;
+  overflow-y: auto;
+}
