@@ -241,3 +241,32 @@ INSERT INTO `team_members` (`team_id`, `user_id`, `role`) VALUES
 (1, 1, 'ROLE_ADMIN'),
 (1, 2, 'ROLE_MEMBER'),
 (1, 3, 'ROLE_MEMBER');
+
+-- 14. 任务评论表
+CREATE TABLE IF NOT EXISTS `comments` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `issue_id` BIGINT NOT NULL,
+  `user_id` BIGINT NOT NULL,
+  `username` VARCHAR(50) NOT NULL,
+  `content` TEXT NOT NULL,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  INDEX `idx_issue` (`issue_id`),
+  INDEX `idx_user` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 15. 通知表
+CREATE TABLE IF NOT EXISTS `notifications` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `user_id` BIGINT NOT NULL,
+  `type` VARCHAR(30) NOT NULL COMMENT 'ASSIGNED / STATUS_CHANGED',
+  `title` VARCHAR(255) NOT NULL,
+  `content` VARCHAR(500) NOT NULL,
+  `related_id` BIGINT DEFAULT NULL,
+  `related_type` VARCHAR(30) DEFAULT NULL COMMENT 'ISSUE',
+  `is_read` TINYINT NOT NULL DEFAULT 0,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  INDEX `idx_user_read` (`user_id`, `is_read`),
+  INDEX `idx_created` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

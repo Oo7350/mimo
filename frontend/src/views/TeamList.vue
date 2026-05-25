@@ -45,6 +45,7 @@ import { ref, onMounted, reactive } from "vue";
 import { useRouter } from "vue-router";
 import { createTeam, getMyTeams } from "@/api/team";
 import { ElMessage } from "element-plus";
+import type { TeamVO } from "@/types";
 
 const router = useRouter();
 const teams = ref<TeamVO[]>([]);

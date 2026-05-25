@@ -7,6 +7,7 @@ import com.mimo.common.ResultCode;
 import com.mimo.dto.IssueDTO.*;
 import com.mimo.entity.*;
 import com.mimo.mapper.*;
+import com.mimo.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,6 +25,7 @@ public class IssueService {
     private final ProjectMapper projectMapper;
     private final UserMapper userMapper;
     private final ActivityLogMapper activityLogMapper;
+    private final NotificationService notificationService;
 
     @Transactional
     public IssueVO create(CreateRequest request, Long reporterId) {
@@ -95,12 +97,17 @@ public class IssueService {
     public void update(UpdateRequest request, Long operatorId) {
         Issue issue = issueMapper.selectById(request.getId());
         if (issue == null) throw new BusinessException(ResultCode.ISSUE_NOT_FOUND);
+
+        Long oldAssigneeId = issue.getAssigneeId();
+        String oldStatus = issue.getStatus();
+
         if (request.getTitle() != null) issue.setTitle(request.getTitle());
         if (request.getDescription() != null) issue.setDescription(request.getDescription());
         if (request.getType() != null) issue.setType(request.getType());
         if (request.getPriority() != null) issue.setPriority(request.getPriority());
         if (request.getAssigneeId() != null) issue.setAssigneeId(request.getAssigneeId());
         if (request.getSprintId() != null) issue.setSprintId(request.getSprintId());
+        if (request.getColumnId() != null) issue.setColumnId(request.getColumnId());
         if (request.getDueDate() != null) issue.setDueDate(request.getDueDate());
         if (request.getStoryPoints() != null) issue.setStoryPoints(request.getStoryPoints());
         if (request.getSeverity() != null) issue.setSeverity(request.getSeverity());
@@ -108,7 +115,44 @@ public class IssueService {
         if (request.getStatus() != null) issue.setStatus(request.getStatus());
         issueMapper.updateById(issue);
 
-        // 记录操作日志
+        // Notifications
+        if (operatorId != null) {
+            Long newAssigneeId = request.getAssigneeId();
+
+            // Assignee changed
+            if (newAssigneeId != null && !newAssigneeId.equals(oldAssigneeId)) {
+                User assignee = userMapper.selectById(newAssigneeId);
+                if (assignee != null) {
+                    Notification n = new Notification();
+                    n.setUserId(newAssigneeId);
+                    n.setType("ASSIGNED");
+                    n.setTitle("新任务分配");
+                    n.setContent("你被分配了任务 " + issue.getIssueKey() + ": " + issue.getTitle());
+                    n.setRelatedId(issue.getId());
+                    n.setRelatedType("ISSUE");
+                    n.setIsRead(0);
+                    notificationService.create(n);
+                }
+            }
+
+            // Status changed by non-assignee
+            String newStatus = request.getStatus();
+            if (newStatus != null && !newStatus.equals(oldStatus)
+                && issue.getAssigneeId() != null
+                && !issue.getAssigneeId().equals(operatorId)) {
+                Notification n = new Notification();
+                n.setUserId(issue.getAssigneeId());
+                n.setType("STATUS_CHANGED");
+                n.setTitle("任务状态变更");
+                n.setContent("你负责的任务 " + issue.getIssueKey() + " 状态被更新为 " + newStatus);
+                n.setRelatedId(issue.getId());
+                n.setRelatedType("ISSUE");
+                n.setIsRead(0);
+                notificationService.create(n);
+            }
+        }
+
+        // Activity log
         if (operatorId != null) {
             User operator = userMapper.selectById(operatorId);
             ActivityLog log = new ActivityLog();

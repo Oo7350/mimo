@@ -11,3 +11,8 @@ declare module "vuedraggable" {
   const component: DefineComponent<any, any, any>;
   export default component;
 }
+
+declare module "element-plus/dist/locale/zh-cn.mjs" {
+  const zhCn: any;
+  export default zhCn;
+}

@@ -2,6 +2,7 @@ package com.mimo.controller;
 
 import com.mimo.common.Result;
 import com.mimo.dto.ReportDTO.*;
+import com.mimo.dto.StatsDTO.*;
 import com.mimo.service.ReportService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
@@ -47,5 +48,10 @@ public class ReportController {
     @GetMapping("/{id}")
     public Result<ReportVO> getById(@PathVariable Long id) {
         return Result.success(reportService.getById(id));
+    }
+
+    @GetMapping("/stats/{projectId}")
+    public Result<StatsVO> getStats(@PathVariable Long projectId) {
+        return Result.success(reportService.getProjectStats(projectId));
     }
 }

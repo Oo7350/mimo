@@ -1,3 +1,7 @@
+/* ========================================
+   Mimo Global Styles — Polished Edition
+   ======================================== */
+
 * {
   margin: 0;
   padding: 0;
@@ -6,15 +10,18 @@
 
 html, body, #app {
   height: 100%;
-  font-family: "Helvetica Neue", Helvetica, "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+  font-family: var(--font-family);
+  background: var(--bg-page);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
 }
 
 a {
   text-decoration: none;
-  color: #409EFF;
+  color: var(--color-primary);
 }
 
-/* 登录/注册页全屏背景 */
+/* ---------- Login / Register ---------- */
 .login-container {
   display: flex;
   justify-content: center;
@@ -27,53 +34,361 @@ a {
   width: 420px;
   padding: 40px;
   background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  border-radius: var(--border-radius-xl);
+  box-shadow: var(--shadow-xl);
 }
 
 .login-card h2 {
   text-align: center;
   margin-bottom: 30px;
-  color: #303133;
+  color: var(--text-primary);
   font-size: 24px;
+  font-weight: 700;
 }
 
-/* 主布局 */
+/* ---------- Dialog Glassmorphism ---------- */
+.el-overlay {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  background-color: rgba(15, 23, 42, 0.35) !important;
+}
+
+.el-dialog {
+  border-radius: var(--border-radius-xl) !important;
+  box-shadow: var(--shadow-dialog) !important;
+  overflow: hidden;
+}
+
+.el-dialog__header {
+  padding: 20px 24px 0 !important;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.el-dialog__body {
+  padding: 16px 24px !important;
+}
+
+.el-dialog__footer {
+  padding: 12px 24px 20px !important;
+}
+
+/* ---------- Custom Scrollbar ---------- */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--text-placeholder);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--text-placeholder) transparent;
+}
+
+/* ---------- Input Focus Glow ---------- */
+.el-input__wrapper:focus-within,
+.el-textarea__inner:focus,
+.el-select .el-input__wrapper:focus-within {
+  box-shadow: 0 0 0 3px rgba(79, 110, 246, 0.15) !important;
+  transition: box-shadow var(--transition-fast);
+  border-color: var(--color-primary) !important;
+}
+
+/* ---------- Toast Slide-in ---------- */
+.el-message {
+  top: 16px !important;
+  border-radius: var(--border-radius-md) !important;
+  box-shadow: var(--shadow-lg) !important;
+  animation: message-slide-in 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+@keyframes message-slide-in {
+  from { transform: translateY(-16px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* ---------- Dropdown Animation ---------- */
+.el-dropdown-menu {
+  border-radius: var(--border-radius-md) !important;
+  box-shadow: var(--shadow-lg) !important;
+  border: 1px solid var(--border-color) !important;
+  animation: dropdown-enter var(--transition-normal);
+  transform-origin: top;
+  padding: 6px !important;
+}
+@keyframes dropdown-enter {
+  from { opacity: 0; transform: scaleY(0.92) translateY(-6px); }
+  to { opacity: 1; transform: scaleY(1) translateY(0); }
+}
+
+/* ---------- Sidebar (dark theme) ---------- */
+.mimo-sidebar {
+  background: var(--bg-sidebar) !important;
+  border-right: none !important;
+  transition: width var(--transition-normal);
+  overflow: hidden;
+}
+
+.mimo-sidebar .el-menu {
+  border-right: none;
+  background: var(--bg-sidebar);
+}
+
+.mimo-sidebar .el-menu-item {
+  color: var(--text-sidebar) !important;
+  margin: 2px 8px;
+  border-radius: var(--border-radius-sm);
+  transition: all var(--transition-fast);
+  position: relative;
+  height: 42px;
+  line-height: 42px;
+}
+
+.mimo-sidebar .el-menu-item:hover {
+  background: var(--bg-sidebar-hover) !important;
+  color: #fff !important;
+}
+
+.mimo-sidebar .el-menu-item.is-active {
+  background: var(--bg-sidebar-active) !important;
+  color: #fff !important;
+  font-weight: 600;
+}
+
+.mimo-sidebar .el-menu-item.is-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 20px;
+  background: var(--color-primary);
+  border-radius: 0 2px 2px 0;
+}
+
+.mimo-sidebar .el-sub-menu__title {
+  color: var(--text-sidebar) !important;
+  margin: 2px 8px;
+  border-radius: var(--border-radius-sm);
+}
+
+.mimo-sidebar .el-sub-menu__title:hover {
+  background: var(--bg-sidebar-hover) !important;
+  color: #fff !important;
+}
+
+/* sidebar inside submenu items use same style */
+.mimo-sidebar .el-sub-menu .el-menu-item {
+  padding-left: 52px !important;
+}
+
+.mimo-sidebar .el-menu--collapse {
+  width: 64px;
+}
+
+/* ---------- Sidebar Toggle ---------- */
+.mimo-sidebar__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 44px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  cursor: pointer;
+  color: var(--text-sidebar);
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+.mimo-sidebar__toggle:hover {
+  color: #fff;
+  background: var(--bg-sidebar-hover);
+}
+
+/* ---------- Card global ---------- */
+.el-card {
+  border-radius: var(--border-radius-lg) !important;
+  box-shadow: var(--shadow-sm) !important;
+  border: 1px solid var(--border-color) !important;
+  transition: transform var(--transition-normal), box-shadow var(--transition-normal);
+}
+.el-card.is-hover-shadow:hover,
+.el-card[shadow="hover"]:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg) !important;
+}
+
+.el-card__header {
+  padding: 16px 20px !important;
+  border-bottom: 1px solid var(--border-color-light) !important;
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.el-card__body {
+  padding: 20px !important;
+}
+
+/* ---------- Button polish ---------- */
+.el-button--primary {
+  transition: all var(--transition-fast) !important;
+}
+.el-button--primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(79, 110, 246, 0.3);
+}
+
+/* ---------- Tag polish ---------- */
+.el-tag {
+  border-radius: 5px !important;
+  font-weight: 500;
+}
+
+/* ---------- Table polish ---------- */
+.el-table {
+  border-radius: var(--border-radius-lg);
+  overflow: hidden;
+}
+.el-table th.el-table__cell {
+  background: var(--bg-page);
+  font-weight: 600;
+  color: var(--text-regular);
+}
+
+/* ---------- Dragging states ---------- */
+.issue-card-ghost {
+  background: var(--bg-hover) !important;
+  border: 2px dashed var(--color-primary) !important;
+  border-radius: var(--border-radius-sm) !important;
+  opacity: 0.5;
+  min-height: 80px;
+}
+.issue-card-dragging {
+  opacity: 0.45 !important;
+  transform: rotate(2deg) scale(0.97);
+}
+.column-drop-target {
+  outline: 2px dashed var(--color-primary) !important;
+  outline-offset: -2px;
+  background: rgba(79, 110, 246, 0.03) !important;
+  transition: all var(--transition-fast);
+}
+
+/* ---------- Header ---------- */
+.mimo-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: linear-gradient(135deg, #4f6ef6 0%, #6c8cff 100%);
+  color: #fff;
+  padding: 0 20px;
+  position: relative;
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(79, 110, 246, 0.25);
+}
+
+.mimo-header__left {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.mimo-header__logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 20px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+  letter-spacing: -0.5px;
+}
+
+.mimo-header__right {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.mimo-header__bell {
+  cursor: pointer;
+  transition: transform var(--transition-fast);
+  opacity: 0.85;
+}
+.mimo-header__bell:hover {
+  transform: scale(1.1);
+  opacity: 1;
+}
+
+.mimo-header__user {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+/* ---------- Notification Dropdown ---------- */
+.notification-dropdown {
+  position: absolute;
+  top: 50px;
+  right: 50px;
+  width: 320px;
+  background: #fff;
+  border-radius: var(--border-radius-lg);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.12);
+  z-index: 2000;
+  animation: dropdown-enter 0.2s ease;
+  border: 1px solid var(--border-color);
+}
+.notification-dropdown::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  right: 10px;
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  transform: rotate(45deg);
+  border-top: 1px solid var(--border-color);
+  border-left: 1px solid var(--border-color);
+}
+.notification-dropdown__empty {
+  padding: 16px;
+}
+
+/* ---------- Main content ---------- */
+.mimo-content {
+  background: var(--bg-page);
+  padding: 24px;
+  overflow-y: auto;
+}
+
 .mimo-layout {
   height: 100vh;
 }
 
-.mimo-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 20px;
-  background: #409EFF;
+/* ---------- Project switcher in header ---------- */
+.project-switcher .el-input__wrapper {
+  background: rgba(255,255,255,0.15);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: var(--border-radius-sm);
+  box-shadow: none;
+}
+.project-switcher .el-input__wrapper:hover {
+  background: rgba(255,255,255,0.22);
+}
+.project-switcher .el-input__inner {
   color: #fff;
-  height: 56px;
 }
-
-.mimo-header .logo {
-  font-size: 20px;
-  font-weight: bold;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.mimo-header .header-right {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.mimo-sidebar {
-  background: #fff;
-  border-right: 1px solid #e6e6e6;
-}
-
-.mimo-content {
-  padding: 20px;
-  background: #f5f7fa;
-  overflow-y: auto;
+.project-switcher .el-input__inner::placeholder {
+  color: rgba(255,255,255,0.65);
 }

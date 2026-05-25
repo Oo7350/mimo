@@ -7,6 +7,8 @@ import zhCn from "element-plus/dist/locale/zh-cn.mjs";
 
 import App from "./App.vue";
 import router from "./router";
+import "driver.js/dist/driver.css";
+import "./styles/variables.css";
 import "./styles/global.css";
 
 const app = createApp(App);

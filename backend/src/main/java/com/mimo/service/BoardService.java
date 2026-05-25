@@ -29,7 +29,7 @@ public class BoardService {
                 new LambdaQueryWrapper<BoardColumn>().eq(BoardColumn::getProjectId, projectId)
                         .orderByAsc(BoardColumn::getSortOrder));
         List<Issue> issues = issueMapper.selectList(
-                new LambdaQueryWrapper<Issue>().eq(Issue::getProjectId, projectId).ne(Issue::getStatus, "DONE"));
+                new LambdaQueryWrapper<Issue>().eq(Issue::getProjectId, projectId));
 
         // 收集所有相关用户
         Set<Long> userIds = new HashSet<>();

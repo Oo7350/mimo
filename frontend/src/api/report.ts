@@ -19,3 +19,7 @@ export function getReports(params?: { projectId?: number; type?: string }) {
 export function getReportById(id: number) {
   return request.get(`/reports/${id}`);
 }
+
+export function getProjectStats(projectId: number) {
+  return request.get(`/reports/stats/${projectId}`);
+}

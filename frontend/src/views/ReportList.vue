@@ -2,17 +2,19 @@
   <div>
     <el-button @click="$router.back()" text><el-icon><ArrowLeft /></el-icon> 返回看板</el-button>
 
-    <div style="display: flex; justify-content: space-between; align-items: center; margin: 16px 0">
-      <h2>日报/周报</h2>
-      <div style="display: flex; gap: 8px">
-        <el-select v-model="filterType" style="width: 120px" @change="fetchReports">
-          <el-option label="全部" value="" />
-          <el-option label="日报" value="DAILY" />
-          <el-option label="周报" value="WEEKLY" />
-        </el-select>
-        <el-button type="primary" @click="showGenerate = true">生成报告</el-button>
-      </div>
-    </div>
+    <el-tabs v-model="activeTab" style="margin-top: 16px">
+      <el-tab-pane label="报告列表" name="list">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px">
+          <h2>日报/周报</h2>
+          <div style="display: flex; gap: 8px">
+            <el-select v-model="filterType" style="width: 120px" @change="fetchReports">
+              <el-option label="全部" value="" />
+              <el-option label="日报" value="DAILY" />
+              <el-option label="周报" value="WEEKLY" />
+            </el-select>
+            <el-button type="primary" @click="showGenerate = true">生成报告</el-button>
+          </div>
+        </div>
 
     <el-table :data="reports" stripe>
       <el-table-column prop="type" label="类型" width="80">
@@ -69,13 +71,40 @@
         <el-button type="primary" @click="handleUpdateContent">保存</el-button>
       </template>
     </el-dialog>
+      </el-tab-pane>
+
+      <!-- 数据看板 Tab -->
+      <el-tab-pane label="数据看板" name="stats">
+        <div v-if="statsLoading" style="text-align: center; padding: 40px; color: var(--text-secondary)">
+          加载中...
+        </div>
+        <div v-else class="stats-grid">
+          <!-- 本周完成任务趋势 -->
+          <div class="stats-card">
+            <h3>本周完成任务趋势</h3>
+            <div ref="weeklyChartRef" class="stats-chart"></div>
+          </div>
+          <!-- 成员任务完成分布 -->
+          <div class="stats-card">
+            <h3>成员任务完成分布</h3>
+            <div ref="memberChartRef" class="stats-chart"></div>
+          </div>
+          <!-- Sprint 故事点完成率 -->
+          <div class="stats-card">
+            <h3>最近 Sprint 故事点完成率</h3>
+            <div ref="sprintChartRef" class="stats-chart"></div>
+          </div>
+        </div>
+      </el-tab-pane>
+    </el-tabs>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, onMounted, nextTick } from "vue";
+import * as echarts from "echarts";
 import { useRoute } from "vue-router";
-import { generateReport, getReports, submitReport, updateReport } from "@/api/report";
+import { generateReport, getReports, submitReport, updateReport, getProjectStats } from "@/api/report";
 import { ElMessage } from "element-plus";
 
 const route = useRoute();
@@ -122,4 +151,118 @@ async function handleUpdateContent() {
 }
 
 onMounted(fetchReports);
+
+// Stats Tab
+const activeTab = ref("list");
+const statsLoading = ref(false);
+const weeklyChartRef = ref<HTMLElement>();
+const memberChartRef = ref<HTMLElement>();
+const sprintChartRef = ref<HTMLElement>();
+let charts: echarts.ECharts[] = [];
+
+function disposeCharts() {
+  charts.forEach(c => c.dispose());
+  charts = [];
+}
+
+async function loadStats() {
+  statsLoading.value = true;
+  try {
+    const res = await getProjectStats(projectId);
+    const data = res.data;
+    await nextTick();
+    disposeCharts();
+    renderWeeklyChart(data.weeklyCompleted || []);
+    renderMemberChart(data.memberDistribution || []);
+    renderSprintChart(data.sprintVelocity || []);
+  } catch { /* handled */ }
+  finally { statsLoading.value = false; }
+}
+
+function renderWeeklyChart(d: any[]) {
+  if (!weeklyChartRef.value) return;
+  const c = echarts.init(weeklyChartRef.value);
+  charts.push(c);
+  c.setOption({
+    tooltip: { trigger: 'axis' },
+    grid: { top: 10, right: 10, bottom: 20, left: 36 },
+    xAxis: { type: 'category', data: d.map((i: any) => i.date), axisLabel: { fontSize: 11 } },
+    yAxis: { type: 'value', minInterval: 1, axisLabel: { fontSize: 11 } },
+    series: [{
+      type: 'line', data: d.map((i: any) => i.count),
+      smooth: true, lineStyle: { color: '#4f6ef6', width: 2 },
+      areaStyle: { color: 'rgba(79,110,246,0.1)' },
+      itemStyle: { color: '#4f6ef6' },
+    }],
+  });
+}
+
+function renderMemberChart(d: any[]) {
+  if (!memberChartRef.value || !d.length) return;
+  const c = echarts.init(memberChartRef.value);
+  charts.push(c);
+  c.setOption({
+    tooltip: { trigger: 'item' },
+    series: [{
+      type: 'pie', radius: ['45%', '72%'],
+      data: d.map((i: any) => ({ name: i.username, value: i.count })),
+      label: { fontSize: 11 },
+      emphasis: { label: { fontWeight: 'bold' } },
+    }],
+    color: ['#4f6ef6', '#10b981', '#f59e0b', '#ef4444', '#6366f1', '#ec4899', '#84cc16', '#06b6d4'],
+  });
+}
+
+function renderSprintChart(d: any[]) {
+  if (!sprintChartRef.value || !d.length) return;
+  const c = echarts.init(sprintChartRef.value);
+  charts.push(c);
+  c.setOption({
+    tooltip: { trigger: 'axis' },
+    grid: { top: 10, right: 10, bottom: 20, left: 36 },
+    xAxis: { type: 'category', data: d.map((i: any) => i.sprintName), axisLabel: { fontSize: 11 } },
+    yAxis: { type: 'value', axisLabel: { fontSize: 11 } },
+    series: [
+      { name: '总故事点', type: 'bar', data: d.map((i: any) => i.totalPoints), itemStyle: { color: '#cbd5e1', borderRadius: [4,4,0,0] }, barGap: '10%' },
+      { name: '已完成', type: 'bar', data: d.map((i: any) => i.completedPoints), itemStyle: { color: '#4f6ef6', borderRadius: [4,4,0,0] } },
+    ],
+    legend: { bottom: 0, itemWidth: 10, itemHeight: 10, textStyle: { fontSize: 11 } },
+  });
+}
+
+// Watch tab switch to load stats
+import { watch } from "vue";
+watch(activeTab, (v) => {
+  if (v === 'stats') loadStats();
+});
 </script>
+
+<style scoped>
+.stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.stats-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-lg);
+  padding: 16px;
+}
+.stats-card:nth-child(3) {
+  grid-column: 1 / -1;
+}
+.stats-card h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: var(--text-primary);
+}
+.stats-chart {
+  width: 100%;
+  height: 240px;
+}
+.stats-card:nth-child(3) .stats-chart {
+  height: 280px;
+}
+</style>

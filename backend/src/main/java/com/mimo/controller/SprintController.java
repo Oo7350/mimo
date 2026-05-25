@@ -53,4 +53,25 @@ public class SprintController {
         sprintService.generateSnapshot(id);
         return Result.successMessage("快照已生成");
     }
+
+    @PostMapping("/quick/{projectId}")
+    public Result<SprintVO> quickStart(@PathVariable Long projectId) {
+        return Result.success(sprintService.createQuickSprint(projectId));
+    }
+
+    @PutMapping("/{id}/complete-migration")
+    public Result<Void> completeWithMigration(
+            @PathVariable Long id,
+            @RequestParam(required = false) Long targetSprintId) {
+        sprintService.completeSprintWithMigration(id, targetSprintId);
+        return Result.successMessage("Sprint 已完成");
+    }
+
+    @PutMapping("/{issueId}/add-to-sprint/{sprintId}")
+    public Result<Void> addIssueToSprint(
+            @PathVariable Long issueId,
+            @PathVariable Long sprintId) {
+        sprintService.addIssueToSprint(issueId, sprintId);
+        return Result.successMessage("任务已加入 Sprint");
+    }
 }

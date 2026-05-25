@@ -24,6 +24,7 @@ public class SprintService {
     private final IssueMapper issueMapper;
     private final BurndownSnapshotMapper snapshotMapper;
     private final ProjectMapper projectMapper;
+    private final BoardColumnMapper boardColumnMapper;
 
     public SprintVO create(CreateRequest request) {
         Sprint sprint = new Sprint();
@@ -71,6 +72,115 @@ public class SprintService {
         sprint.setIsActive(0);
         sprint.setStatus("COMPLETED");
         sprintMapper.updateById(sprint);
+    }
+
+    public SprintVO createQuickSprint(Long projectId) {
+        // Create 2-week sprint starting today
+        Sprint sprint = new Sprint();
+        sprint.setProjectId(projectId);
+
+        long count = sprintMapper.selectCount(
+            new LambdaQueryWrapper<Sprint>().eq(Sprint::getProjectId, projectId));
+        sprint.setName("Sprint " + (count + 1));
+        sprint.setStartDate(LocalDate.now());
+        sprint.setEndDate(LocalDate.now().plusDays(14));
+        sprint.setIsActive(1);
+        sprint.setStatus("ACTIVE");
+        sprintMapper.insert(sprint);
+
+        // Deactivate other active sprints
+        sprintMapper.selectList(new LambdaQueryWrapper<Sprint>()
+            .eq(Sprint::getProjectId, projectId)
+            .eq(Sprint::getIsActive, 1)
+            .ne(Sprint::getId, sprint.getId()))
+            .forEach(s -> { s.setIsActive(0); sprintMapper.updateById(s); });
+
+        // Find first (TODO) column
+        List<BoardColumn> columns = boardColumnMapper.selectList(
+            new LambdaQueryWrapper<BoardColumn>()
+                .eq(BoardColumn::getProjectId, projectId)
+                .orderByAsc(BoardColumn::getSortOrder)
+        );
+
+        if (!columns.isEmpty()) {
+            Long todoColumnId = columns.get(0).getId();
+
+            // Priority order: HIGHEST > HIGH > MEDIUM > LOW > LOWEST
+            Map<String, Integer> priorityOrder = new LinkedHashMap<>();
+            priorityOrder.put("HIGHEST", 0);
+            priorityOrder.put("HIGH", 1);
+            priorityOrder.put("MEDIUM", 2);
+            priorityOrder.put("LOW", 3);
+            priorityOrder.put("LOWEST", 4);
+
+            List<Issue> todoIssues = issueMapper.selectList(
+                new LambdaQueryWrapper<Issue>()
+                    .eq(Issue::getProjectId, projectId)
+                    .eq(Issue::getColumnId, todoColumnId)
+                    .eq(Issue::getStatus, "TODO")
+                    .isNull(Issue::getSprintId)
+            );
+
+            todoIssues.sort(Comparator.comparingInt(
+                i -> priorityOrder.getOrDefault(i.getPriority(), 5)));
+
+            int added = 0;
+            for (Issue issue : todoIssues) {
+                if (added >= 5) break;
+                issue.setSprintId(sprint.getId());
+                issueMapper.updateById(issue);
+                added++;
+            }
+        }
+
+        generateSnapshot(sprint.getId());
+        return toVO(sprint);
+    }
+
+    public void completeSprintWithMigration(Long sprintId, Long targetSprintId) {
+        Sprint sprint = sprintMapper.selectById(sprintId);
+        if (sprint == null) throw new BusinessException(ResultCode.SPRINT_NOT_FOUND);
+
+        List<Issue> undoneIssues = issueMapper.selectList(
+            new LambdaQueryWrapper<Issue>()
+                .eq(Issue::getSprintId, sprintId)
+                .ne(Issue::getStatus, "DONE")
+        );
+
+        if (targetSprintId != null) {
+            for (Issue issue : undoneIssues) {
+                issue.setSprintId(targetSprintId);
+                issueMapper.updateById(issue);
+            }
+        } else {
+            BoardColumn firstCol = null;
+            List<BoardColumn> columns = boardColumnMapper.selectList(
+                new LambdaQueryWrapper<BoardColumn>()
+                    .eq(BoardColumn::getProjectId, sprint.getProjectId())
+                    .orderByAsc(BoardColumn::getSortOrder)
+            );
+            if (!columns.isEmpty()) firstCol = columns.get(0);
+
+            for (Issue issue : undoneIssues) {
+                issue.setSprintId(null);
+                if (firstCol != null) {
+                    issue.setColumnId(firstCol.getId());
+                    issue.setStatus("TODO");
+                }
+                issueMapper.updateById(issue);
+            }
+        }
+
+        sprint.setIsActive(0);
+        sprint.setStatus("COMPLETED");
+        sprintMapper.updateById(sprint);
+    }
+
+    public void addIssueToSprint(Long issueId, Long sprintId) {
+        Issue issue = issueMapper.selectById(issueId);
+        if (issue == null) throw new BusinessException(ResultCode.NOT_FOUND);
+        issue.setSprintId(sprintId);
+        issueMapper.updateById(issue);
     }
 
     public BurndownVO getBurndown(Long sprintId) {

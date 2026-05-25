@@ -39,6 +39,7 @@ public class IssueDTO {
         private String priority;
         private Long assigneeId;
         private Long sprintId;
+        private Long columnId;
         private LocalDate dueDate;
         private Integer storyPoints;
         private String severity;
