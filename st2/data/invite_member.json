@@ -1,0 +1,18 @@
+[
+  {
+    "member_username": "zhangsan",
+    "role": "ROLE_MEMBER",
+    "status": 200,
+    "errno": 200,
+    "errmsg": "success",
+    "description": "邀请成员成功"
+  },
+  {
+    "member_username": "nonexistent",
+    "role": "ROLE_MEMBER",
+    "status": 404,
+    "errno": 1003,
+    "errmsg": "",
+    "description": "邀请不存在的用户"
+  }
+]

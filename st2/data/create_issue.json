@@ -1,0 +1,31 @@
+[
+  {
+    "title": "API测试任务",
+    "type": "TASK",
+    "priority": "MEDIUM",
+    "status": 200,
+    "errno": 200,
+    "errmsg": "success",
+    "description": "创建任务成功"
+  },
+  {
+    "title": "",
+    "type": "STORY",
+    "priority": "HIGH",
+    "status": 400,
+    "errno": 400,
+    "errmsg": "",
+    "description": "空标题应失败"
+  },
+  {
+    "title": "API测试Bug",
+    "type": "BUG",
+    "priority": "HIGH",
+    "severity": "CRITICAL",
+    "stepsToRepro": "1. 打开页面\n2. 点击按钮\n3. 观察到错误",
+    "status": 200,
+    "errno": 200,
+    "errmsg": "success",
+    "description": "创建Bug类型任务"
+  }
+]

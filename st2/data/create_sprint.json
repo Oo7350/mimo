@@ -1,0 +1,22 @@
+[
+  {
+    "name": "API测试Sprint",
+    "goal": "完成自动化测试模块",
+    "startDate": "2026-06-01",
+    "endDate": "2026-06-14",
+    "status": 200,
+    "errno": 200,
+    "errmsg": "success",
+    "description": "创建Sprint成功"
+  },
+  {
+    "name": "",
+    "goal": "无名称Sprint",
+    "startDate": "2026-06-01",
+    "endDate": "2026-06-14",
+    "status": 400,
+    "errno": 400,
+    "errmsg": "",
+    "description": "空名称应失败"
+  }
+]

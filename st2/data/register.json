@@ -1,0 +1,56 @@
+[
+  {
+    "username": "apitest001",
+    "password": "123456",
+    "confirmPassword": "123456",
+    "email": "apitest001@mimo.dev",
+    "status": 200,
+    "errno": 200,
+    "errmsg": "注册成功"
+  },
+  {
+    "username": "admin",
+    "password": "123456",
+    "confirmPassword": "123456",
+    "email": "duptest@mimo.dev",
+    "status": 409,
+    "errno": 1001,
+    "errmsg": "用户名已存在"
+  },
+  {
+    "username": "unique_user_99",
+    "password": "123456",
+    "confirmPassword": "123456",
+    "email": "admin@mimo.dev",
+    "status": 409,
+    "errno": 1002,
+    "errmsg": "邮箱已存在"
+  },
+  {
+    "username": "ab",
+    "password": "123456",
+    "confirmPassword": "123456",
+    "email": "short@mimo.dev",
+    "status": 400,
+    "errno": 400,
+    "errmsg": ""
+  },
+  {
+    "username": "pwtest",
+    "password": "12345",
+    "confirmPassword": "12345",
+    "email": "pwtest@mimo.dev",
+    "status": 400,
+    "errno": 400,
+    "errmsg": ""
+  },
+  {
+    "username": "mispass",
+    "password": "123456",
+    "confirmPassword": "654321",
+    "email": "mispass@mimo.dev",
+    "status": 400,
+    "errno": 400,
+    "errmsg": ""
+  }
+]

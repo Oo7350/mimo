@@ -1,0 +1,10 @@
+[
+  {
+    "name": "已更新列名",
+    "color": "#67C23A",
+    "status": 200,
+    "errno": 200,
+    "errmsg": "success",
+    "description": "编辑列信息"
+  }
+]

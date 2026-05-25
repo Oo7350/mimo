@@ -6,21 +6,42 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Mimo is a simplified Jira-like agile project management platform for small teams (Scrum). It supports project collaboration, task tracking, and progress visualization.
 
+- **GitHub**: https://github.com/Oo7350/mimo
+- **API docs**: `接口文档.md` (39 endpoints, Chinese)
+- **User manual**: `操作手册.md` (Chinese)
+
 ## Tech Stack
 
-- **Frontend**: Vue 3 + Vite + Element Plus + Pinia + Vue Router
-- **Backend**: Spring Boot 2.7.18 (Java 17) + MyBatis-Plus 3.5.3.1 + MySQL 8.0 + Redis + Spring Security + JWT (jjwt 0.11.5)
+- **Frontend**: Vue 3 + Vite + Element Plus + Pinia + Vue Router + ECharts + vuedraggable
+- **Backend**: Spring Boot 2.7.18 (Java 17+) + MyBatis-Plus 3.5.3.1 + MySQL 8.0 + Redis + Spring Security + JWT (jjwt 0.11.5)
 - **Deployment**: Docker Compose (Nginx + Spring Boot + MySQL + Redis)
 - **Backend tests**: JUnit 5 + Mockito (dependencies declared, **no tests written yet**)
 - **E2E tests**: Python 3.10+ + Pytest + Selenium + webdriver-manager (in `tests/e2e/`)
 - **Build**: Maven (backend), npm (frontend)
+
+## Local Environment (oo7350's machine)
+
+| Tool | Path / Version |
+|------|---------------|
+| Java 21 | `D:\Java\jdk-21` (21.0.5 LTS) |
+| Maven 3.6.1 | `D:\maven\apache-maven-3.6.1` |
+| MySQL 8.0.33 | `D:\MySQL\MySQL Server 8.0\` (root password: `336699`, local service) |
+| Redis | Native Windows, `localhost:6379` (auto-started) |
+| Node | v22.22.2, npm 10.9.7 |
+| Python | 3.10+ |
+| Docker | **Not available** — use native MySQL/Redis instead |
+
+**Important**: Docker is not installed on this machine. Always use the local MySQL and Redis services. Set `JAVA_HOME=D:\Java\jdk-21` before running Maven (the system default is Java 8).
+
+**GitHub SSH**: Configured to use `ssh.github.com:443` (port 22 blocked by GFW). SSH key: `~/.ssh/id_rsa` linked to `Oo7350` GitHub account.
 
 ## Commands
 
 ### Backend (from `backend/`)
 
 ```bash
-# Build
+# Build (must set JAVA_HOME first)
+set JAVA_HOME=D:\Java\jdk-21
 mvn clean compile
 mvn clean package -DskipTests
 
@@ -44,11 +65,23 @@ npm run build        # Type-check (vue-tsc) + production build to dist/
 npm run preview      # Preview production build locally
 ```
 
-### Docker Compose (from root)
+### Start Infrastructure (no Docker — local services)
+
+MySQL and Redis are installed as Windows services and start automatically, so no action is typically needed. Verify with:
+
+```bash
+# Check MySQL
+"D:\MySQL\MySQL Server 8.0\bin\mysqladmin" -u root -p"336699" ping
+
+# Check Redis
+netstat -ano | grep 6379
+```
+
+### Docker Compose (alternative, Docker not available locally)
 
 ```bash
 docker compose up -d                  # Start all services
-docker compose up -d mysql redis     # Start infrastructure only (for local dev)
+docker compose up -d mysql redis     # Start infrastructure only
 docker compose logs -f backend       # Follow backend logs
 docker compose down                  # Stop all
 ```
@@ -104,9 +137,14 @@ Single backend + RBAC with two roles: `ROLE_ADMIN` (team/project admin) and `ROL
 
 13 MySQL tables (InnoDB, utf8mb4): `users`, `teams`, `team_members`, `projects`, `project_members`, `board_columns`, `issues`, `issue_labels`, `attachments`, `sprints`, `burndown_snapshots`, `reports`, `activity_logs`.
 
-- Schema at `backend/src/main/resources/db/init.sql` — auto-executed on first MySQL container start
+- Schema at `backend/src/main/resources/db/init.sql` — auto-executed on first MySQL container start, or manually import with `mysql -u root -p"336699" mimo < backend/src/main/resources/db/init.sql`
 - Seed data: 3 users (admin/zhangsan/lisi, password `123456`), 1 team, 3 team members
 - Soft delete via MyBatis-Plus `@TableLogic` on `deleted` column (users, teams, projects, issues)
+
+### Documentation Files
+
+- `接口文档.md` — Complete API reference with 39 endpoints, request/response examples, error codes
+- `操作手册.md` — User operations manual covering all features and workflows
 
 ### Authentication Flow
 

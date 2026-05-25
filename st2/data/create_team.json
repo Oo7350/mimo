@@ -1,0 +1,16 @@
+[
+  {
+    "name": "API测试团队",
+    "description": "由自动化测试创建",
+    "status": 200,
+    "errno": 200,
+    "errmsg": "success"
+  },
+  {
+    "name": "",
+    "description": "空名称团队",
+    "status": 400,
+    "errno": 400,
+    "errmsg": ""
+  }
+]

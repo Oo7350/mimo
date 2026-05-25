@@ -1,0 +1,18 @@
+[
+  {
+    "type": "DAILY",
+    "reportDate": "2026-05-18",
+    "status": 200,
+    "errno": 200,
+    "errmsg": "success",
+    "description": "生成日报"
+  },
+  {
+    "type": "WEEKLY",
+    "reportDate": "2026-05-18",
+    "status": 200,
+    "errno": 200,
+    "errmsg": "success",
+    "description": "生成周报"
+  }
+]

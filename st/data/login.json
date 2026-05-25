@@ -1,0 +1,23 @@
+[
+  {
+    "username": "admin",
+    "password": "123456",
+    "status": 200,
+    "errno": 200,
+    "errmsg": "登录成功"
+  },
+  {
+    "username": "admin",
+    "password": "wrongpassword",
+    "status": 401,
+    "errno": 1004,
+    "errmsg": "密码错误"
+  },
+  {
+    "username": "nonexistentuser",
+    "password": "123456",
+    "status": 401,
+    "errno": 1003,
+    "errmsg": "用户不存在"
+  }
+]

@@ -20,8 +20,8 @@
           <el-tag :type="row.type === 'DAILY' ? '' : 'warning'" size="small">
             {{ row.type === 'DAILY' ? '日报' : '周报' }}
           </el-tag>
-        </el-table-column>
-      </el-table-column>
+        </template>
+    </el-table-column>
       <el-table-column prop="reportDate" label="日期" width="130" />
       <el-table-column prop="projectName" label="项目" width="150" />
       <el-table-column prop="status" label="状态" width="100">

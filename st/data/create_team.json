@@ -1,0 +1,9 @@
+[
+  {
+    "name": "测试团队001",
+    "description": "自动化测试创建的团队",
+    "status": 200,
+    "errno": 200,
+    "errmsg": "success"
+  }
+]

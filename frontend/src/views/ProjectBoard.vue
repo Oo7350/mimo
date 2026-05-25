@@ -175,10 +175,6 @@ async function handleAddColumn() {
   await fetchBoard();
 }
 
-const editingColId = ref(0);
-const editingColName = ref("");
-const editingColColor = ref("");
-
 function editColumn(col: any) {
   editingColId.value = col.id;
   editingColName.value = col.name;

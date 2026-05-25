@@ -1,0 +1,29 @@
+[
+  {
+    "username": "testuser001",
+    "password": "123456",
+    "confirmPassword": "123456",
+    "email": "test001@mimo.dev",
+    "status": 200,
+    "errno": 200,
+    "errmsg": "注册成功"
+  },
+  {
+    "username": "admin",
+    "password": "123456",
+    "confirmPassword": "123456",
+    "email": "duplicate_test@mimo.dev",
+    "status": 409,
+    "errno": 1001,
+    "errmsg": "用户名已存在"
+  },
+  {
+    "username": "testuser_unique",
+    "password": "123456",
+    "confirmPassword": "123456",
+    "email": "admin@mimo.dev",
+    "status": 409,
+    "errno": 1002,
+    "errmsg": "邮箱已存在"
+  }
+]

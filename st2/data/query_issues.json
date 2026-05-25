@@ -1,0 +1,29 @@
+[
+  {
+    "page": 1,
+    "size": 20,
+    "filters": {},
+    "status": 200,
+    "errno": 200,
+    "errmsg": "success",
+    "description": "无条件查询"
+  },
+  {
+    "page": 1,
+    "size": 20,
+    "filters": {"type": "TASK"},
+    "status": 200,
+    "errno": 200,
+    "errmsg": "success",
+    "description": "按类型筛选"
+  },
+  {
+    "page": 1,
+    "size": 20,
+    "filters": {"keyword": "API测试"},
+    "status": 200,
+    "errno": 200,
+    "errmsg": "success",
+    "description": "按关键词搜索"
+  }
+]

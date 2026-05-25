@@ -1,0 +1,18 @@
+[
+  {
+    "name": "测试阶段",
+    "color": "#E6A23C",
+    "status": 200,
+    "errno": 200,
+    "errmsg": "success",
+    "description": "创建看板列成功"
+  },
+  {
+    "name": "",
+    "color": "#909399",
+    "status": 400,
+    "errno": 400,
+    "errmsg": "",
+    "description": "空列名"
+  }
+]

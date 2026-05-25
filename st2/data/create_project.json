@@ -1,0 +1,20 @@
+[
+  {
+    "name": "API测试项目",
+    "key": "APITEST",
+    "description": "自动化测试创建的项目",
+    "template": "SCRUM",
+    "status": 200,
+    "errno": 200,
+    "errmsg": "success"
+  },
+  {
+    "name": "",
+    "key": "EMPTYKEY",
+    "description": "空名称项目",
+    "template": "KANBAN",
+    "status": 400,
+    "errno": 400,
+    "errmsg": ""
+  }
+]
