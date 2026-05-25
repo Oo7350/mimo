@@ -64,7 +64,10 @@
     <el-dialog v-model="showInviteDialog" title="邀请成员" width="400px">
       <el-form label-position="top">
         <el-form-item label="用户ID">
-          <el-input-number v-model="inviteUserId" :min="1" style="width: 100%" placeholder="输入用户ID" />
+          <el-input v-model="inviteUserIdInput" style="width: 100%" placeholder="输入用户ID，下方可查已注册用户" />
+          <div style="color: var(--text-secondary); font-size: 11px; margin-top: 6px">
+            已注册用户：admin(1)、zhangsan(2)、lisi(3)
+          </div>
         </el-form-item>
         <el-form-item label="角色">
           <el-select v-model="inviteRole" style="width: 100%">
@@ -116,7 +119,7 @@ const team = ref<any>(null);
 const members = ref<any[]>([]);
 const projects = ref<any[]>([]);
 const showInviteDialog = ref(false);
-const inviteUserId = ref<number | null>(null);
+const inviteUserIdInput = ref("");
 const inviteRole = ref("ROLE_MEMBER");
 const showCreateProject = ref(false);
 const projectForm = reactive({ name: "", key: "", template: "SCRUM" });
@@ -133,11 +136,13 @@ async function fetchData() {
 }
 
 async function handleInvite() {
-  if (!inviteUserId.value) { ElMessage.warning("请输入用户ID"); return; }
-  await inviteMember({ teamId, userId: inviteUserId.value, role: inviteRole.value });
-  ElMessage.success("邀请成功");
-  showInviteDialog.value = false;
-  await fetchData();
+  const uid = parseInt(inviteUserIdInput.value)
+  if (!uid) { ElMessage.warning("请输入有效的用户ID"); return }
+  await inviteMember({ teamId, userId: uid, role: inviteRole.value })
+  ElMessage.success("邀请成功")
+  showInviteDialog.value = false
+  inviteUserIdInput.value = ""
+  await fetchData()
 }
 
 async function handleRemove(userId: number) {

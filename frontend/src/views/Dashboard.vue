@@ -128,41 +128,6 @@
       </div>
     </div>
 
-    <!-- 活跃 Sprint -->
-    <div class="dashboard__panel" v-if="dashboard?.activeSprints?.length">
-      <div class="panel-header">
-        <div class="panel-header__left">
-          <div class="panel-header__dot" style="background: var(--color-info)" />
-          <span>活跃 Sprint</span>
-        </div>
-      </div>
-      <div v-if="loading" class="panel-body">
-        <SkeletonLoader variant="card" :count="2" />
-      </div>
-      <div v-else class="panel-body sprint-grid">
-        <div
-          v-for="s in dashboard.activeSprints"
-          :key="s.id"
-          class="sprint-card"
-          @click="$router.push(`/projects/${s.projectId}/sprints/${s.id}/burndown`)"
-        >
-          <div class="sprint-card__top">
-            <div>
-              <div class="sprint-card__name">{{ s.name }}</div>
-              <div class="sprint-card__project">{{ s.projectName }}</div>
-            </div>
-            <BurndownMiniChart :sprint-id="s.id" :width="160" :height="72" />
-          </div>
-          <el-progress
-            :percentage="s.totalIssues ? Math.round(s.completedIssues / s.totalIssues * 100) : 0"
-            :stroke-width="5"
-            color="var(--color-primary)"
-          />
-          <div class="sprint-card__meta">{{ s.completedIssues }} / {{ s.totalIssues }} 个任务</div>
-        </div>
-      </div>
-    </div>
-
     <!-- 近期动态 -->
     <div class="dashboard__panel">
       <div class="panel-header">
@@ -200,7 +165,6 @@ import { TYPE_LABEL, PRIORITY_LABEL, PRIORITY_COLOR } from "@/utils/constants"
 import type { DashboardData, IssueCard, IssueType } from "@/types"
 import StatCard from "@/components/common/StatCard.vue"
 import SkeletonLoader from "@/components/common/SkeletonLoader.vue"
-import BurndownMiniChart from "@/components/chart/BurndownMiniChart.vue"
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -256,7 +220,7 @@ async function completeTask(task: IssueCard) {
 }
 
 function openTask(task: IssueCard) {
-  router.push(`/projects/${task.projectId || 0}/board`)
+  router.push(`/projects/${task.projectId || 0}/board?issue=${task.id}`)
 }
 
 onMounted(() => { fetchDashboard(); fetchMyTasks() })
@@ -397,38 +361,6 @@ onMounted(() => { fetchDashboard(); fetchMyTasks() })
     .task-item:hover & { opacity: 1; }
     &:hover { transform: scale(1.15); color: var(--color-success) !important; }
   }
-}
-
-.sprint-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 12px;
-  padding-top: 12px;
-}
-
-.sprint-card {
-  padding: 14px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-md);
-  cursor: pointer;
-  transition: all var(--transition-normal);
-
-  &:hover {
-    box-shadow: var(--shadow-md);
-    transform: translateY(-1px);
-  }
-
-  &__top {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 10px;
-    gap: 8px;
-  }
-
-  &__name { font-weight: 600; font-size: 14px; }
-  &__project { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
-  &__meta { font-size: 11px; color: var(--text-placeholder); margin-top: 5px; }
 }
 
 .task-list-enter-active,

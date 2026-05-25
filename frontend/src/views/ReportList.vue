@@ -66,7 +66,7 @@
 
     <!-- 查看报告 Dialog -->
     <el-dialog v-model="showViewDialog" title="报告详情" width="600px">
-      <div style="white-space: pre-wrap; line-height: 1.8">{{ viewingContent }}</div>
+      <div class="markdown-body" v-html="renderMarkdown(viewingContent)"></div>
       <template #footer v-if="viewingReport?.status !== 'SUBMITTED'">
         <el-button type="primary" @click="handleUpdateContent">保存</el-button>
       </template>
@@ -105,6 +105,7 @@ import { ref, onMounted, nextTick } from "vue";
 import * as echarts from "echarts";
 import { useRoute } from "vue-router";
 import { generateReport, getReports, submitReport, updateReport, getProjectStats } from "@/api/report";
+import { renderMarkdown } from "@/utils/markdown";
 import { ElMessage } from "element-plus";
 
 const route = useRoute();

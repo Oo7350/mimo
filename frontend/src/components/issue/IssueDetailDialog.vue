@@ -47,8 +47,10 @@
           </el-row>
           <el-row :gutter="16">
             <el-col :span="8">
-              <el-form-item label="指派人ID">
-                <el-input-number v-model="form.assigneeId" :min="1" style="width: 100%" placeholder="用户ID" />
+              <el-form-item label="指派人">
+                <el-select v-model="form.assigneeId" style="width: 100%" clearable filterable placeholder="选择成员">
+                  <el-option v-for="m in members" :key="m.userId" :label="m.username" :value="m.userId" />
+                </el-select>
               </el-form-item>
             </el-col>
             <el-col :span="8">
@@ -155,7 +157,7 @@
                   <strong>{{ c.username }}</strong>
                   <span class="comment-item__time">{{ c.createdAt }}</span>
                 </div>
-                <div class="comment-item__content">{{ c.content }}</div>
+                <div class="comment-item__content" v-html="renderMarkdown(c.content)"></div>
               </div>
             </div>
           </div>
@@ -198,12 +200,15 @@ import { ref, reactive, watch } from "vue"
 import { createIssue, getIssueById, updateIssue, deleteIssue } from "@/api/issue"
 import { getIssueAttachments, uploadAttachment, downloadAttachment, deleteAttachment } from "@/api/attachment"
 import { createComment, getCommentsByIssue } from "@/api/comment"
+import { getMembers } from "@/api/team"
 import { ElMessage } from "element-plus"
 import AssigneeAvatar from "@/components/common/AssigneeAvatar.vue"
+import { renderMarkdown } from "@/utils/markdown"
 
 const props = defineProps<{
   visible: boolean
   projectId: number
+  teamId?: number
   columns: any[]
   issueId?: number
   mode?: string
@@ -215,6 +220,7 @@ const activeTab = ref("basic")
 const loading = ref(false)
 const labelInput = ref("")
 const attachments = ref<any[]>([])
+const members = ref<any[]>([])
 
 // Comments
 const comments = ref<any[]>([])
@@ -323,9 +329,18 @@ function formatSize(bytes: number) {
   return (bytes / (1024 * 1024)).toFixed(1) + " MB"
 }
 
+async function fetchMembers() {
+  if (!props.teamId) return
+  try {
+    const res = await getMembers(props.teamId)
+    members.value = res.data || []
+  } catch { members.value = [] }
+}
+
 watch(() => props.visible, async (v) => {
   if (v) {
     activeTab.value = "basic"
+    fetchMembers()
     Object.assign(form, {
       id: null, title: "", type: "TASK", priority: "MEDIUM", status: "TODO",
       columnId: null, assigneeId: null, storyPoints: null,

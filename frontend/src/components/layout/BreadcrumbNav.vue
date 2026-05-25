@@ -28,8 +28,6 @@ const ROUTE_LABELS: Record<string, string> = {
   '': '工作台',
   projects: '项目',
   board: '看板',
-  sprints: 'Sprint',
-  burndown: '燃尽图',
   reports: '报告',
   teams: '团队',
   profile: '个人信息',
@@ -51,11 +49,6 @@ const items = computed<Crumb[]>(() => {
     const sub = parts[2]
     if (sub === 'board') {
       crumbs.push({ label: '看板' })
-    } else if (sub === 'sprints') {
-      crumbs.push({ label: 'Sprint 列表' })
-      if (parts[3] === 'burndown') {
-        crumbs.push({ label: '燃尽图' })
-      }
     } else if (sub === 'reports') {
       crumbs.push({ label: '报告' })
     }

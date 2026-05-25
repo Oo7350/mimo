@@ -9,9 +9,14 @@
         <h3 class="board__title">{{ projectName }}</h3>
       </div>
       <div class="board__header-right">
-        <el-button @click="$router.push(`/projects/${projectId}/sprints`)">
-          <el-icon><DataAnalysis /></el-icon>Sprint
-        </el-button>
+        <el-input
+          v-model="searchKeyword"
+          placeholder="搜索任务..."
+          :prefix-icon="Search"
+          clearable
+          size="small"
+          style="width: 200px"
+        />
         <el-button @click="$router.push(`/projects/${projectId}/reports`)">
           <el-icon><Document /></el-icon>报告
         </el-button>
@@ -24,16 +29,17 @@
     <!-- 看板列 -->
     <div class="board__columns">
       <div
-        v-for="col in columns"
+        v-for="(col, idx) in columns"
         :key="col.id"
         :class="['board__column', { 'column-drop-target': dragOverColumnId === col.id }]"
+        :style="columnBarStyle(idx)"
       >
         <!-- 列头 -->
         <div class="board__column-header">
           <div class="board__column-title">
             <span class="board__column-dot" :style="{ background: col.color }" />
             <span class="board__column-name">{{ col.name }}</span>
-            <el-tag size="small" round>{{ col.issues?.length || 0 }}</el-tag>
+            <el-tag size="small" round>{{ filteredIssues(col).length }}</el-tag>
           </div>
         </div>
 
@@ -50,11 +56,13 @@
           class="board__column-body"
         >
           <template #item="{ element }">
-            <IssueCard
-              :issue="element"
-              @click="openIssue(element)"
-              @edit="openIssue(element)"
-            />
+            <div v-if="issueMatchesFilter(element)">
+              <IssueCard
+                :issue="element"
+                @click="openIssue(element)"
+                @edit="openIssue(element)"
+              />
+            </div>
           </template>
         </draggable>
       </div>
@@ -65,6 +73,7 @@
     <IssueDetailDialog
       v-model:visible="showCreateIssue"
       :project-id="projectId"
+      :team-id="teamId"
       :columns="columns"
       @created="fetchBoard"
     />
@@ -73,6 +82,7 @@
     <IssueDetailDialog
       v-model:visible="showEditIssue"
       :project-id="projectId"
+      :team-id="teamId"
       :columns="columns"
       :issue-id="editingIssueId"
       mode="edit"
@@ -83,7 +93,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue"
+import { ref, computed, onMounted } from "vue"
 import { useRoute } from "vue-router"
 import { getBoard, moveIssue } from "@/api/board"
 import { getProjectById } from "@/api/project"
@@ -91,15 +101,37 @@ import { updateIssue } from "@/api/issue"
 import draggable from "vuedraggable"
 import IssueDetailDialog from "@/components/issue/IssueDetailDialog.vue"
 import IssueCard from "@/components/issue/IssueCard.vue"
+import { Search } from "@element-plus/icons-vue"
 
 const route = useRoute()
 const projectId = Number(route.params.id)
 const projectName = ref("")
+const teamId = ref<number>(0)
 const columns = ref<any[]>([])
 const showCreateIssue = ref(false)
 const showEditIssue = ref(false)
 const editingIssueId = ref<number>(0)
 const dragOverColumnId = ref<number | null>(null)
+const searchKeyword = ref("")
+
+const issueMatchesFilter = (issue: any) => {
+  if (!searchKeyword.value) return true
+  const kw = searchKeyword.value.toLowerCase()
+  return (
+    issue.title?.toLowerCase().includes(kw) ||
+    issue.issueKey?.toLowerCase().includes(kw) ||
+    issue.assigneeName?.toLowerCase().includes(kw) ||
+    (issue.labels || []).some((l: any) => l.label?.toLowerCase().includes(kw))
+  )
+}
+
+const filteredIssues = (col: any) =>
+  col.issues?.filter((i: any) => issueMatchesFilter(i)) || []
+
+function columnBarStyle(idx: number) {
+  const colors = ['var(--color-primary)', 'var(--color-warning)', 'var(--color-success)']
+  return { borderTop: `3px solid ${colors[idx] || colors[0]}` }
+}
 
 async function fetchBoard() {
   const [boardRes, projRes] = await Promise.all([
@@ -108,6 +140,7 @@ async function fetchBoard() {
   ])
   columns.value = boardRes.data?.columns || []
   projectName.value = projRes.data?.name || ""
+  teamId.value = projRes.data?.teamId || 0
 }
 
 function columnToStatus(colName: string): string {
@@ -126,7 +159,6 @@ async function handleDragChange(evt: any, targetColId: number) {
       moveIssue({ issueId: issue.id, targetColumnId: targetColId, sortOrder: newIndex }),
       updateIssue({ id: issue.id, status: newStatus }),
     ])
-    // Update local state immediately
     issue.status = newStatus
   }
 }
@@ -136,7 +168,19 @@ function openIssue(issue: any) {
   showEditIssue.value = true
 }
 
-onMounted(fetchBoard)
+// Task deeplink: ?issue=123 opens the issue dialog
+function checkDeeplink() {
+  const q = route.query.issue
+  if (q) {
+    editingIssueId.value = Number(q)
+    showEditIssue.value = true
+  }
+}
+
+onMounted(async () => {
+  await fetchBoard()
+  checkDeeplink()
+})
 </script>
 
 <style scoped lang="scss">
@@ -163,6 +207,7 @@ onMounted(fetchBoard)
   &__header-right {
     display: flex;
     gap: 8px;
+    align-items: center;
   }
 
   &__columns {
