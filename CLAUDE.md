@@ -4,19 +4,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Mimo is a simplified Jira-like agile project management platform for small teams (Scrum). It supports project collaboration, task tracking, and progress visualization.
+Mimo is a lightweight Trello-like project management platform for small teams. It supports team collaboration, kanban task tracking, and progress visualization.
 
 - **GitHub**: https://github.com/Oo7350/mimo
-- **API docs**: `接口文档.md` (39 endpoints, Chinese)
+- **API docs**: `接口文档.md` (50+ endpoints, Chinese)
 - **User manual**: `操作手册.md` (Chinese)
 
 ## Tech Stack
 
-- **Frontend**: Vue 3 + Vite + Element Plus + Pinia + Vue Router + ECharts + vuedraggable
+- **Frontend**: Vue 3 + Vite + Element Plus + Pinia + Vue Router + ECharts + vuedraggable + driver.js + marked
 - **Backend**: Spring Boot 2.7.18 (Java 17+) + MyBatis-Plus 3.5.3.1 + MySQL 8.0 + Redis + Spring Security + JWT (jjwt 0.11.5)
 - **Deployment**: Docker Compose (Nginx + Spring Boot + MySQL + Redis)
-- **Backend tests**: JUnit 5 + Mockito (dependencies declared, **no tests written yet**)
-- **E2E tests**: Python 3.10+ + Pytest + Selenium + webdriver-manager (in `tests/e2e/`)
 - **Build**: Maven (backend), npm (frontend)
 
 ## Local Environment (oo7350's machine)
@@ -33,7 +31,7 @@ Mimo is a simplified Jira-like agile project management platform for small teams
 
 **Important**: Docker is not installed on this machine. Always use the local MySQL and Redis services. Set `JAVA_HOME=D:\Java\jdk-21` before running Maven (the system default is Java 8).
 
-**GitHub SSH**: Configured to use `ssh.github.com:443` (port 22 blocked by GFW). SSH key: `~/.ssh/id_rsa` linked to `Oo7350` GitHub account.
+**GitHub SSH**: Configured to use `ssh.github.com:443` (port 22 blocked by GFW). Push via HTTPS instead.
 
 ## Commands
 
@@ -50,10 +48,6 @@ mvn spring-boot:run
 
 # Run (jar)
 java -jar target/mimo-backend-1.0.0-SNAPSHOT.jar
-
-# Tests (none exist yet; when added:)
-mvn test
-mvn test -Dtest=ClassName
 ```
 
 ### Frontend (from `frontend/`)
@@ -62,40 +56,21 @@ mvn test -Dtest=ClassName
 npm install
 npm run dev          # Vite dev server on :5173, proxies /api → :8080
 npm run build        # Type-check (vue-tsc) + production build to dist/
-npm run preview      # Preview production build locally
 ```
 
-### Start Infrastructure (no Docker — local services)
+### Database
 
-MySQL and Redis are installed as Windows services and start automatically, so no action is typically needed. Verify with:
+New tables must be created manually since Docker is not available:
 
 ```bash
-# Check MySQL
-"D:\MySQL\MySQL Server 8.0\bin\mysqladmin" -u root -p"336699" ping
-
-# Check Redis
-netstat -ano | grep 6379
+mysql -u root -p"336699" mimo < backend/src/main/resources/db/init.sql
 ```
 
-### Docker Compose (alternative, Docker not available locally)
-
-```bash
-docker compose up -d                  # Start all services
-docker compose up -d mysql redis     # Start infrastructure only
-docker compose logs -f backend       # Follow backend logs
-docker compose down                  # Stop all
+Or create individual tables:
+```sql
+CREATE TABLE IF NOT EXISTS comments (...);
+CREATE TABLE IF NOT EXISTS notifications (...);
 ```
-
-### E2E Tests (from `tests/e2e/`)
-
-```bash
-pip install -r requirements.txt
-pytest -v                          # Run all
-pytest test_login.py -v            # Run single file
-pytest -k "test_login_success"     # Run by name
-```
-
-E2E tests target `http://localhost:5173` (Vite dev server). Requires the backend and frontend dev server to be running, and MySQL seeded with init data.
 
 ## Architecture
 
@@ -107,12 +82,11 @@ Single backend + RBAC with two roles: `ROLE_ADMIN` (team/project admin) and `ROL
 |---------|---------|
 | `common/` | `Result<T>` response wrapper, `ResultCode` enum, `BusinessException`, `GlobalExceptionHandler` |
 | `config/` | `SecurityConfig`, `JwtAuthenticationFilter`, `CorsConfig`, `MyBatisPlusConfig` |
-| `controller/` | 10 REST controllers under `/api/*` |
-| `service/` | 9 service classes with business logic |
+| `controller/` | 12 REST controllers under `/api/*` |
+| `service/` | 11 service classes with business logic |
 | `mapper/` | MyBatis-Plus `BaseMapper` interfaces (no XML, all queries via `LambdaQueryWrapper`) |
-| `entity/` | 13 entity classes mapped to database tables |
+| `entity/` | 15 entity classes mapped to database tables |
 | `dto/` | Request/response DTOs per domain |
-| `util/` | `JwtUtil` (token generation/validation with HS256) |
 
 ### Frontend Layout
 
@@ -121,9 +95,13 @@ Single backend + RBAC with two roles: `ROLE_ADMIN` (team/project admin) and `ROL
 | `api/` | `request.ts` (Axios instance + interceptors) + per-domain API modules |
 | `store/` | Pinia stores — `user.ts` (auth/role), `app.ts` (sidebar, current project) |
 | `router/` | Vue Router with navigation guard for auth + redirect |
-| `views/` | 11 page components |
-| `components/layout/` | `MainLayout.vue` (header, sidebar, content slot) |
-| `components/issue/` | `IssueDetailDialog.vue` (create/edit issue modal) |
+| `views/` | 10 page components (Dashboard, ProjectOverview, ProjectBoard, ReportList, etc.) |
+| `components/layout/` | `MainLayout.vue` (header, sidebar, content slot), `BreadcrumbNav.vue` |
+| `components/issue/` | `IssueDetailDialog.vue` (3-tab modal: basic/detail+attachments/comments), `IssueCard.vue` |
+| `components/common/` | `StatCard.vue`, `SkeletonLoader.vue`, `AssigneeAvatar.vue` |
+| `composables/` | `useTour.ts` (driver.js onboarding), `useNotifications.ts` (30s polling) |
+| `types/` | TypeScript interfaces for all domain objects |
+| `utils/` | `constants.ts` (label/color maps), `markdown.ts` (marked renderer) |
 
 ### API Pattern
 
@@ -135,53 +113,35 @@ Single backend + RBAC with two roles: `ROLE_ADMIN` (team/project admin) and `ROL
 
 ### Database
 
-13 MySQL tables (InnoDB, utf8mb4): `users`, `teams`, `team_members`, `projects`, `project_members`, `board_columns`, `issues`, `issue_labels`, `attachments`, `sprints`, `burndown_snapshots`, `reports`, `activity_logs`.
+15 MySQL tables (InnoDB, utf8mb4): `users`, `teams`, `team_members`, `projects`, `project_members`, `board_columns`, `issues`, `issue_labels`, `attachments`, `sprints`, `burndown_snapshots`, `reports`, `activity_logs`, `comments`, `notifications`.
 
-- Schema at `backend/src/main/resources/db/init.sql` — auto-executed on first MySQL container start, or manually import with `mysql -u root -p"336699" mimo < backend/src/main/resources/db/init.sql`
+- Schema at `backend/src/main/resources/db/init.sql`
 - Seed data: 3 users (admin/zhangsan/lisi, password `123456`), 1 team, 3 team members
 - Soft delete via MyBatis-Plus `@TableLogic` on `deleted` column (users, teams, projects, issues)
 
-### Documentation Files
+## Key Features
 
-- `接口文档.md` — Complete API reference with 39 endpoints, request/response examples, error codes
-- `操作手册.md` — User operations manual covering all features and workflows
-
-### Authentication Flow
-
-1. `POST /api/auth/login` → BCrypt password check → returns JWT with claims `userId`, `username`, `role`
-2. `JwtAuthenticationFilter` extracts token from `Authorization` header, validates, sets `SecurityContextHolder`
-3. Frontend stores token in `localStorage`, auto-attached by Axios interceptor
-4. Role stored as `ROLE_ADMIN` or `ROLE_MEMBER` in JWT claim; `SecurityContext` grants authority as-is
-
-## Permission Model
-
-- Write operations (create team, manage members) require `ROLE_ADMIN`
-- Board operations and task claiming are open to all project members
-- Task modifications limited to the assignee or admin
-- Same-project members can see all project tasks and boards
-- Spring Security `@PreAuthorize` on `TeamController.inviteMember` and `TeamController.removeMember`
+- **Kanban Board**: 3 fixed columns (TODO/IN_PROGRESS/DONE) with drag-and-drop, priority color bars, search and filter (assignee/priority/type)
+- **Project Overview**: Status pie chart, member workload bar chart, upcoming due tasks, recent activity
+- **Task Comments**: Markdown-enabled discussion thread per issue, Ctrl+Enter to send
+- **Notifications**: Bell badge with 30s polling, ASSIGNED and STATUS_CHANGED types
+- **Reports**: Daily/weekly report generation with auto-draft content; data dashboard with 3 ECharts charts (weekly trend, member distribution, sprint velocity)
+- **Sprint** (backend only): Quick-start 2-week iteration with auto task assignment; complete-with-migration for undone tasks
+- **Onboarding Tour**: driver.js guided walkthrough triggered on first board visit
 
 ## Known Issues
 
 ### `@PreAuthorize` role prefix bug
 
-`TeamController` uses `@PreAuthorize("hasRole('ROLE_ADMIN')")`. Spring Security's `hasRole()` automatically prepends `ROLE_`, so this checks for `ROLE_ROLE_ADMIN` — which will never match. The JWT role claim stores the full string `ROLE_ADMIN`, and `JwtAuthenticationFilter` passes it directly to `SimpleGrantedAuthority`. **Fix**: use `hasAuthority('ROLE_ADMIN')` instead, or strip the `ROLE_` prefix when building authorities.
+`TeamController` uses `@PreAuthorize("hasRole('ROLE_ADMIN')")`. Spring Security's `hasRole()` automatically prepends `ROLE_`, so this checks for `ROLE_ROLE_ADMIN` — which will never match. **Fix**: use `hasAuthority('ROLE_ADMIN')` instead.
 
 ### Redis unused
 
-`spring-boot-starter-data-redis` is declared and Redis is in Docker Compose, but no service code uses Redis (no caching, no token blacklist).
+`spring-boot-starter-data-redis` is declared and Redis is in Docker Compose, but no service code uses Redis.
 
 ### Upload directory
 
 `AttachmentService` reads upload path from `mimo.upload.dir` property (default `./uploads`), but this property is **not** set in `application.yml`.
-
-### Frontend RBAC incomplete
-
-`UserStore` exposes `isAdmin` computed property but no views or components currently use it to hide admin-only UI elements. Role enforcement is backend-only (HTTP 403 responses).
-
-### No backend unit tests
-
-The `src/test` directory does not exist. JUnit 5 and Mockito dependencies are declared in `pom.xml` but no tests have been written.
 
 ### `.claude/settings.local.json`
 

@@ -54,7 +54,7 @@
             v-for="p in dashboard.myProjects"
             :key="p.id"
             class="project-item"
-            @click="$router.push(`/projects/${p.id}/board`)"
+            @click="$router.push(`/projects/${p.id}`)"
           >
             <div class="project-item__avatar">
               {{ p.name.charAt(0).toUpperCase() }}

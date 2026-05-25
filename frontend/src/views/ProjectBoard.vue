@@ -11,12 +11,27 @@
       <div class="board__header-right">
         <el-input
           v-model="searchKeyword"
-          placeholder="搜索任务..."
+          placeholder="搜索..."
           :prefix-icon="Search"
           clearable
           size="small"
-          style="width: 200px"
+          style="width: 160px"
         />
+        <el-select v-model="filterAssignee" placeholder="指派人" size="small" clearable style="width: 110px">
+          <el-option v-for="a in assigneeOptions" :key="a" :label="a" :value="a" />
+        </el-select>
+        <el-select v-model="filterPriority" placeholder="优先级" size="small" clearable style="width: 90px">
+          <el-option label="最高" value="HIGHEST" />
+          <el-option label="高" value="HIGH" />
+          <el-option label="中" value="MEDIUM" />
+          <el-option label="低" value="LOW" />
+          <el-option label="最低" value="LOWEST" />
+        </el-select>
+        <el-select v-model="filterType" placeholder="类型" size="small" clearable style="width: 90px">
+          <el-option label="故事" value="STORY" />
+          <el-option label="任务" value="TASK" />
+          <el-option label="缺陷" value="BUG" />
+        </el-select>
         <el-button @click="$router.push(`/projects/${projectId}/reports`)">
           <el-icon><Document /></el-icon>报告
         </el-button>
@@ -113,16 +128,32 @@ const showEditIssue = ref(false)
 const editingIssueId = ref<number>(0)
 const dragOverColumnId = ref<number | null>(null)
 const searchKeyword = ref("")
+const filterAssignee = ref("")
+const filterPriority = ref("")
+const filterType = ref("")
+
+const assigneeOptions = computed(() => {
+  const names = new Set<string>()
+  columns.value.forEach((c: any) => c.issues?.forEach((i: any) => {
+    if (i.assigneeName) names.add(i.assigneeName)
+  }))
+  return Array.from(names).sort()
+})
 
 const issueMatchesFilter = (issue: any) => {
-  if (!searchKeyword.value) return true
-  const kw = searchKeyword.value.toLowerCase()
-  return (
-    issue.title?.toLowerCase().includes(kw) ||
-    issue.issueKey?.toLowerCase().includes(kw) ||
-    issue.assigneeName?.toLowerCase().includes(kw) ||
-    (issue.labels || []).some((l: any) => l.label?.toLowerCase().includes(kw))
-  )
+  if (filterAssignee.value && issue.assigneeName !== filterAssignee.value) return false
+  if (filterPriority.value && issue.priority !== filterPriority.value) return false
+  if (filterType.value && issue.type !== filterType.value) return false
+  if (searchKeyword.value) {
+    const kw = searchKeyword.value.toLowerCase()
+    return (
+      issue.title?.toLowerCase().includes(kw) ||
+      issue.issueKey?.toLowerCase().includes(kw) ||
+      issue.assigneeName?.toLowerCase().includes(kw) ||
+      (issue.labels || []).some((l: any) => l.label?.toLowerCase().includes(kw))
+    )
+  }
+  return true
 }
 
 const filteredIssues = (col: any) =>

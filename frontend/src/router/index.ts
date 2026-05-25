@@ -35,13 +35,14 @@ const routes: RouteRecordRaw[] = [
         component: () => import("@/views/TeamDetail.vue"),
       },
       {
+        path: "projects/:id",
+        name: "ProjectOverview",
+        component: () => import("@/views/ProjectOverview.vue"),
+      },
+      {
         path: "projects/:id/board",
         name: "ProjectBoard",
         component: () => import("@/views/ProjectBoard.vue"),
-      },
-      {
-        path: "projects/:id",
-        redirect: (to: any) => `/projects/${to.params.id}/board`,
       },
       {
         path: "projects/:id/sprints",
