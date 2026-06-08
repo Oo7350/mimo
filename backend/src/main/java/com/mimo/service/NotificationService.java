@@ -18,8 +18,9 @@ public class NotificationService {
     private final NotificationMapper notificationMapper;
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
-    public void create(Notification notification) {
+    public Notification create(Notification notification) {
         notificationMapper.insert(notification);
+        return notification;
     }
 
     public List<NotificationVO> listByUser(Long userId, int limit) {

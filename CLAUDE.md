@@ -12,8 +12,8 @@ Mimo is a lightweight Trello-like project management platform for small teams. I
 
 ## Tech Stack
 
-- **Frontend**: Vue 3 + Vite + Element Plus + Pinia + Vue Router + ECharts + vuedraggable + driver.js + marked
-- **Backend**: Spring Boot 2.7.18 (Java 17+) + MyBatis-Plus 3.5.3.1 + MySQL 8.0 + Redis + Spring Security + JWT (jjwt 0.11.5)
+- **Frontend**: Vue 3 + Vite + Element Plus + Pinia + Vue Router + ECharts + vuedraggable + driver.js + marked + SockJS + STOMP.js + html2pdf.js + DeepSeek API
+- **Backend**: Spring Boot 2.7.18 (Java 17+) + MyBatis-Plus 3.5.3.1 + MySQL 8.0 + Redis + Spring Security + JWT (jjwt 0.11.5) + Spring WebSocket + STOMP
 - **Deployment**: Docker Compose (Nginx + Spring Boot + MySQL + Redis)
 - **Build**: Maven (backend), npm (frontend)
 
@@ -81,9 +81,9 @@ Single backend + RBAC with two roles: `ROLE_ADMIN` (team/project admin) and `ROL
 | Package | Purpose |
 |---------|---------|
 | `common/` | `Result<T>` response wrapper, `ResultCode` enum, `BusinessException`, `GlobalExceptionHandler` |
-| `config/` | `SecurityConfig`, `JwtAuthenticationFilter`, `CorsConfig`, `MyBatisPlusConfig` |
+| `config/` | `SecurityConfig`, `JwtAuthenticationFilter`, `CorsConfig`, `MyBatisPlusConfig`, `WebSocketConfig`, `WebSocketAuthInterceptor` |
 | `controller/` | 12 REST controllers under `/api/*` |
-| `service/` | 11 service classes with business logic |
+| `service/` | 12 service classes including `WebSocketService` for real-time push |
 | `mapper/` | MyBatis-Plus `BaseMapper` interfaces (no XML, all queries via `LambdaQueryWrapper`) |
 | `entity/` | 15 entity classes mapped to database tables |
 | `dto/` | Request/response DTOs per domain |
@@ -92,22 +92,23 @@ Single backend + RBAC with two roles: `ROLE_ADMIN` (team/project admin) and `ROL
 
 | Directory | Purpose |
 |-----------|---------|
-| `api/` | `request.ts` (Axios instance + interceptors) + per-domain API modules |
+| `api/` | `request.ts` (Axios instance + interceptors) + per-domain API modules + `ai.ts` (DeepSeek API) |
 | `store/` | Pinia stores — `user.ts` (auth/role), `app.ts` (sidebar, current project) |
 | `router/` | Vue Router with navigation guard for auth + redirect |
 | `views/` | 10 page components (Dashboard, ProjectOverview, ProjectBoard, ReportList, etc.) |
 | `components/layout/` | `MainLayout.vue` (header, sidebar, content slot), `BreadcrumbNav.vue` |
 | `components/issue/` | `IssueDetailDialog.vue` (3-tab modal: basic/detail+attachments/comments), `IssueCard.vue` |
 | `components/common/` | `StatCard.vue`, `SkeletonLoader.vue`, `AssigneeAvatar.vue` |
-| `composables/` | `useTour.ts` (driver.js onboarding), `useNotifications.ts` (30s polling) |
+| `composables/` | `useTour.ts`, `useNotifications.ts`, `useWebSocket.ts` (STOMP WebSocket singleton) |
 | `types/` | TypeScript interfaces for all domain objects |
 | `utils/` | `constants.ts` (label/color maps), `markdown.ts` (marked renderer) |
 
 ### API Pattern
 
 - All responses wrapped in `Result<T>`: `{ code: 200, message: "success", data: ... }`
-- Public endpoints: `/api/auth/login`, `/api/auth/register`, Swagger UI paths
+- Public endpoints: `/api/auth/login`, `/api/auth/register`, `/api/ws/**` (WebSocket), Swagger UI paths
 - All other endpoints require `Authorization: Bearer <token>` header
+- WebSocket: STOMP over SockJS at `/api/ws`, JWT auth via CONNECT frame header
 - Axios request interceptor auto-attaches token from localStorage; response interceptor handles 401 (redirect to login), 403 (toast), 500 (toast)
 - Knife4j/Swagger UI at `/swagger-ui.html` and `/doc.html`
 
@@ -122,11 +123,13 @@ Single backend + RBAC with two roles: `ROLE_ADMIN` (team/project admin) and `ROL
 ## Key Features
 
 - **Kanban Board**: 3 fixed columns (TODO/IN_PROGRESS/DONE) with drag-and-drop, priority color bars, search and filter (assignee/priority/type)
-- **Project Overview**: Status pie chart, member workload bar chart, upcoming due tasks, recent activity
-- **Task Comments**: Markdown-enabled discussion thread per issue, Ctrl+Enter to send
-- **Notifications**: Bell badge with 30s polling, ASSIGNED and STATUS_CHANGED types
-- **Reports**: Daily/weekly report generation with auto-draft content; data dashboard with 3 ECharts charts (weekly trend, member distribution, sprint velocity)
-- **Sprint** (backend only): Quick-start 2-week iteration with auto task assignment; complete-with-migration for undone tasks
+- **Real-time Collaboration**: WebSocket-powered board sync — drag-and-drop broadcasts to all users on the same board; instant notification push (no polling)
+- **Project Overview**: Status pie chart, member workload bar chart with completion rates, upcoming due tasks, sprint burndown chart (ideal vs actual), recent activity
+- **Task Comments**: Markdown-enabled discussion thread per issue, Ctrl+Enter to send; commenter notification to assignee
+- **Notifications**: WebSocket real-time push (replaced 30s polling), ASSIGNED / STATUS_CHANGED / COMMENT types, bell badge with dropdown
+- **Reports**: Daily/weekly report generation with auto-draft content; data dashboard with 3 ECharts charts; one-click PDF export
+- **Sprint**: Quick-start 2-week iteration with auto task assignment; burndown chart with snapshots; member statistics (completion rate, overdue rate, avg time in column); complete-with-migration for undone tasks
+- **AI Assistant**: DeepSeek-powered polish description (professionalize draft text) and priority recommendation (analyze urgency/importance), frontend-only integration
 - **Onboarding Tour**: driver.js guided walkthrough triggered on first board visit
 
 ## Known Issues
@@ -137,7 +140,7 @@ Single backend + RBAC with two roles: `ROLE_ADMIN` (team/project admin) and `ROL
 
 ### Redis unused
 
-`spring-boot-starter-data-redis` is declared and Redis is in Docker Compose, but no service code uses Redis.
+`spring-boot-starter-data-redis` is declared and Redis is in Docker Compose, but no service code uses Redis. WebSocket uses in-memory broker (not Redis-backed) — for multi-instance deployment, switch to Redis message broker.
 
 ### Upload directory
 
@@ -146,3 +149,13 @@ Single backend + RBAC with two roles: `ROLE_ADMIN` (team/project admin) and `ROL
 ### `.claude/settings.local.json`
 
 This file defines allowed Bash commands for Claude Code in this repo — if you add new toolchains or scripts, update it so Claude Code can execute them.
+
+## WebSocket Architecture
+
+- **Endpoint**: `/api/ws` (SockJS, with HTTP fallback)
+- **Auth**: JWT Bearer token in STOMP CONNECT frame's `Authorization` header, validated by `WebSocketAuthInterceptor`
+- **Broker**: Simple in-memory broker (`/topic` for broadcast, `/queue` for user-specific)
+- **Topics**:
+  - `/topic/notifications/{userId}` — personal notification push
+  - `/topic/board/{projectId}` — board sync events (ISSUE_MOVED/CREATED/DELETED)
+- **Board Sync Flow**: Drag → `PUT /api/board/issue/move` → backend updates issue + logs + WebSocket broadcast → all board subscribers receive event → optimistic UI update

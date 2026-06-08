@@ -35,6 +35,12 @@ export interface BoardColumn {
   issues: IssueCard[]
 }
 
+export interface AcceptanceCriterion {
+  id: string
+  text: string
+  done: boolean
+}
+
 export interface IssueCard {
   id: number
   issueKey: string
@@ -57,6 +63,25 @@ export interface IssueCard {
   projectId?: number
   description?: string
   stepsToRepro?: string
+  // STORY fields
+  userRole?: string
+  userGoal?: string
+  businessValue?: string
+  acceptanceCriteria?: AcceptanceCriterion[]
+  epic?: string
+  parentId?: number
+  parentIssueKey?: string
+  parentTitle?: string
+  subTasks?: IssueCard[]
+  // BUG fields
+  bugStatus?: BugStatus
+  environment?: string
+  expectedResult?: string
+  actualResult?: string
+  foundVersion?: string
+  fixedVersion?: string
+  createdAt?: string
+  updatedAt?: string
 }
 
 export interface IssueLabel {
@@ -128,8 +153,23 @@ export interface IssueFormData {
   stepsToRepro?: string
   labels: string[]
   sprintId?: number
+  // STORY fields
+  userRole?: string
+  userGoal?: string
+  businessValue?: string
+  acceptanceCriteria?: AcceptanceCriterion[]
+  epic?: string
+  parentId?: number
+  // BUG fields
+  bugStatus?: BugStatus
+  environment?: string
+  expectedResult?: string
+  actualResult?: string
+  foundVersion?: string
+  fixedVersion?: string
 }
 
 export type IssueType = 'STORY' | 'TASK' | 'BUG'
 export type IssuePriority = 'HIGHEST' | 'HIGH' | 'MEDIUM' | 'LOW' | 'LOWEST'
 export type IssueStatus = 'TODO' | 'IN_PROGRESS' | 'DONE'
+export type BugStatus = 'NEW' | 'CONFIRMED' | 'IN_PROGRESS' | 'RESOLVED' | 'VERIFIED' | 'CLOSED' | 'REOPENED'

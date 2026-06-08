@@ -18,7 +18,7 @@ public class Issue {
     private String description;
     private String type;       // STORY / TASK / BUG
     private String priority;   // HIGHEST / HIGH / MEDIUM / LOW / LOWEST
-    private String status;     // TODO / IN_PROGRESS / DONE
+    private String status;     // TODO / IN_PROGRESS / DONE (STORY/TASK); BUG uses bugStatus
     private Long assigneeId;
     private Long reporterId;
     private LocalDate dueDate;
@@ -26,6 +26,21 @@ public class Issue {
     private Integer storyPoints;
     private String severity;
     private String stepsToRepro;
+    // STORY 专属
+    private String userRole;
+    private String userGoal;
+    private String businessValue;
+    private String acceptanceCriteria;  // JSON string
+    private String epic;
+    private Long parentId;
+    // BUG 专属
+    private String bugStatus;   // NEW/CONFIRMED/IN_PROGRESS/RESOLVED/VERIFIED/CLOSED/REOPENED
+    private String environment;
+    private String expectedResult;
+    private String actualResult;
+    private String foundVersion;
+    private String fixedVersion;
+    // Timestamps
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
     @TableField(fill = FieldFill.INSERT_UPDATE)

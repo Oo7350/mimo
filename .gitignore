@@ -23,6 +23,20 @@ backend/uploads/
 # Claude Code local settings
 .claude/settings.local.json
 
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+
+# Test reports
+st2/report/
+st2/allure-results/
+
+# Personal files
+简历.json
+
 # OS
 .DS_Store
 Thumbs.db

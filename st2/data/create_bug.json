@@ -1,0 +1,27 @@
+[
+  {
+    "title": "登录页面白屏缺陷",
+    "type": "BUG",
+    "priority": "HIGHEST",
+    "severity": "BLOCKER",
+    "stepsToRepro": "1. 打开登录页\n2. 输入账号密码\n3. 点击登录",
+    "environment": "Windows 10; Chrome 120; v1.2.0",
+    "expectedResult": "正常跳转到工作台首页",
+    "actualResult": "页面白屏，控制台 JS 报错",
+    "foundVersion": "1.2.0",
+    "status": 200,
+    "errno": 200
+  },
+  {
+    "title": "轻微样式问题",
+    "type": "BUG",
+    "priority": "LOW",
+    "severity": "TRIVIAL",
+    "environment": "macOS; Safari 17",
+    "expectedResult": "按钮居中对齐",
+    "actualResult": "按钮偏左 2px",
+    "foundVersion": "1.0.0",
+    "status": 200,
+    "errno": 200
+  }
+]

@@ -1,0 +1,86 @@
+[
+  {
+    "from": "NEW",
+    "to": "CONFIRMED",
+    "status": 200,
+    "errno": 200,
+    "desc": "新建 → 已确认（合法）"
+  },
+  {
+    "from": "CONFIRMED",
+    "to": "IN_PROGRESS",
+    "status": 200,
+    "errno": 200,
+    "desc": "已确认 → 修复中（合法）"
+  },
+  {
+    "from": "IN_PROGRESS",
+    "to": "RESOLVED",
+    "status": 200,
+    "errno": 200,
+    "desc": "修复中 → 已解决（合法）"
+  },
+  {
+    "from": "RESOLVED",
+    "to": "VERIFIED",
+    "status": 200,
+    "errno": 200,
+    "desc": "已解决 → 已验证（合法）"
+  },
+  {
+    "from": "VERIFIED",
+    "to": "CLOSED",
+    "status": 200,
+    "errno": 200,
+    "desc": "已验证 → 已关闭（合法）"
+  },
+  {
+    "from": "CLOSED",
+    "to": "REOPENED",
+    "status": 200,
+    "errno": 200,
+    "desc": "已关闭 → 重新打开（合法）"
+  },
+  {
+    "from": "REOPENED",
+    "to": "IN_PROGRESS",
+    "status": 200,
+    "errno": 200,
+    "desc": "重新打开 → 修复中（合法）"
+  },
+  {
+    "from": "NEW",
+    "to": "CLOSED",
+    "status": 200,
+    "errno": 200,
+    "desc": "新建 → 直接关闭不是缺陷（合法）"
+  },
+  {
+    "from": "RESOLVED",
+    "to": "REOPENED",
+    "status": 200,
+    "errno": 200,
+    "desc": "已解决 → 验证不通过重新打开（合法）"
+  },
+  {
+    "from": "NEW",
+    "to": "VERIFIED",
+    "status": 400,
+    "errno": 400,
+    "desc": "新建 → 已验证（非法跳级）"
+  },
+  {
+    "from": "CONFIRMED",
+    "to": "CLOSED",
+    "status": 400,
+    "errno": 400,
+    "desc": "已确认 → 已关闭（非法跳级）"
+  },
+  {
+    "from": "IN_PROGRESS",
+    "to": "NEW",
+    "status": 400,
+    "errno": 400,
+    "desc": "修复中 → 新建（非法回退）"
+  }
+]

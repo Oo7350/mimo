@@ -7,42 +7,90 @@
           <el-icon><ArrowLeft /></el-icon>
         </el-button>
         <h3 class="board__title">{{ projectName }}</h3>
+        <!-- View switcher -->
+        <div class="board__view-switcher">
+          <el-button
+            :type="currentView === 'kanban' ? 'primary' : ''"
+            size="small"
+            @click="currentView = 'kanban'"
+          >
+            <el-icon><Grid /></el-icon> 看板
+          </el-button>
+          <el-button
+            :type="currentView === 'buglist' ? 'primary' : ''"
+            size="small"
+            @click="currentView = 'buglist'"
+          >
+            <el-icon><List /></el-icon> 缺陷列表
+          </el-button>
+          <el-button
+            :type="currentView === 'storymap' ? 'primary' : ''"
+            size="small"
+            @click="currentView = 'storymap'"
+          >
+            <el-icon><Connection /></el-icon> 故事地图
+          </el-button>
+        </div>
       </div>
       <div class="board__header-right">
-        <el-input
-          v-model="searchKeyword"
-          placeholder="搜索..."
-          :prefix-icon="Search"
-          clearable
-          size="small"
-          style="width: 160px"
-        />
-        <el-select v-model="filterAssignee" placeholder="指派人" size="small" clearable style="width: 110px">
-          <el-option v-for="a in assigneeOptions" :key="a" :label="a" :value="a" />
-        </el-select>
-        <el-select v-model="filterPriority" placeholder="优先级" size="small" clearable style="width: 90px">
-          <el-option label="最高" value="HIGHEST" />
-          <el-option label="高" value="HIGH" />
-          <el-option label="中" value="MEDIUM" />
-          <el-option label="低" value="LOW" />
-          <el-option label="最低" value="LOWEST" />
-        </el-select>
-        <el-select v-model="filterType" placeholder="类型" size="small" clearable style="width: 90px">
-          <el-option label="故事" value="STORY" />
-          <el-option label="任务" value="TASK" />
-          <el-option label="缺陷" value="BUG" />
-        </el-select>
-        <el-button @click="$router.push(`/projects/${projectId}/reports`)">
-          <el-icon><Document /></el-icon>报告
-        </el-button>
+        <template v-if="currentView === 'kanban' || currentView === 'buglist'">
+          <el-input
+            v-model="searchKeyword"
+            placeholder="搜索..."
+            :prefix-icon="Search"
+            clearable
+            size="small"
+            style="width: 160px"
+          />
+          <el-select v-model="filterAssignee" placeholder="指派人" size="small" clearable style="width: 110px">
+            <el-option v-for="a in assigneeOptions" :key="a" :label="a" :value="a" />
+          </el-select>
+          <el-select v-model="filterPriority" placeholder="优先级" size="small" clearable style="width: 90px">
+            <el-option label="最高" value="HIGHEST" />
+            <el-option label="高" value="HIGH" />
+            <el-option label="中" value="MEDIUM" />
+            <el-option label="低" value="LOW" />
+            <el-option label="最低" value="LOWEST" />
+          </el-select>
+          <!-- Type quick filter buttons -->
+          <div class="board__type-filters">
+            <el-button
+              :type="filterType === '' ? 'primary' : ''"
+              size="small"
+              @click="filterType = ''"
+            >全部</el-button>
+            <el-button
+              :type="filterType === 'STORY' ? 'success' : ''"
+              size="small"
+              @click="filterType = filterType === 'STORY' ? '' : 'STORY'"
+            >故事</el-button>
+            <el-button
+              :type="filterType === 'TASK' ? '' : ''"
+              size="small"
+              :class="{ 'is-active': filterType === 'TASK' }"
+              @click="filterType = filterType === 'TASK' ? '' : 'TASK'"
+              style="border-color: var(--color-primary); color: var(--color-primary);"
+              v-if="filterType === '' || filterType === 'TASK'"
+              :plain="filterType !== 'TASK'"
+            >任务</el-button>
+            <el-button
+              :type="filterType === 'BUG' ? 'danger' : ''"
+              size="small"
+              @click="filterType = filterType === 'BUG' ? '' : 'BUG'"
+            >缺陷</el-button>
+          </div>
+          <el-button @click="$router.push(`/projects/${projectId}/reports`)">
+            <el-icon><Document /></el-icon>报告
+          </el-button>
+        </template>
         <el-button id="create-task-btn" type="primary" @click="showCreateIssue = true">
-          <el-icon><Plus /></el-icon>新建任务
+          <el-icon><Plus /></el-icon>新建工作项
         </el-button>
       </div>
     </div>
 
-    <!-- 看板列 -->
-    <div class="board__columns">
+    <!-- Kanban View -->
+    <div v-if="currentView === 'kanban'" class="board__columns">
       <div
         v-for="(col, idx) in columns"
         :key="col.id"
@@ -81,19 +129,32 @@
           </template>
         </draggable>
       </div>
-
     </div>
 
-    <!-- 新建任务 Dialog -->
+    <!-- Bug Table View -->
+    <div v-else-if="currentView === 'buglist'">
+      <BugTableView
+        :bugs="allBugs"
+        :search-keyword="searchKeyword"
+        @select="openIssue"
+        @create-bug="showCreateIssue = true"
+      />
+    </div>
+
+    <!-- Story Map View -->
+    <div v-else-if="currentView === 'storymap'">
+      <StoryMap />
+    </div>
+
+    <!-- 新建/编辑 Dialog -->
     <IssueDetailDialog
       v-model:visible="showCreateIssue"
       :project-id="projectId"
       :team-id="teamId"
       :columns="columns"
-      @created="fetchBoard"
+      @created="onCreated"
     />
 
-    <!-- 编辑任务 Dialog -->
     <IssueDetailDialog
       v-model:visible="showEditIssue"
       :project-id="projectId"
@@ -112,11 +173,13 @@ import { ref, computed, onMounted } from "vue"
 import { useRoute } from "vue-router"
 import { getBoard, moveIssue } from "@/api/board"
 import { getProjectById } from "@/api/project"
-import { updateIssue } from "@/api/issue"
 import draggable from "vuedraggable"
 import IssueDetailDialog from "@/components/issue/IssueDetailDialog.vue"
 import IssueCard from "@/components/issue/IssueCard.vue"
-import { Search } from "@element-plus/icons-vue"
+import BugTableView from "@/components/issue/bug/BugTableView.vue"
+import StoryMap from "@/components/issue/story/StoryMap.vue"
+import { Search, Grid, List, Connection } from "@element-plus/icons-vue"
+import { useWebSocket } from "@/composables/useWebSocket"
 
 const route = useRoute()
 const projectId = Number(route.params.id)
@@ -131,6 +194,9 @@ const searchKeyword = ref("")
 const filterAssignee = ref("")
 const filterPriority = ref("")
 const filterType = ref("")
+const currentView = ref<'kanban' | 'buglist' | 'storymap'>('kanban')
+
+const { subscribe: wsSubscribe, unsubscribe: wsUnsubscribe } = useWebSocket()
 
 const assigneeOptions = computed(() => {
   const names = new Set<string>()
@@ -138,6 +204,14 @@ const assigneeOptions = computed(() => {
     if (i.assigneeName) names.add(i.assigneeName)
   }))
   return Array.from(names).sort()
+})
+
+const allBugs = computed(() => {
+  const bugs: any[] = []
+  columns.value.forEach((c: any) => c.issues?.forEach((i: any) => {
+    if (i.type === 'BUG') bugs.push(i)
+  }))
+  return bugs
 })
 
 const issueMatchesFilter = (issue: any) => {
@@ -164,6 +238,10 @@ function columnBarStyle(idx: number) {
   return { borderTop: `3px solid ${colors[idx] || colors[0]}` }
 }
 
+function onCreated() {
+  fetchBoard()
+}
+
 async function fetchBoard() {
   const [boardRes, projRes] = await Promise.all([
     getBoard(projectId),
@@ -185,12 +263,55 @@ async function handleDragChange(evt: any, targetColId: number) {
     const issue = evt.added.element
     const newIndex = evt.added.newIndex
     const targetCol = columns.value.find((c: any) => c.id === targetColId)
-    const newStatus = targetCol ? columnToStatus(targetCol.name) : issue.status
-    await Promise.all([
-      moveIssue({ issueId: issue.id, targetColumnId: targetColId, sortOrder: newIndex }),
-      updateIssue({ id: issue.id, status: newStatus }),
-    ])
-    issue.status = newStatus
+    // Optimistic UI: update status locally immediately
+    if (targetCol) {
+      issue.status = columnToStatus(targetCol.name)
+    }
+    // Backend handles status sync + activity log + WebSocket broadcast
+    await moveIssue({ issueId: issue.id, targetColumnId: targetColId, sortOrder: newIndex })
+  }
+}
+
+function handleBoardSync(event: any) {
+  if (!event || !event.type) return
+  switch (event.type) {
+    case "ISSUE_MOVED": {
+      // Remove from all columns, then add to target
+      let movedIssue: any = null
+      for (const col of columns.value) {
+        const idx = col.issues?.findIndex((i: any) => i.id === event.issueId)
+        if (idx !== undefined && idx >= 0) {
+          movedIssue = col.issues.splice(idx, 1)[0]
+          break
+        }
+      }
+      if (movedIssue) {
+        const targetCol = columns.value.find((c: any) => c.id === event.targetColumnId)
+        if (targetCol) {
+          movedIssue.columnId = event.targetColumnId
+          movedIssue.status = columnToStatus(columns.value.find((c: any) => c.id === event.targetColumnId)?.name || "")
+          targetCol.issues?.push(movedIssue)
+        }
+      }
+      break
+    }
+    case "ISSUE_CREATED": {
+      if (event.issue) {
+        const col = columns.value.find((c: any) => c.id === event.issue.columnId)
+        if (col) col.issues?.push(event.issue)
+      }
+      break
+    }
+    case "ISSUE_DELETED": {
+      for (const col of columns.value) {
+        const idx = col.issues?.findIndex((i: any) => i.id === event.issueId)
+        if (idx !== undefined && idx >= 0) {
+          col.issues.splice(idx, 1)
+          break
+        }
+      }
+      break
+    }
   }
 }
 
@@ -211,6 +332,8 @@ function checkDeeplink() {
 onMounted(async () => {
   await fetchBoard()
   checkDeeplink()
+  // Subscribe to board real-time sync
+  wsSubscribe(`/topic/board/${projectId}`, handleBoardSync)
 })
 </script>
 
@@ -226,6 +349,18 @@ onMounted(async () => {
   &__header-left {
     display: flex;
     align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  &__view-switcher {
+    display: flex;
+    gap: 4px;
+    margin-left: 12px;
+  }
+
+  &__type-filters {
+    display: flex;
     gap: 4px;
   }
 

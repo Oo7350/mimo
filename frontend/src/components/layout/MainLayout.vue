@@ -139,6 +139,7 @@ import type { ProjectVO } from '@/types'
 import BreadcrumbNav from './BreadcrumbNav.vue'
 import { useTour } from '@/composables/useTour'
 import { useNotifications } from '@/composables/useNotifications'
+import { useWebSocket } from '@/composables/useWebSocket'
 
 const route = useRoute()
 const router = useRouter()
@@ -146,6 +147,7 @@ const userStore = useUserStore()
 const appStore = useAppStore()
 const { startTour, isTourCompleted } = useTour()
 const { unreadCount, notifications, loading: notifLoading, fetchNotifications, handleMarkRead, handleMarkAllRead } = useNotifications()
+const { connect: wsConnect, disconnect: wsDisconnect } = useWebSocket()
 
 const isCollapsed = computed(() => appStore.sidebarCollapsed)
 const sidebarWidth = computed(() => isCollapsed.value ? '64px' : '230px')
@@ -198,7 +200,7 @@ function handleCommand(command: string) {
       confirmButtonText: '确定',
       cancelButtonText: '取消',
       type: 'warning',
-    }).then(() => userStore.logout())
+    }).then(() => { wsDisconnect(); userStore.logout() })
   }
 }
 
@@ -226,6 +228,8 @@ onMounted(() => {
   fetchMyProjects()
   document.addEventListener('click', handleClickOutside)
   checkTourTrigger()
+  // Connect WebSocket
+  wsConnect()
 })
 
 watch(() => route.path, () => checkTourTrigger())

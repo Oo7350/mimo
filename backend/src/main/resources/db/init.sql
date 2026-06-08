@@ -115,8 +115,20 @@ CREATE TABLE IF NOT EXISTS `issues` (
     `due_date`      DATE         DEFAULT NULL COMMENT '截止日期',
     `sort_order`    INT          NOT NULL DEFAULT 0 COMMENT '在列内的排序序号',
     `story_points`  INT          DEFAULT NULL COMMENT '故事点',
-    `severity`      VARCHAR(20)  DEFAULT NULL COMMENT '缺陷严重程度: BLOCKER / CRITICAL / MAJOR / MINOR / TRIVIAL',
-    `steps_to_repro` TEXT        DEFAULT NULL COMMENT '复现步骤 (缺陷类型专用)',
+    `severity`          VARCHAR(20)  DEFAULT NULL COMMENT '缺陷严重程度: BLOCKER / CRITICAL / MAJOR / MINOR / TRIVIAL',
+    `steps_to_repro`    TEXT         DEFAULT NULL COMMENT '复现步骤 (缺陷类型专用)',
+    `user_role`         VARCHAR(50)  DEFAULT NULL COMMENT 'STORY专属: 用户角色(作为...)',
+    `user_goal`         VARCHAR(500) DEFAULT NULL COMMENT 'STORY专属: 目标功能(我希望...)',
+    `business_value`    VARCHAR(500) DEFAULT NULL COMMENT 'STORY专属: 业务价值(以便...)',
+    `acceptance_criteria` JSON       DEFAULT NULL COMMENT 'STORY专属: 验收标准列表',
+    `environment`       VARCHAR(500) DEFAULT NULL COMMENT 'BUG专属: 环境信息',
+    `expected_result`   TEXT         DEFAULT NULL COMMENT 'BUG专属: 期望结果',
+    `actual_result`     TEXT         DEFAULT NULL COMMENT 'BUG专属: 实际结果',
+    `found_version`     VARCHAR(50)  DEFAULT NULL COMMENT 'BUG专属: 发现版本',
+    `fixed_version`     VARCHAR(50)  DEFAULT NULL COMMENT 'BUG专属: 修复版本',
+    `parent_id`         BIGINT       DEFAULT NULL COMMENT 'STORY对TASK的父子关系',
+    `epic`              VARCHAR(100) DEFAULT NULL COMMENT 'STORY专属: 所属史诗',
+    `bug_status`        VARCHAR(20)  DEFAULT NULL COMMENT 'BUG专属状态: NEW/CONFIRMED/IN_PROGRESS/RESOLVED/VERIFIED/CLOSED/REOPENED',
     `created_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `updated_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     `deleted`       TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '逻辑删除',
@@ -126,7 +138,10 @@ CREATE TABLE IF NOT EXISTS `issues` (
     INDEX `idx_sprint` (`sprint_id`),
     INDEX `idx_assignee` (`assignee_id`),
     INDEX `idx_type` (`type`),
-    INDEX `idx_priority` (`priority`)
+    INDEX `idx_priority` (`priority`),
+    INDEX `idx_parent` (`parent_id`),
+    INDEX `idx_epic` (`epic`),
+    INDEX `idx_bug_status` (`bug_status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='任务表';
 
 -- ============================================================

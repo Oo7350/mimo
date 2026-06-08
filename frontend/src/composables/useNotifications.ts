@@ -1,12 +1,39 @@
-import { ref, onMounted, onUnmounted } from "vue";
+import { ref } from "vue";
 import { getNotifications, getUnreadCount, markRead, markAllRead } from "@/api/notification";
+import { useWebSocket } from "@/composables/useWebSocket";
+import { useUserStore } from "@/store/user";
+
+const unreadCount = ref(0);
+const notifications = ref<any[]>([]);
+const loading = ref(false);
+
+let wsInitialized = false;
 
 export function useNotifications() {
-  const unreadCount = ref(0);
-  const notifications = ref<any[]>([]);
-  const loading = ref(false);
+  const { subscribe } = useWebSocket();
+  const userStore = useUserStore();
 
-  let timer: ReturnType<typeof setInterval> | null = null;
+  // Init WebSocket notification subscription once
+  if (!wsInitialized) {
+    wsInitialized = true;
+    const userId = userStore.userInfo?.id;
+    if (userId) {
+      subscribe(`/topic/notifications/${userId}`, (payload: any) => {
+        const exists = notifications.value.find((n: any) =>
+          n.type === payload.type && n.relatedId === payload.relatedId
+        );
+        if (!exists) {
+          notifications.value.unshift({
+            ...payload,
+            id: Date.now(),
+            isRead: 0,
+            createdAt: new Date().toLocaleString(),
+          });
+        }
+        unreadCount.value++;
+      });
+    }
+  }
 
   async function fetchUnreadCount() {
     try {
@@ -26,30 +53,22 @@ export function useNotifications() {
 
   async function handleMarkRead(id: number) {
     await markRead(id);
-    const n = notifications.value.find(n => n.id === id);
+    const n = notifications.value.find((n: any) => n.id === id);
     if (n) n.isRead = 1;
     await fetchUnreadCount();
   }
 
   async function handleMarkAllRead() {
     await markAllRead();
-    notifications.value.forEach(n => { n.isRead = 1; });
+    notifications.value.forEach((n: any) => { n.isRead = 1; });
     await fetchUnreadCount();
   }
-
-  onMounted(() => {
-    fetchUnreadCount();
-    timer = setInterval(fetchUnreadCount, 30000);
-  });
-
-  onUnmounted(() => {
-    if (timer) clearInterval(timer);
-  });
 
   return {
     unreadCount,
     notifications,
     loading,
+    fetchUnreadCount,
     fetchNotifications,
     handleMarkRead,
     handleMarkAllRead,

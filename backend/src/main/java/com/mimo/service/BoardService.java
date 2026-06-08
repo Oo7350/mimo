@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mimo.common.BusinessException;
 import com.mimo.common.ResultCode;
 import com.mimo.dto.BoardDTO.*;
+import com.mimo.dto.BoardSyncEvent;
+import com.mimo.dto.IssueDTO;
 import com.mimo.dto.IssueDTO.IssueVO;
 import com.mimo.dto.IssueDTO.IssueLabelVO;
 import com.mimo.entity.*;
@@ -23,6 +25,9 @@ public class BoardService {
     private final IssueMapper issueMapper;
     private final IssueLabelMapper issueLabelMapper;
     private final UserMapper userMapper;
+    private final ActivityLogMapper activityLogMapper;
+    private final NotificationService notificationService;
+    private final WebSocketService webSocketService;
 
     public BoardVO getBoard(Long projectId) {
         List<BoardColumn> columns = boardColumnMapper.selectList(
@@ -117,9 +122,48 @@ public class BoardService {
     public void moveIssue(Long issueId, Long targetColumnId, Integer sortOrder) {
         Issue issue = issueMapper.selectById(issueId);
         if (issue == null) throw new BusinessException(ResultCode.ISSUE_NOT_FOUND);
+
+        Long oldColumnId = issue.getColumnId();
+
         issue.setColumnId(targetColumnId);
         issue.setSortOrder(sortOrder);
+
+        // 同步 status 字段
+        BoardColumn targetCol = boardColumnMapper.selectById(targetColumnId);
+        if (targetCol != null) {
+            String newStatus = columnToStatus(targetCol.getName());
+            issue.setStatus(newStatus);
+        }
+
         issueMapper.updateById(issue);
+
+        // 记录操作日志
+        BoardColumn oldCol = oldColumnId != null ? boardColumnMapper.selectById(oldColumnId) : null;
+        String detail = "将 " + issue.getIssueKey() + " 从 " +
+                (oldCol != null ? oldCol.getName() : "未知") + " 移动到 " +
+                (targetCol != null ? targetCol.getName() : "未知");
+        ActivityLog log = new ActivityLog();
+        log.setProjectId(issue.getProjectId());
+        log.setTargetType("ISSUE");
+        log.setTargetId(issue.getId());
+        log.setAction("MOVE");
+        log.setDetail(detail);
+        activityLogMapper.insert(log);
+
+        // WebSocket 广播看板更新
+        try {
+            webSocketService.sendBoardUpdate(issue.getProjectId(),
+                    BoardSyncEvent.moved(issue.getProjectId(), issueId, targetColumnId, sortOrder));
+        } catch (Exception ignored) { /* WebSocket optional */ }
+    }
+
+    private String columnToStatus(String colName) {
+        if (colName == null) return "TODO";
+        String lower = colName.toLowerCase();
+        if (lower.contains("done") || lower.contains("完成")) return "DONE";
+        if (lower.contains("progress") || lower.contains("进行")) return "IN_PROGRESS";
+        if (lower.contains("todo") || lower.contains("待办")) return "TODO";
+        return "TODO";
     }
 
     private IssueVO toIssueVO(Issue issue, Map<Long, User> userMap, Map<Long, List<IssueLabelVO>> labelMap) {
@@ -127,6 +171,7 @@ public class BoardService {
         vo.setId(issue.getId());
         vo.setIssueKey(issue.getIssueKey());
         vo.setTitle(issue.getTitle());
+        vo.setDescription(issue.getDescription());
         vo.setType(issue.getType());
         vo.setPriority(issue.getPriority());
         vo.setStatus(issue.getStatus());
@@ -136,6 +181,21 @@ public class BoardService {
         vo.setSortOrder(issue.getSortOrder());
         vo.setStoryPoints(issue.getStoryPoints());
         vo.setSeverity(issue.getSeverity());
+        vo.setStepsToRepro(issue.getStepsToRepro());
+        // STORY fields
+        vo.setUserRole(issue.getUserRole());
+        vo.setUserGoal(issue.getUserGoal());
+        vo.setBusinessValue(issue.getBusinessValue());
+        vo.setAcceptanceCriteria(IssueDTO.parseAcceptanceCriteria(issue.getAcceptanceCriteria()));
+        vo.setEpic(issue.getEpic());
+        vo.setParentId(issue.getParentId());
+        // BUG fields
+        vo.setBugStatus(issue.getBugStatus());
+        vo.setEnvironment(issue.getEnvironment());
+        vo.setExpectedResult(issue.getExpectedResult());
+        vo.setActualResult(issue.getActualResult());
+        vo.setFoundVersion(issue.getFoundVersion());
+        vo.setFixedVersion(issue.getFixedVersion());
         if (issue.getAssigneeId() != null) {
             User u = userMap.get(issue.getAssigneeId());
             if (u != null) { vo.setAssigneeName(u.getUsername()); vo.setAssigneeAvatar(u.getAvatar()); }

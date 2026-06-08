@@ -1,0 +1,24 @@
+[
+  {
+    "title": "用户故事测试",
+    "type": "STORY",
+    "priority": "HIGH",
+    "userRole": "管理员",
+    "userGoal": "导出月度报表",
+    "businessValue": "分析团队效率",
+    "epic": "报表模块",
+    "storyPoints": 8,
+    "status": 200,
+    "errno": 200
+  },
+  {
+    "title": "无标题故事",
+    "type": "STORY",
+    "priority": "MEDIUM",
+    "userRole": "",
+    "userGoal": "",
+    "businessValue": "",
+    "status": 200,
+    "errno": 200
+  }
+]

@@ -52,4 +52,26 @@ public class SprintDTO {
         private Integer totalPoints;
         private List<BurndownPoint> points;
     }
+
+    @Data
+    public static class MemberStat {
+        private String username;
+        private Long assigneeId;
+        private Integer totalAssigned;
+        private Integer completed;
+        private Integer overdue;
+        private Double completionRate;
+        private Double avgDaysInColumn;
+    }
+
+    @Data
+    public static class SprintStatsVO {
+        private Long sprintId;
+        private String sprintName;
+        private Integer totalIssues;
+        private Integer completedIssues;
+        private Double overallCompletionRate;
+        private Double overallOverdueRate;
+        private List<MemberStat> memberStats;
+    }
 }

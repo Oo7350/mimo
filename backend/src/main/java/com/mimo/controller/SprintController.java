@@ -74,4 +74,9 @@ public class SprintController {
         sprintService.addIssueToSprint(issueId, sprintId);
         return Result.successMessage("任务已加入 Sprint");
     }
+
+    @GetMapping("/{id}/stats")
+    public Result<SprintStatsVO> getStats(@PathVariable Long id) {
+        return Result.success(sprintService.getSprintStats(id));
+    }
 }

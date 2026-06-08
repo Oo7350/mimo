@@ -6,7 +6,7 @@
         <h2 class="overview__title">{{ projectName }}</h2>
       </div>
       <el-button id="create-task-btn" type="primary" @click="showCreateIssue = true">
-        <el-icon><Plus /></el-icon>新建任务
+        <el-icon><Plus /></el-icon>新建工作项
       </el-button>
     </div>
 
@@ -27,7 +27,20 @@
             <div v-if="memberData.length === 0" style="text-align: center; padding: 30px; color: var(--text-secondary)">
               暂无数据
             </div>
-            <div v-else ref="memberChartRef" class="ov-card__chart"></div>
+            <div v-else>
+              <div ref="memberChartRef" class="ov-card__chart" style="height: 160px"></div>
+              <div style="margin-top: 8px; max-height: 120px; overflow-y: auto">
+                <div v-for="(m, idx) in memberData" :key="m.name" class="ov-member-row">
+                  <span class="ov-member-row__name">{{ m.name }}</span>
+                  <span class="ov-member-row__count">{{ m.count }} 个任务</span>
+                  <el-progress
+                    :percentage="memberCompletionPct(m.name)"
+                    :color="memberCompletionPct(m.name) >= 60 ? '#10b981' : memberCompletionPct(m.name) >= 30 ? '#f59e0b' : '#ef4444'"
+                    style="width: 80px"
+                  />
+                </div>
+              </div>
+            </div>
           </div>
           <!-- 即将到期任务 -->
           <div class="ov-card">
@@ -47,6 +60,12 @@
                 <span class="ov-task__due">{{ t.dueDate }}</span>
               </div>
             </div>
+          </div>
+          <!-- 燃尽图 -->
+          <div class="ov-card">
+            <h4>燃尽图</h4>
+            <div v-if="!activeSprint" class="ov-card__empty">暂无活跃 Sprint</div>
+            <div v-else ref="burndownChartRef" class="ov-card__chart" style="height: 220px"></div>
           </div>
           <!-- 最近活动 -->
           <div class="ov-card">
@@ -88,6 +107,7 @@ import * as echarts from "echarts"
 import { getBoard } from "@/api/board"
 import { getProjectById } from "@/api/project"
 import request from "@/api/request"
+import { getSprints, getBurndown } from "@/api/sprint"
 import SkeletonLoader from "@/components/common/SkeletonLoader.vue"
 import IssueDetailDialog from "@/components/issue/IssueDetailDialog.vue"
 import ProjectBoardView from "./ProjectBoard.vue"
@@ -104,7 +124,10 @@ const showCreateIssue = ref(false)
 
 const statusChartRef = ref<HTMLElement>()
 const memberChartRef = ref<HTMLElement>()
+const burndownChartRef = ref<HTMLElement>()
 let charts: echarts.ECharts[] = []
+
+const activeSprint = ref<any>(null)
 
 const allIssues = computed(() => {
   const issues: any[] = []
@@ -142,6 +165,76 @@ function isOverdue(dateStr: string) {
   return new Date(dateStr) < today
 }
 
+function memberCompletionPct(name: string): number {
+  const total = allIssues.value.filter((i: any) => (i.assigneeName || "未指派") === name).length
+  if (total === 0) return 0
+  const done = allIssues.value.filter((i: any) => (i.assigneeName || "未指派") === name && i.status === "DONE").length
+  return Math.round((done / total) * 100)
+}
+
+async function fetchSprintAndBurndown() {
+  try {
+    const res = await getSprints(projectId)
+    const sprints = res.data || []
+    activeSprint.value = sprints.find((s: any) => s.isActive) || null
+    if (activeSprint.value) {
+      const burndownRes = await getBurndown(activeSprint.value.id)
+      const data = burndownRes.data
+      if (data && data.points && data.points.length > 0) {
+        await nextTick()
+        renderBurndownChart(data)
+      }
+    }
+  } catch { /* no sprint data */ }
+}
+
+function renderBurndownChart(data: any) {
+  if (!burndownChartRef.value) return
+  const c = echarts.init(burndownChartRef.value)
+  charts.push(c)
+  const points = data.points || []
+  c.setOption({
+    tooltip: { trigger: "axis" },
+    legend: {
+      bottom: 0,
+      data: ["理想剩余", "实际剩余"],
+      itemWidth: 10,
+      itemHeight: 10,
+      textStyle: { fontSize: 10 },
+    },
+    grid: { top: 10, right: 10, bottom: 30, left: 40 },
+    xAxis: {
+      type: "category",
+      data: points.map((p: any) => p.date),
+      axisLabel: { fontSize: 9, rotate: 30 },
+    },
+    yAxis: {
+      type: "value",
+      axisLabel: { fontSize: 10 },
+      minInterval: 1,
+    },
+    series: [
+      {
+        name: "理想剩余",
+        type: "line",
+        data: points.map((p: any) => p.idealRemaining),
+        smooth: true,
+        lineStyle: { color: "#94a3b8", type: "dashed", width: 2 },
+        itemStyle: { color: "#94a3b8" },
+      },
+      {
+        name: "实际剩余",
+        type: "line",
+        data: points.map((p: any) => p.actualRemaining),
+        smooth: true,
+        lineStyle: { color: "#4f6ef6", width: 2 },
+        itemStyle: { color: "#4f6ef6" },
+        areaStyle: { color: "rgba(79,110,246,0.1)" },
+      },
+    ],
+  })
+}
+
 async function fetchData() {
   loading.value = true
   try {
@@ -159,6 +252,7 @@ async function fetchData() {
   } finally {
     loading.value = false
   }
+  fetchSprintAndBurndown()
 }
 
 function renderCharts() {
@@ -271,5 +365,15 @@ onMounted(() => {
   font-size: 13px;
   &:last-child { border-bottom: none; }
   &__time { font-size: 11px; color: var(--text-placeholder); margin-top: 2px; }
+}
+
+.ov-member-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 12px;
+  &__name { flex-shrink: 0; width: 60px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  &__count { color: var(--text-secondary); flex-shrink: 0; }
 }
 </style>

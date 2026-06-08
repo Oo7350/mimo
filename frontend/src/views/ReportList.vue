@@ -33,12 +33,13 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="200">
+      <el-table-column label="操作" width="280">
         <template #default="{ row }">
           <el-button size="small" @click="viewReport(row)">查看</el-button>
           <el-button v-if="row.status !== 'SUBMITTED'" size="small" type="success" @click="handleSubmit(row.id)">
             提交
           </el-button>
+          <el-button size="small" @click="exportToPdf(row)">导出</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -68,7 +69,11 @@
     <el-dialog v-model="showViewDialog" title="报告详情" width="600px">
       <div class="markdown-body" v-html="renderMarkdown(viewingContent)"></div>
       <template #footer v-if="viewingReport?.status !== 'SUBMITTED'">
+        <el-button @click="exportPdfFromView">导出 PDF</el-button>
         <el-button type="primary" @click="handleUpdateContent">保存</el-button>
+      </template>
+      <template #footer v-else>
+        <el-button @click="exportPdfFromView">导出 PDF</el-button>
       </template>
     </el-dialog>
       </el-tab-pane>
@@ -107,6 +112,7 @@ import { useRoute } from "vue-router";
 import { generateReport, getReports, submitReport, updateReport, getProjectStats } from "@/api/report";
 import { renderMarkdown } from "@/utils/markdown";
 import { ElMessage } from "element-plus";
+import html2pdf from "html2pdf.js";
 
 const route = useRoute();
 const projectId = Number(route.params.id);
@@ -149,6 +155,35 @@ async function handleUpdateContent() {
   ElMessage.success("已保存");
   showViewDialog.value = false;
   await fetchReports();
+}
+
+async function exportToPdf(report: any) {
+  viewingReport.value = report;
+  viewingContent.value = report.content || "";
+  showViewDialog.value = true;
+  await nextTick();
+  setTimeout(() => exportPdfFromView(), 300);
+}
+
+async function exportPdfFromView() {
+  if (!viewingReport.value) return;
+  const el = document.querySelector(".markdown-body") as HTMLElement;
+  if (!el) { ElMessage.error("无法获取报告内容"); return; }
+  const reportDate = viewingReport.value.reportDate || "report";
+  const filename = `report-${reportDate}.pdf`;
+  const opt = {
+    margin: [10, 10, 10, 10],
+    filename,
+    image: { type: "jpeg", quality: 0.98 },
+    html2canvas: { scale: 2, useCORS: true },
+    jsPDF: { unit: "mm", format: "a4", orientation: "portrait" as const },
+  };
+  try {
+    await (html2pdf() as any).set(opt).from(el).save();
+    ElMessage.success("PDF 已导出");
+  } catch (e) {
+    ElMessage.error("导出失败");
+  }
 }
 
 onMounted(fetchReports);

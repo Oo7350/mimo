@@ -4,16 +4,17 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mimo.common.BusinessException;
 import com.mimo.common.ResultCode;
+import com.mimo.dto.IssueDTO;
 import com.mimo.dto.IssueDTO.*;
 import com.mimo.entity.*;
 import com.mimo.mapper.*;
-import com.mimo.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 import java.util.stream.Collectors;
+import com.mimo.dto.BoardSyncEvent;
 
 @Service
 @RequiredArgsConstructor
@@ -26,13 +27,25 @@ public class IssueService {
     private final UserMapper userMapper;
     private final ActivityLogMapper activityLogMapper;
     private final NotificationService notificationService;
+    private final WebSocketService webSocketService;
+
+    // ---- BUG status transition rules ----
+    private static final Map<String, Set<String>> BUG_TRANSITIONS = Map.of(
+        "NEW",         Set.of("CONFIRMED", "CLOSED"),
+        "CONFIRMED",   Set.of("IN_PROGRESS"),
+        "IN_PROGRESS", Set.of("RESOLVED"),
+        "RESOLVED",    Set.of("VERIFIED", "REOPENED"),
+        "VERIFIED",    Set.of("CLOSED"),
+        "CLOSED",      Set.of("REOPENED"),
+        "REOPENED",    Set.of("IN_PROGRESS")
+    );
 
     @Transactional
     public IssueVO create(CreateRequest request, Long reporterId) {
         Project project = projectMapper.selectById(request.getProjectId());
         if (project == null) throw new BusinessException(ResultCode.PROJECT_NOT_FOUND);
 
-        // 生成 issue key
+        // Generate issue key
         long count = issueMapper.selectCount(
                 new LambdaQueryWrapper<Issue>().eq(Issue::getProjectId, request.getProjectId()));
         String key = project.getKey() + "-" + (count + 1);
@@ -53,7 +66,21 @@ public class IssueService {
         issue.setStoryPoints(request.getStoryPoints());
         issue.setSeverity(request.getSeverity());
         issue.setStepsToRepro(request.getStepsToRepro());
-        // 排到列末尾
+        // STORY fields
+        issue.setUserRole(request.getUserRole());
+        issue.setUserGoal(request.getUserGoal());
+        issue.setBusinessValue(request.getBusinessValue());
+        issue.setEpic(request.getEpic());
+        issue.setParentId(request.getParentId());
+        // BUG fields
+        issue.setBugStatus("BUG".equals(request.getType()) ? "NEW" : null);
+        issue.setEnvironment(request.getEnvironment());
+        issue.setExpectedResult(request.getExpectedResult());
+        issue.setActualResult(request.getActualResult());
+        issue.setFoundVersion(request.getFoundVersion());
+        issue.setFixedVersion(request.getFixedVersion());
+
+        // Sort order — place at end of column
         int maxSort = 0;
         if (request.getColumnId() != null) {
             maxSort = issueMapper.selectList(
@@ -61,9 +88,18 @@ public class IssueService {
                     .stream().mapToInt(Issue::getSortOrder).max().orElse(0);
         }
         issue.setSortOrder(maxSort + 1);
+
+        // Validate parent: if parentId is set, parent must be a STORY
+        if (request.getParentId() != null) {
+            Issue parent = issueMapper.selectById(request.getParentId());
+            if (parent == null || !"STORY".equals(parent.getType())) {
+                throw new BusinessException(ResultCode.BAD_REQUEST, "父级必须是一个故事(STORY)");
+            }
+        }
+
         issueMapper.insert(issue);
 
-        // 记录操作日志
+        // Activity log
         User reporter = userMapper.selectById(reporterId);
         ActivityLog log = new ActivityLog();
         log.setUserId(reporterId);
@@ -72,10 +108,10 @@ public class IssueService {
         log.setTargetType("ISSUE");
         log.setTargetId(issue.getId());
         log.setAction("CREATE");
-        log.setDetail("创建了任务 " + key + ": " + issue.getTitle());
+        log.setDetail("创建了" + typeLabel(issue.getType()) + " " + key + ": " + issue.getTitle());
         activityLogMapper.insert(log);
 
-        // 保存标签
+        // Save labels
         if (request.getLabels() != null) {
             for (String label : request.getLabels()) {
                 IssueLabel il = new IssueLabel();
@@ -85,6 +121,12 @@ public class IssueService {
                 issueLabelMapper.insert(il);
             }
         }
+
+        // WebSocket broadcast
+        try {
+            webSocketService.sendBoardUpdate(project.getId(), BoardSyncEvent.created(project.getId(), getById(issue.getId())));
+        } catch (Exception ignored) { /* WebSocket optional */ }
+
         return getById(issue.getId());
     }
 
@@ -94,12 +136,14 @@ public class IssueService {
         return toVO(issue);
     }
 
+    @Transactional
     public void update(UpdateRequest request, Long operatorId) {
         Issue issue = issueMapper.selectById(request.getId());
         if (issue == null) throw new BusinessException(ResultCode.ISSUE_NOT_FOUND);
 
         Long oldAssigneeId = issue.getAssigneeId();
         String oldStatus = issue.getStatus();
+        String oldBugStatus = issue.getBugStatus();
 
         if (request.getTitle() != null) issue.setTitle(request.getTitle());
         if (request.getDescription() != null) issue.setDescription(request.getDescription());
@@ -113,10 +157,34 @@ public class IssueService {
         if (request.getSeverity() != null) issue.setSeverity(request.getSeverity());
         if (request.getStepsToRepro() != null) issue.setStepsToRepro(request.getStepsToRepro());
         if (request.getStatus() != null) issue.setStatus(request.getStatus());
+        // STORY fields
+        if (request.getUserRole() != null) issue.setUserRole(request.getUserRole());
+        if (request.getUserGoal() != null) issue.setUserGoal(request.getUserGoal());
+        if (request.getBusinessValue() != null) issue.setBusinessValue(request.getBusinessValue());
+        if (request.getEpic() != null) issue.setEpic(request.getEpic());
+        if (request.getParentId() != null) {
+            Issue parent = issueMapper.selectById(request.getParentId());
+            if (parent == null || !"STORY".equals(parent.getType())) {
+                throw new BusinessException(ResultCode.BAD_REQUEST, "父级必须是一个故事(STORY)");
+            }
+            issue.setParentId(request.getParentId());
+        }
+        // BUG fields
+        if (request.getBugStatus() != null) {
+            validateBugTransition(issue.getBugStatus(), request.getBugStatus());
+            issue.setBugStatus(request.getBugStatus());
+        }
+        if (request.getEnvironment() != null) issue.setEnvironment(request.getEnvironment());
+        if (request.getExpectedResult() != null) issue.setExpectedResult(request.getExpectedResult());
+        if (request.getActualResult() != null) issue.setActualResult(request.getActualResult());
+        if (request.getFoundVersion() != null) issue.setFoundVersion(request.getFoundVersion());
+        if (request.getFixedVersion() != null) issue.setFixedVersion(request.getFixedVersion());
+
         issueMapper.updateById(issue);
 
         // Notifications
         if (operatorId != null) {
+            User operator = userMapper.selectById(operatorId);
             Long newAssigneeId = request.getAssigneeId();
 
             // Assignee changed
@@ -127,11 +195,20 @@ public class IssueService {
                     n.setUserId(newAssigneeId);
                     n.setType("ASSIGNED");
                     n.setTitle("新任务分配");
-                    n.setContent("你被分配了任务 " + issue.getIssueKey() + ": " + issue.getTitle());
+                    n.setContent("你被分配了" + typeLabel(issue.getType()) + " " + issue.getIssueKey() + ": " + issue.getTitle());
                     n.setRelatedId(issue.getId());
                     n.setRelatedType("ISSUE");
                     n.setIsRead(0);
                     notificationService.create(n);
+                    try {
+                        webSocketService.sendNotification(newAssigneeId, Map.of(
+                            "type", "ASSIGNED",
+                            "title", n.getTitle(),
+                            "content", n.getContent(),
+                            "relatedId", issue.getId(),
+                            "relatedType", "ISSUE"
+                        ));
+                    } catch (Exception ignored) {}
                 }
             }
 
@@ -144,11 +221,34 @@ public class IssueService {
                 n.setUserId(issue.getAssigneeId());
                 n.setType("STATUS_CHANGED");
                 n.setTitle("任务状态变更");
-                n.setContent("你负责的任务 " + issue.getIssueKey() + " 状态被更新为 " + newStatus);
+                n.setContent("你负责的" + typeLabel(issue.getType()) + " " + issue.getIssueKey() + " 状态被更新为 " + newStatus);
                 n.setRelatedId(issue.getId());
                 n.setRelatedType("ISSUE");
                 n.setIsRead(0);
                 notificationService.create(n);
+                try {
+                    webSocketService.sendNotification(issue.getAssigneeId(), Map.of(
+                        "type", "STATUS_CHANGED",
+                        "title", n.getTitle(),
+                        "content", n.getContent(),
+                        "relatedId", issue.getId(),
+                        "relatedType", "ISSUE"
+                    ));
+                } catch (Exception ignored) {}
+            }
+
+            // BUG status changed
+            if (request.getBugStatus() != null && !request.getBugStatus().equals(oldBugStatus)) {
+                String label = typeLabel(issue.getType());
+                ActivityLog blog = new ActivityLog();
+                blog.setUserId(operatorId);
+                blog.setUsername(operator != null ? operator.getUsername() : "");
+                blog.setProjectId(issue.getProjectId());
+                blog.setTargetType("ISSUE");
+                blog.setTargetId(issue.getId());
+                blog.setAction("BUG_STATUS");
+                blog.setDetail(label + " " + issue.getIssueKey() + " 缺陷状态: " + oldBugStatus + " → " + request.getBugStatus());
+                activityLogMapper.insert(blog);
             }
         }
 
@@ -162,7 +262,7 @@ public class IssueService {
             log.setTargetType("ISSUE");
             log.setTargetId(issue.getId());
             log.setAction("UPDATE");
-            log.setDetail("更新了任务 " + issue.getIssueKey());
+            log.setDetail("更新了" + typeLabel(issue.getType()) + " " + issue.getIssueKey());
             activityLogMapper.insert(log);
         }
     }
@@ -170,18 +270,25 @@ public class IssueService {
     @Transactional
     public void delete(Long issueId) {
         Issue issue = issueMapper.selectById(issueId);
+        Long projectId = null;
         if (issue != null) {
-            // 记录操作日志
+            projectId = issue.getProjectId();
             ActivityLog log = new ActivityLog();
             log.setProjectId(issue.getProjectId());
             log.setTargetType("ISSUE");
             log.setTargetId(issue.getId());
             log.setAction("DELETE");
-            log.setDetail("删除了任务 " + issue.getIssueKey());
+            log.setDetail("删除了" + typeLabel(issue.getType()) + " " + issue.getIssueKey());
             activityLogMapper.insert(log);
         }
         issueMapper.deleteById(issueId);
         issueLabelMapper.delete(new LambdaQueryWrapper<IssueLabel>().eq(IssueLabel::getIssueId, issueId));
+
+        if (projectId != null) {
+            try {
+                webSocketService.sendBoardUpdate(projectId, BoardSyncEvent.deleted(projectId, issueId));
+            } catch (Exception ignored) {}
+        }
     }
 
     public List<IssueVO> query(QueryRequest request) {
@@ -192,6 +299,9 @@ public class IssueService {
         if (request.getType() != null) qw.eq(Issue::getType, request.getType());
         if (request.getPriority() != null) qw.eq(Issue::getPriority, request.getPriority());
         if (request.getStatus() != null) qw.eq(Issue::getStatus, request.getStatus());
+        if (request.getBugStatus() != null) qw.eq(Issue::getBugStatus, request.getBugStatus());
+        if (request.getEpic() != null) qw.eq(Issue::getEpic, request.getEpic());
+        if (request.getParentId() != null) qw.eq(Issue::getParentId, request.getParentId());
         if (request.getKeyword() != null) qw.and(w -> w.like(Issue::getTitle, request.getKeyword())
                 .or().like(Issue::getIssueKey, request.getKeyword()));
         qw.orderByDesc(Issue::getCreatedAt);
@@ -200,6 +310,79 @@ public class IssueService {
         Page<Issue> result = issueMapper.selectPage(page, qw);
         return result.getRecords().stream().map(this::toVO).collect(Collectors.toList());
     }
+
+    // ---- BUG status management ----
+
+    public void updateBugStatus(BugStatusRequest request) {
+        Issue issue = issueMapper.selectById(request.getIssueId());
+        if (issue == null) throw new BusinessException(ResultCode.ISSUE_NOT_FOUND);
+        if (!"BUG".equals(issue.getType())) throw new BusinessException(ResultCode.BAD_REQUEST, "只有缺陷(BUG)才能更改缺陷状态");
+        validateBugTransition(issue.getBugStatus(), request.getBugStatus());
+        issue.setBugStatus(request.getBugStatus());
+        issueMapper.updateById(issue);
+    }
+
+    private void validateBugTransition(String from, String to) {
+        Set<String> allowed = BUG_TRANSITIONS.get(from);
+        if (allowed == null || !allowed.contains(to)) {
+            throw new BusinessException(ResultCode.BAD_REQUEST,
+                "不允许从 " + (from != null ? from : "无") + " 转换到 " + to);
+        }
+    }
+
+    // ---- Acceptance Criteria management (STORY only) ----
+
+    @Transactional
+    public List<AcceptanceCriterion> addAcceptanceCriteria(Long issueId, AcceptanceCriteriaRequest req) {
+        Issue issue = issueMapper.selectById(issueId);
+        if (issue == null) throw new BusinessException(ResultCode.ISSUE_NOT_FOUND);
+        if (!"STORY".equals(issue.getType())) throw new BusinessException(ResultCode.BAD_REQUEST, "只有故事(STORY)才能添加验收标准");
+
+        List<AcceptanceCriterion> list = IssueDTO.parseAcceptanceCriteria(issue.getAcceptanceCriteria());
+        AcceptanceCriterion ac = new AcceptanceCriterion();
+        ac.setId(UUID.randomUUID().toString().substring(0, 8));
+        ac.setText(req.getText());
+        ac.setDone(false);
+        list.add(ac);
+
+        issue.setAcceptanceCriteria(IssueDTO.toJson(list));
+        issueMapper.updateById(issue);
+        return list;
+    }
+
+    @Transactional
+    public List<AcceptanceCriterion> updateAcceptanceCriteria(Long issueId, String criteriaId, AcceptanceCriterion update) {
+        Issue issue = issueMapper.selectById(issueId);
+        if (issue == null) throw new BusinessException(ResultCode.ISSUE_NOT_FOUND);
+
+        List<AcceptanceCriterion> list = IssueDTO.parseAcceptanceCriteria(issue.getAcceptanceCriteria());
+        for (int i = 0; i < list.size(); i++) {
+            if (list.get(i).getId().equals(criteriaId)) {
+                if (update.getText() != null) list.get(i).setText(update.getText());
+                list.get(i).setDone(update.isDone());
+                break;
+            }
+        }
+
+        issue.setAcceptanceCriteria(IssueDTO.toJson(list));
+        issueMapper.updateById(issue);
+        return list;
+    }
+
+    @Transactional
+    public List<AcceptanceCriterion> deleteAcceptanceCriteria(Long issueId, String criteriaId) {
+        Issue issue = issueMapper.selectById(issueId);
+        if (issue == null) throw new BusinessException(ResultCode.ISSUE_NOT_FOUND);
+
+        List<AcceptanceCriterion> list = IssueDTO.parseAcceptanceCriteria(issue.getAcceptanceCriteria());
+        list.removeIf(c -> c.getId().equals(criteriaId));
+
+        issue.setAcceptanceCriteria(IssueDTO.toJson(list));
+        issueMapper.updateById(issue);
+        return list;
+    }
+
+    // ---- toVO helper ----
 
     private IssueVO toVO(Issue issue) {
         IssueVO vo = new IssueVO();
@@ -217,6 +400,20 @@ public class IssueService {
         vo.setStoryPoints(issue.getStoryPoints());
         vo.setSeverity(issue.getSeverity());
         vo.setStepsToRepro(issue.getStepsToRepro());
+        // STORY fields
+        vo.setUserRole(issue.getUserRole());
+        vo.setUserGoal(issue.getUserGoal());
+        vo.setBusinessValue(issue.getBusinessValue());
+        vo.setAcceptanceCriteria(IssueDTO.parseAcceptanceCriteria(issue.getAcceptanceCriteria()));
+        vo.setEpic(issue.getEpic());
+        vo.setParentId(issue.getParentId());
+        // BUG fields
+        vo.setBugStatus(issue.getBugStatus());
+        vo.setEnvironment(issue.getEnvironment());
+        vo.setExpectedResult(issue.getExpectedResult());
+        vo.setActualResult(issue.getActualResult());
+        vo.setFoundVersion(issue.getFoundVersion());
+        vo.setFixedVersion(issue.getFixedVersion());
 
         if (issue.getColumnId() != null) {
             BoardColumn col = boardColumnMapper.selectById(issue.getColumnId());
@@ -233,7 +430,7 @@ public class IssueService {
             vo.setReporterName(u != null ? u.getUsername() : "");
             vo.setReporterId(issue.getReporterId());
         }
-        // 标签
+        // Labels
         List<IssueLabel> labels = issueLabelMapper.selectList(
                 new LambdaQueryWrapper<IssueLabel>().eq(IssueLabel::getIssueId, issue.getId()));
         vo.setLabels(labels.stream().map(l -> {
@@ -243,8 +440,49 @@ public class IssueService {
             lvo.setColor(l.getColor());
             return lvo;
         }).collect(Collectors.toList()));
+
+        // Parent info
+        if (issue.getParentId() != null) {
+            Issue parent = issueMapper.selectById(issue.getParentId());
+            if (parent != null) {
+                vo.setParentIssueKey(parent.getIssueKey());
+                vo.setParentTitle(parent.getTitle());
+            }
+        }
+
+        // Sub-tasks (for STORY)
+        if ("STORY".equals(issue.getType())) {
+            List<Issue> children = issueMapper.selectList(
+                    new LambdaQueryWrapper<Issue>().eq(Issue::getParentId, issue.getId()));
+            if (!children.isEmpty()) {
+                vo.setSubTasks(children.stream().map(this::toVO).collect(Collectors.toList()));
+            }
+        }
+
         vo.setCreatedAt(issue.getCreatedAt());
         vo.setUpdatedAt(issue.getUpdatedAt());
         return vo;
+    }
+
+    // ---- label helpers ----
+
+    static String typeLabel(String type) {
+        if ("STORY".equals(type)) return "故事";
+        if ("BUG".equals(type)) return "缺陷";
+        return "任务";
+    }
+
+    public static String bugStatusLabel(String s) {
+        if (s == null) return "";
+        return switch (s) {
+            case "NEW" -> "新建";
+            case "CONFIRMED" -> "已确认";
+            case "IN_PROGRESS" -> "修复中";
+            case "RESOLVED" -> "已解决";
+            case "VERIFIED" -> "已验证";
+            case "CLOSED" -> "已关闭";
+            case "REOPENED" -> "重新打开";
+            default -> s;
+        };
     }
 }

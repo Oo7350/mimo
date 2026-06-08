@@ -25,6 +25,7 @@ public class SprintService {
     private final BurndownSnapshotMapper snapshotMapper;
     private final ProjectMapper projectMapper;
     private final BoardColumnMapper boardColumnMapper;
+    private final UserMapper userMapper;
 
     public SprintVO create(CreateRequest request) {
         Sprint sprint = new Sprint();
@@ -267,6 +268,76 @@ public class SprintService {
             snap.setIdealRemaining(idealRemaining);
             snapshotMapper.insert(snap);
         }
+    }
+
+    public SprintStatsVO getSprintStats(Long sprintId) {
+        Sprint sprint = sprintMapper.selectById(sprintId);
+        if (sprint == null) throw new BusinessException(ResultCode.SPRINT_NOT_FOUND);
+
+        List<Issue> issues = issueMapper.selectList(
+                new LambdaQueryWrapper<Issue>().eq(Issue::getSprintId, sprintId));
+
+        SprintStatsVO vo = new SprintStatsVO();
+        vo.setSprintId(sprintId);
+        vo.setSprintName(sprint.getName());
+        vo.setTotalIssues(issues.size());
+        int doneCount = (int) issues.stream().filter(i -> "DONE".equals(i.getStatus())).count();
+        vo.setCompletedIssues(doneCount);
+        vo.setOverallCompletionRate(issues.isEmpty() ? 0.0 :
+                Math.round(doneCount * 10000.0 / issues.size()) / 100.0);
+
+        // 超期：dueDate < today && status != DONE
+        LocalDate today = LocalDate.now();
+        int overdueCount = (int) issues.stream()
+                .filter(i -> i.getDueDate() != null && i.getDueDate().isBefore(today) && !"DONE".equals(i.getStatus()))
+                .count();
+        vo.setOverallOverdueRate(issues.isEmpty() ? 0.0 :
+                Math.round(overdueCount * 10000.0 / issues.size()) / 100.0);
+
+        // Per-member stats
+        Set<Long> assigneeIds = new HashSet<>();
+        issues.forEach(i -> { if (i.getAssigneeId() != null) assigneeIds.add(i.getAssigneeId()); });
+        Map<Long, User> userMap = assigneeIds.isEmpty() ? Collections.emptyMap() :
+                userMapper.selectBatchIds(assigneeIds).stream()
+                        .collect(Collectors.toMap(User::getId, u -> u));
+
+        Map<Long, List<Issue>> byAssignee = issues.stream()
+                .filter(i -> i.getAssigneeId() != null)
+                .collect(Collectors.groupingBy(Issue::getAssigneeId));
+
+        List<MemberStat> memberStats = new ArrayList<>();
+        for (Map.Entry<Long, List<Issue>> entry : byAssignee.entrySet()) {
+            List<Issue> userIssues = entry.getValue();
+            int total = userIssues.size();
+            int completed = (int) userIssues.stream().filter(i -> "DONE".equals(i.getStatus())).count();
+            int overdue = (int) userIssues.stream()
+                    .filter(i -> i.getDueDate() != null && i.getDueDate().isBefore(today) && !"DONE".equals(i.getStatus()))
+                    .count();
+
+            MemberStat stat = new MemberStat();
+            stat.setAssigneeId(entry.getKey());
+            User u = userMap.get(entry.getKey());
+            stat.setUsername(u != null ? u.getUsername() : "未知");
+            stat.setTotalAssigned(total);
+            stat.setCompleted(completed);
+            stat.setOverdue(overdue);
+            stat.setCompletionRate(total == 0 ? 0.0 : Math.round(completed * 10000.0 / total) / 100.0);
+            // Avg days in column: simplified = avg days since creation / 3 columns
+            long nowMs = System.currentTimeMillis();
+            double avgDays = userIssues.stream()
+                    .mapToLong(i -> {
+                        java.time.LocalDateTime createdAt = i.getCreatedAt();
+                        if (createdAt == null) return 0;
+                        return nowMs - createdAt.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+                    })
+                    .average().orElse(0);
+            stat.setAvgDaysInColumn(Math.round(avgDays / (1000.0 * 86400 * 3) * 100.0) / 100.0);
+            memberStats.add(stat);
+        }
+        memberStats.sort(Comparator.comparing(MemberStat::getCompletionRate).reversed());
+        vo.setMemberStats(memberStats);
+
+        return vo;
     }
 
     private SprintVO toVO(Sprint sprint) {

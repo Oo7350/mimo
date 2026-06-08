@@ -39,6 +39,8 @@ public class SecurityConfig {
                 .antMatchers("/swagger-ui/**", "/v3/api-docs/**", "/doc.html", "/webjars/**").permitAll()
                 // 公开接口
                 .antMatchers("/api/auth/register", "/api/auth/login").permitAll()
+                // WebSocket
+                .antMatchers("/api/ws/**").permitAll()
                 // 其余需要认证
                 .anyRequest().authenticated()
             .and()

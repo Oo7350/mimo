@@ -1,13 +1,19 @@
 package com.mimo.dto;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Data;
 import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.NotNull;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 public class IssueDTO {
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     @Data
     public static class CreateRequest {
@@ -27,6 +33,18 @@ public class IssueDTO {
         private String severity;
         private String stepsToRepro;
         private List<String> labels;
+        // STORY 专属
+        private String userRole;
+        private String userGoal;
+        private String businessValue;
+        private String epic;
+        private Long parentId;
+        // BUG 专属
+        private String environment;
+        private String expectedResult;
+        private String actualResult;
+        private String foundVersion;
+        private String fixedVersion;
     }
 
     @Data
@@ -45,6 +63,19 @@ public class IssueDTO {
         private String severity;
         private String stepsToRepro;
         private String status;
+        // STORY 专属
+        private String userRole;
+        private String userGoal;
+        private String businessValue;
+        private String epic;
+        private Long parentId;
+        // BUG 专属
+        private String bugStatus;
+        private String environment;
+        private String expectedResult;
+        private String actualResult;
+        private String foundVersion;
+        private String fixedVersion;
     }
 
     @Data
@@ -83,6 +114,30 @@ public class IssueDTO {
         private List<IssueLabelVO> labels;
         private LocalDateTime createdAt;
         private LocalDateTime updatedAt;
+        // STORY 专属
+        private String userRole;
+        private String userGoal;
+        private String businessValue;
+        private List<AcceptanceCriterion> acceptanceCriteria;
+        private String epic;
+        private Long parentId;
+        private String parentIssueKey;
+        private String parentTitle;
+        private List<IssueVO> subTasks;
+        // BUG 专属
+        private String bugStatus;
+        private String environment;
+        private String expectedResult;
+        private String actualResult;
+        private String foundVersion;
+        private String fixedVersion;
+    }
+
+    @Data
+    public static class AcceptanceCriterion {
+        private String id;
+        private String text;
+        private boolean done;
     }
 
     @Data
@@ -101,7 +156,44 @@ public class IssueDTO {
         private String priority;
         private String status;
         private String keyword;
+        private String bugStatus;
+        private String epic;
+        private Long parentId;
         private Integer page = 1;
         private Integer size = 20;
+    }
+
+    @Data
+    public static class BugStatusRequest {
+        @NotNull
+        private Long issueId;
+        @NotBlank
+        private String bugStatus;
+    }
+
+    @Data
+    public static class AcceptanceCriteriaRequest {
+        @NotBlank
+        private String text;
+    }
+
+    // ---- Serialization helpers ----
+
+    public static List<AcceptanceCriterion> parseAcceptanceCriteria(String json) {
+        if (json == null || json.isBlank()) return new ArrayList<>();
+        try {
+            return MAPPER.readValue(json, new TypeReference<List<AcceptanceCriterion>>() {});
+        } catch (JsonProcessingException e) {
+            return new ArrayList<>();
+        }
+    }
+
+    public static String toJson(List<AcceptanceCriterion> list) {
+        if (list == null || list.isEmpty()) return null;
+        try {
+            return MAPPER.writeValueAsString(list);
+        } catch (JsonProcessingException e) {
+            return null;
+        }
     }
 }
