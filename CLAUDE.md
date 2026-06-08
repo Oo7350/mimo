@@ -6,8 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Mimo is a lightweight Trello-like project management platform for small teams. It supports team collaboration, kanban task tracking, and progress visualization.
 
+- **Version**: v2.0.0 — Issue Type Specialization (2026-06-08)
 - **GitHub**: https://github.com/Oo7350/mimo
-- **API docs**: `接口文档.md` (50+ endpoints, Chinese)
+- **API docs**: `接口文档.md` (60+ endpoints, Chinese)
 - **User manual**: `操作手册.md` (Chinese)
 
 ## Tech Stack
@@ -159,3 +160,42 @@ This file defines allowed Bash commands for Claude Code in this repo — if you 
   - `/topic/notifications/{userId}` — personal notification push
   - `/topic/board/{projectId}` — board sync events (ISSUE_MOVED/CREATED/DELETED)
 - **Board Sync Flow**: Drag → `PUT /api/board/issue/move` → backend updates issue + logs + WebSocket broadcast → all board subscribers receive event → optimistic UI update
+
+## Version History
+
+### v2.0.0 — Issue Type Specialization (2026-06-08)
+
+Full-stack differentiation of STORY/TASK/BUG with per-type data models, workflows, and UI.
+
+**Database**: Added 13 columns to `issues` table:
+- STORY: `user_role`, `user_goal`, `business_value`, `acceptance_criteria` (JSON), `epic`, `parent_id`
+- BUG: `environment`, `expected_result`, `actual_result`, `found_version`, `fixed_version`, `bug_status`
+- Migration: `backend/src/main/resources/db/migration/V2__issue_type_specialization.sql`
+
+**Backend new endpoints**:
+- `POST /api/issues/{id}/acceptance-criteria` — add AC to STORY
+- `PUT /api/issues/{id}/acceptance-criteria/{criteriaId}` — update/toggle AC
+- `DELETE /api/issues/{id}/acceptance-criteria/{criteriaId}` — remove AC
+- `PUT /api/issues/{id}/bug-status` — BUG status transition (with validation matrix)
+
+**Frontend new components**:
+- `StoryCard` / `TaskCard` / `BugCard` — color-coded type-specific cards
+- `StoryDialog` / `TaskDialog` / `BugDialog` — per-type form dialogs
+- `AcceptanceCriteria` — checkable criteria list for STORY
+- `BugTableView` — table view for bug tracking
+- `StoryMap` — epic-grouped story map view
+- `CommentSection` — reusable comment component
+
+**View modes** (ProjectBoard): Kanban / Bug Table / Story Map, with type quick-filter buttons
+
+**st2 test suite**: 38 API test cases + 11 UI test cases covering all three types
+
+**Bug fixes included**:
+- Unified priority selector (removed duplicates from sub-dialogs)
+- Fixed BUG environment field not loading back on edit
+- Enabled acceptance criteria in create mode (was disabled)
+- Cleaned garbage `board_columns` rows from database
+- Unified "新建工作项" button naming across pages
+
+### v1.x (e810514 and earlier)
+Core platform: auth, team/project management, basic kanban board, comments, notifications, reports, sprint/burndown, attachment upload, WebSocket real-time sync, AI polish/priority analysis.
