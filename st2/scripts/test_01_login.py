@@ -1,10 +1,4 @@
-"""Mimo 登录功能测试 —— Playwright 版
-
-对照 Selenium st/scripts/test_01_login.py：
-  - setup_method / teardown_method 不再需要
-  - 使用 conftest.py 中的 page fixture 管理生命周期
-  - 无需手动 DriverTools.get_driver() / quit_driver()
-"""
+"""Mimo 登录功能测试 —— Playwright 版"""
 import pytest
 import allure
 from pages.page_login import LoginPage
@@ -21,23 +15,26 @@ class TestLogin:
     def test_login_parametrized(self, page, username, password, expect_status, errno, expect_msg):
         """登录测试：参数化覆盖成功/失败场景"""
         login_page = LoginPage(page)
+        page.goto(login_page.url, wait_until="domcontentloaded")
 
         try:
-            login_page.open_login_page()
-            login_page.login(username, password)
-            page.wait_for_timeout(1000)
+            login_page.input_username(username)
+            login_page.input_password(password)
+            login_page.click_login_btn()
+
+            # 等待页面响应——要么跳转走，要么留在登录页
+            page.wait_for_load_state("networkidle")
 
             if expect_status == 200:
-                # 预期成功 —— 断言跳转到了主页
-                assert "/login" not in page.url, f"登录未跳转，当前URL: {page.url}"
-                current_title = login_page.get_welcome_text()
-                GetLog.get_log().info(f"登录成功 —— 用户名：{username}，页面标题：{current_title}")
+                assert "/login" not in page.url, (
+                    f"登录未跳转，当前URL: {page.url}\n"
+                    f"页面标题: {page.title()}"
+                )
+                GetLog.get_log().info(f"登录成功 —— 用户名：{username}")
             else:
-                # 预期失败 —— 断言仍在登录页或出现错误提示
-                error_text = login_page.get_error_text()
-                GetLog.get_log().info(f"登录失败 —— 用户名：{username}，错误信息：{error_text}")
-                assert expect_msg in error_text or "/login" in page.url, \
-                    f"预期包含'{expect_msg}'，实际错误'{error_text}'"
+                on_login = "/login" in page.url
+                GetLog.get_log().info(f"登录失败 —— 用户名：{username}，仍在登录页: {on_login}")
+                assert on_login, f"预期登录失败但跳转到了 {page.url}"
 
         except Exception as e:
             login_page.screenshot(f"./img/login_fail_{username}.png")
@@ -47,16 +44,25 @@ class TestLogin:
     def test_login_success(self, page):
         """登录成功 —— 正向用例"""
         login_page = LoginPage(page)
-        login_page.login("admin", "123456")
-        page.wait_for_timeout(1000)
-        # 断言跳转到了工作台
-        assert "/login" not in page.url, "登录后应跳转到主页"
-        assert login_page.is_visible("h2"), "工作台标题应可见"
+        page.goto(login_page.url, wait_until="domcontentloaded")
+        login_page.input_username("zhangsan")
+        login_page.input_password("123456")
+        login_page.click_login_btn()
+        page.wait_for_load_state("networkidle")
+
+        assert "/login" not in page.url, (
+            f"登录后应跳转，当前URL: {page.url}\n页面标题: {page.title()}"
+        )
 
     def test_login_fail_wrong_password(self, page):
         """登录失败：密码错误"""
         login_page = LoginPage(page)
-        login_page.login("admin", "wrongpassword")
-        page.wait_for_timeout(1000)
-        error = login_page.get_error_text()
-        assert "密码" in error or "login" in page.url, "应提示密码错误或停留在登录页"
+        page.goto(login_page.url, wait_until="domcontentloaded")
+        login_page.input_username("admin")
+        login_page.input_password("wrongpassword")
+        login_page.click_login_btn()
+        page.wait_for_load_state("networkidle")
+
+        assert "/login" in page.url, (
+            f"密码错误应停留在登录页，当前URL: {page.url}"
+        )

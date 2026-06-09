@@ -1,9 +1,5 @@
 """Mimo 登录页面对象 —— Playwright 版
-
-对照 Selenium st/pages/page_login.py：
-  - find_element(By.XPATH, ...) → page.locator("css-selector")
-  - send_keys() → fill()（自动等待 + 清空 + 填充）
-  - driver.get() → page.goto()
+所有定位器作为参数暴露，可在调用时传入覆盖默认值。
 """
 from playwright.sync_api import Page
 from base.base_page import BasePage
@@ -13,38 +9,40 @@ from config import BASE_URL
 class LoginPage(BasePage):
     """Mimo 登录页面"""
 
+    # ---- 默认定位器（可在调用时覆盖）----
+    LOC_INPUT_USERNAME = "//input[@placeholder='请输入用户名']"
+    LOC_INPUT_PASSWORD = "//input[@placeholder='请输入密码']"
+    LOC_BTN_LOGIN = "/html/body/div[1]/div/div/form/div[3]/div/button"
+    LOC_ERROR_MSG = "//div[contains(@class,'el-message--error')]//p"
+
     def __init__(self, page: Page):
         super().__init__(page)
         self.url = BASE_URL + "/login"
 
-    def open_login_page(self):
-        """打开登录页面"""
+    def open_login_page(self, loc_username: str = None, loc_password: str = None, loc_btn: str = None):
         self.open_url(self.url)
 
-    def input_username(self, username: str):
-        """输入用户名"""
-        self.fill("input[placeholder='用户名']", username)
+    def input_username(self, username: str, loc: str = None):
+        self.fill(loc or self.LOC_INPUT_USERNAME, username)
 
-    def input_password(self, password: str):
-        """输入密码"""
-        self.fill("input[placeholder='密码']", password)
+    def input_password(self, password: str, loc: str = None):
+        self.fill(loc or self.LOC_INPUT_PASSWORD, password)
 
-    def click_login_btn(self):
-        """点击登录按钮"""
-        self.click("button:has-text('登录')")
+    def click_login_btn(self, loc: str = None):
+        self.click(loc or self.LOC_BTN_LOGIN)
 
-    # ===== 业务方法：封装完整登录流程 =====
-    def login(self, username: str = "admin", password: str = "123456"):
-        """完整登录流程（打开页面 + 输入 + 点击）"""
-        self.open_login_page()
-        self.input_username(username)
-        self.input_password(password)
-        self.click_login_btn()
+    def login(self, username: str = "admin", password: str = "123456",
+              loc_username: str = None, loc_password: str = None, loc_btn: str = None):
+        self.open_url(self.url)
+        self.input_username(username, loc_username)
+        self.input_password(password, loc_password)
+        self.click_login_btn(loc_btn)
 
     def get_welcome_text(self) -> str:
-        """获取登录后工作台标题"""
-        return self.get_text("h2")
+        try:
+            return self.get_text("//h2")
+        except Exception:
+            return ""
 
-    def get_error_text(self) -> str:
-        """获取登录失败的错误提示"""
-        return self.get_text(".el-message--error")
+    def get_error_text(self, loc: str = None) -> str:
+        return self.get_text(loc or self.LOC_ERROR_MSG)

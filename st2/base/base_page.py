@@ -18,38 +18,43 @@ class BasePage:
         """打开指定 URL"""
         self.page.goto(url, wait_until="networkidle")
 
+    @staticmethod
+    def _as_locator(selector: str):
+        """Playwright 默认按 CSS 解析，xpath 需加前缀。自动判断。"""
+        s = selector.strip()
+        if s.startswith("/") or s.startswith("("):
+            return f"xpath={s}"
+        return s
+
     def click(self, selector: str):
-        """点击元素（自动等待可点击）"""
-        self.page.locator(selector).click()
+        """点击元素（自动等待可点击，支持 css 和 xpath）"""
+        self.page.locator(self._as_locator(selector)).click()
 
     def fill(self, selector: str, text: str):
         """输入文本（自动等待可见 + 清空 + 填充）"""
-        self.page.locator(selector).clear()
-        self.page.locator(selector).fill(text)
+        loc = self._as_locator(selector)
+        self.page.locator(loc).clear()
+        self.page.locator(loc).fill(text)
 
     def get_text(self, selector: str) -> str:
         """获取元素文本内容"""
-        return self.page.locator(selector).text_content().strip()
+        return self.page.locator(self._as_locator(selector)).text_content().strip()
 
     def get_text_by_placeholder(self, placeholder: str) -> str:
         """通过 placeholder 属性获取元素文本"""
         return self.page.get_by_placeholder(placeholder).text_content()
 
     def is_visible(self, selector: str) -> bool:
-        """判断元素是否可见"""
-        return self.page.locator(selector).is_visible()
+        return self.page.locator(self._as_locator(selector)).is_visible()
 
     def is_enabled(self, selector: str) -> bool:
-        """判断元素是否可用"""
-        return self.page.locator(selector).is_enabled()
+        return self.page.locator(self._as_locator(selector)).is_enabled()
 
     def get_attribute(self, selector: str, attr: str) -> str:
-        """获取元素属性值"""
-        return self.page.locator(selector).get_attribute(attr)
+        return self.page.locator(self._as_locator(selector)).get_attribute(attr)
 
     def hover(self, selector: str):
-        """鼠标悬停"""
-        self.page.locator(selector).hover()
+        self.page.locator(self._as_locator(selector)).hover()
 
     def select_option(self, selector: str, value: str = None, label: str = None):
         """下拉框选择"""

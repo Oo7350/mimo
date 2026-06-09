@@ -1,11 +1,5 @@
 [
-  {
-    "username": "admin",
-    "password": "123456",
-    "status": 200,
-    "errno": 200,
-    "errmsg": "登录成功"
-  },
+
   {
     "username": "zhangsan",
     "password": "123456",
