@@ -4,7 +4,12 @@
     <el-header class="mimo-header" height="56px">
       <div class="mimo-header__left">
         <div class="mimo-header__logo" @click="$router.push('/')">
-          <el-icon :size="22"><Monitor /></el-icon>
+          <svg class="mimo-header__logo-icon" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect width="32" height="32" rx="8" fill="rgba(255,255,255,0.2)" />
+            <rect x="7" y="8" width="5" height="16" rx="2" fill="white" opacity="0.95" />
+            <rect x="14" y="8" width="5" height="11" rx="2" fill="white" opacity="0.75" />
+            <rect x="21" y="8" width="5" height="14" rx="2" fill="white" opacity="0.55" />
+          </svg>
           <span>Mimo</span>
         </div>
         <BreadcrumbNav />
@@ -26,7 +31,20 @@
           </el-select>
         </div>
       </div>
+      <div class="mimo-header__center">
+        <button class="cmd-trigger" @click="openCommandPalette">
+          <el-icon><Search /></el-icon>
+          <span>搜索...</span>
+          <kbd>Ctrl K</kbd>
+        </button>
+      </div>
       <div class="mimo-header__right">
+        <el-tooltip :content="appStore.darkMode ? '切换浅色模式' : '切换深色模式'" placement="bottom">
+          <el-icon :size="20" class="mimo-header__theme-toggle" @click="appStore.toggleDarkMode()">
+            <Sunny v-if="appStore.darkMode" />
+            <Moon v-else />
+          </el-icon>
+        </el-tooltip>
         <el-badge :value="unreadCount" :max="99" :hidden="unreadCount === 0">
           <el-icon :size="20" class="mimo-header__bell" @click="toggleNotifications">
             <Bell />
@@ -56,7 +74,7 @@
               <div class="notif-item__content">
                 <div class="notif-item__title">{{ n.title }}</div>
                 <div class="notif-item__text">{{ n.content }}</div>
-                <div class="notif-item__time">{{ n.createdAt }}</div>
+                <div class="notif-item__time">{{ formatRelativeTime(n.createdAt) }}</div>
               </div>
             </div>
           </div>
@@ -125,6 +143,8 @@
         <router-view />
       </el-main>
     </el-container>
+
+    <CommandPalette />
   </el-container>
 </template>
 
@@ -135,11 +155,16 @@ import { useUserStore } from '@/store/user'
 import { useAppStore } from '@/store/app'
 import { ElMessageBox } from 'element-plus'
 import { getMyProjects } from '@/api/project'
+import { getIssueById } from '@/api/issue'
 import type { ProjectVO } from '@/types'
 import BreadcrumbNav from './BreadcrumbNav.vue'
+import CommandPalette from '@/components/common/CommandPalette.vue'
 import { useTour } from '@/composables/useTour'
 import { useNotifications } from '@/composables/useNotifications'
 import { useWebSocket } from '@/composables/useWebSocket'
+import { useCommandPalette } from '@/composables/useCommandPalette'
+import { Moon, Sunny } from '@element-plus/icons-vue'
+import { formatRelativeTime } from '@/utils/constants'
 
 const route = useRoute()
 const router = useRouter()
@@ -148,6 +173,7 @@ const appStore = useAppStore()
 const { startTour, isTourCompleted } = useTour()
 const { unreadCount, notifications, loading: notifLoading, fetchNotifications, handleMarkRead, handleMarkAllRead } = useNotifications()
 const { connect: wsConnect, disconnect: wsDisconnect } = useWebSocket()
+const { open: openCommandPalette } = useCommandPalette()
 
 const isCollapsed = computed(() => appStore.sidebarCollapsed)
 const sidebarWidth = computed(() => isCollapsed.value ? '64px' : '230px')
@@ -170,10 +196,16 @@ async function handleNotifClick(n: any) {
   if (!n.isRead) await handleMarkRead(n.id)
   showNotifications.value = false
   if (n.relatedId && n.relatedType === 'ISSUE') {
-    // Navigate to project board (need projectId from issue context)
-    // For now, just close the panel
-    router.push('/')
+    try {
+      const res = await getIssueById(n.relatedId)
+      const projectId = res.data?.projectId
+      if (projectId) {
+        router.push(`/projects/${projectId}/board?issue=${n.relatedId}`)
+        return
+      }
+    } catch { /* fallback */ }
   }
+  router.push('/')
 }
 const myProjects = ref<ProjectVO[]>([])
 const tourDone = ref(localStorage.getItem('mimo_tour_completed') === 'true')

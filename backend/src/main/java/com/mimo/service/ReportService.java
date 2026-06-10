@@ -26,8 +26,9 @@ public class ReportService {
     private final SprintMapper sprintMapper;
 
     public ReportVO generateDraft(CreateRequest request, Long userId) {
-        // 查询该用户在此项目指定日期范围内完成的任务
-        LocalDate startDate = request.getReportDate() != null ? request.getReportDate() : LocalDate.now();
+        // 默认使用今天作为报告日期
+        LocalDate reportDate = request.getReportDate() != null ? request.getReportDate() : LocalDate.now();
+        LocalDate startDate = reportDate;
         if ("WEEKLY".equals(request.getType())) {
             startDate = startDate.minusDays(6);
         }
@@ -38,26 +39,42 @@ public class ReportService {
                         .eq(Issue::getStatus, "DONE")
                         .ge(Issue::getUpdatedAt, startDate.atStartOfDay()));
 
+        // 查询进行中的任务（让报告更有内容）
+        List<Issue> inProgressIssues = issueMapper.selectList(
+                new LambdaQueryWrapper<Issue>()
+                        .eq(Issue::getProjectId, request.getProjectId())
+                        .eq(Issue::getStatus, "IN_PROGRESS"));
+
         StringBuilder content = new StringBuilder();
         content.append("## ").append("DAILY".equals(request.getType()) ? "日报" : "周报").append("\n\n");
         content.append("**日期**: ").append(startDate);
-        if (!request.getReportDate().equals(startDate)) {
-            content.append(" 至 ").append(request.getReportDate());
+        if (!startDate.equals(reportDate)) {
+            content.append(" 至 ").append(reportDate);
         }
         content.append("\n\n### 已完成任务\n\n");
-        for (Issue issue : completedIssues) {
-            content.append("- [").append(issue.getIssueKey()).append("] ")
-                    .append(issue.getTitle()).append("\n");
-        }
-        if (completedIssues.isEmpty()) {
+        if (!completedIssues.isEmpty()) {
+            for (Issue issue : completedIssues) {
+                content.append("- [").append(issue.getIssueKey()).append("] ")
+                        .append(issue.getTitle()).append("\n");
+            }
+        } else {
             content.append("暂无已完成任务\n");
+        }
+        content.append("\n### 进行中任务\n\n");
+        if (!inProgressIssues.isEmpty()) {
+            for (Issue issue : inProgressIssues) {
+                content.append("- [").append(issue.getIssueKey()).append("] ")
+                        .append(issue.getTitle()).append("\n");
+            }
+        } else {
+            content.append("暂无进行中任务\n");
         }
 
         Report report = new Report();
         report.setUserId(userId);
         report.setProjectId(request.getProjectId());
         report.setType(request.getType());
-        report.setReportDate(request.getReportDate() != null ? request.getReportDate() : LocalDate.now());
+        report.setReportDate(reportDate);
         report.setContent(content.toString());
         report.setStatus("DRAFT");
         reportMapper.insert(report);
@@ -169,6 +186,51 @@ public class ReportService {
         vo.setWeeklyCompleted(weeklyCompleted);
         vo.setMemberDistribution(memberDistribution);
         vo.setSprintVelocity(sprintVelocity);
+
+        // === 新增：通用数据（不依赖已完成状态）===
+
+        // 4. 任务类型分布（STORY / BUG / TASK）
+        List<TypeDistItem> typeDistribution = new ArrayList<>();
+        List<Issue> allIssues = issueMapper.selectList(
+            new LambdaQueryWrapper<Issue>().eq(Issue::getProjectId, projectId));
+        Map<String, Long> typeCountMap = allIssues.stream()
+            .collect(Collectors.groupingBy(Issue::getType, Collectors.counting()));
+        for (String type : List.of("STORY", "TASK", "BUG")) {
+            TypeDistItem item = new TypeDistItem();
+            item.setType(type);
+            item.setLabel("STORY".equals(type) ? "需求" : "BUG".equals(type) ? "缺陷" : "任务");
+            item.setCount(typeCountMap.getOrDefault(type, 0L).intValue());
+            typeDistribution.add(item);
+        }
+        vo.setTypeDistribution(typeDistribution);
+
+        // 5. 状态概览
+        StatusOverview statusOverview = new StatusOverview();
+        statusOverview.setTodoCount((int) allIssues.stream().filter(i -> "TODO".equals(i.getStatus()) || (i.getType() == null ? false : ("BUG".equals(i.getType()) && "NEW".equals(i.getBugStatus())))).count());
+        statusOverview.setInProgressCount((int) allIssues.stream().filter(i -> "IN_PROGRESS".equals(i.getStatus())).count());
+        statusOverview.setDoneCount((int) allIssues.stream().filter(i -> "DONE".equals(i.getStatus())).count());
+        statusOverview.setTotalCount(allIssues.size());
+        vo.setStatusOverview(statusOverview);
+
+        // 6. 每日活动（创建 + 更新）
+        List<WeeklyActivityItem> weeklyActivity = new ArrayList<>();
+        for (int i = 6; i >= 0; i--) {
+            LocalDate d = today.minusDays(i);
+            long created = allIssues.stream()
+                .filter(it -> it.getCreatedAt() != null && it.getCreatedAt().toLocalDate().equals(d))
+                .count();
+            long updated = allIssues.stream()
+                .filter(it -> it.getUpdatedAt() != null && it.getUpdatedAt().toLocalDate().equals(d)
+                    && (it.getCreatedAt() == null || !it.getCreatedAt().toLocalDate().equals(d)))
+                .count();
+            WeeklyActivityItem item = new WeeklyActivityItem();
+            item.setDate(d.format(dateFmt));
+            item.setCreated((int) created);
+            item.setUpdated((int) updated);
+            weeklyActivity.add(item);
+        }
+        vo.setWeeklyActivity(weeklyActivity);
+
         return vo;
     }
 

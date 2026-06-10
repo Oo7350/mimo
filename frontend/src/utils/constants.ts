@@ -94,3 +94,28 @@ export const BUG_TRANSITIONS: Record<BugStatus, BugStatus[]> = {
   CLOSED: ['REOPENED'],
   REOPENED: ['IN_PROGRESS'],
 }
+
+/**
+ * 相对时间格式化：将日期字符串转为 "刚刚"、"5分钟前"、"3小时前" 等友好格式
+ * @param dateStr 后端返回的日期字符串，格式如 "2024-01-15 10:30" 或 "2024-01-15 10:30:00"
+ */
+export function formatRelativeTime(dateStr: string): string {
+  if (!dateStr) return ''
+  const date = new Date(dateStr.replace(/-/g, '/'))
+  if (isNaN(date.getTime())) return dateStr
+  const now = new Date()
+  const diff = now.getTime() - date.getTime()
+  if (diff < 0) return '刚刚'
+  const seconds = Math.floor(diff / 1000)
+  if (seconds < 60) return '刚刚'
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}分钟前`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}小时前`
+  const days = Math.floor(hours / 24)
+  if (days < 30) return `${days}天前`
+  const months = Math.floor(days / 30)
+  if (months < 12) return `${months}个月前`
+  const years = Math.floor(months / 12)
+  return `${years}年前`
+}

@@ -21,6 +21,9 @@ public class ProjectService {
     private final ProjectMemberMapper projectMemberMapper;
     private final TeamMemberMapper teamMemberMapper;
     private final BoardColumnMapper boardColumnMapper;
+    private final IssueMapper issueMapper;
+    private final ReportMapper reportMapper;
+    private final SprintMapper sprintMapper;
     private final UserMapper userMapper;
     private final TeamMapper teamMapper;
 

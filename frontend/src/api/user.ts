@@ -30,3 +30,14 @@ export function updateUserProfile(data: { username?: string; email?: string; ava
 export function changePassword(data: { oldPassword: string; newPassword: string }) {
   return request.put("/user/password", data);
 }
+
+export interface UserSearchResult {
+  id: number
+  username: string
+  email: string
+  avatar: string | null
+}
+
+export function searchUsers(keyword?: string) {
+  return request.get<UserSearchResult[]>("/user/search", { params: { keyword } });
+}

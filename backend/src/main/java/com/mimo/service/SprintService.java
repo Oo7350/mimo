@@ -322,7 +322,7 @@ public class SprintService {
             stat.setCompleted(completed);
             stat.setOverdue(overdue);
             stat.setCompletionRate(total == 0 ? 0.0 : Math.round(completed * 10000.0 / total) / 100.0);
-            // Avg days in column: simplified = avg days since creation / 3 columns
+            // Avg task age: 平均任务存在天数（反映任务处理效率）
             long nowMs = System.currentTimeMillis();
             double avgDays = userIssues.stream()
                     .mapToLong(i -> {
@@ -331,7 +331,7 @@ public class SprintService {
                         return nowMs - createdAt.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
                     })
                     .average().orElse(0);
-            stat.setAvgDaysInColumn(Math.round(avgDays / (1000.0 * 86400 * 3) * 100.0) / 100.0);
+            stat.setAvgDaysInColumn(Math.round(avgDays / (1000.0 * 86400) * 10.0) / 10.0);
             memberStats.add(stat);
         }
         memberStats.sort(Comparator.comparing(MemberStat::getCompletionRate).reversed());

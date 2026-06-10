@@ -1,5 +1,6 @@
 package com.mimo.controller;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mimo.common.BusinessException;
 import com.mimo.common.Result;
 import com.mimo.common.ResultCode;
@@ -12,6 +13,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import javax.validation.Valid;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/user")
@@ -74,5 +77,26 @@ public class UserController {
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
         userMapper.updateById(user);
         return Result.successMessage("密码修改成功");
+    }
+
+    /**
+     * 搜索用户（用于邀请成员等场景）
+     */
+    @GetMapping("/search")
+    public Result<List<UserSearchVO>> searchUsers(@RequestParam(required = false) String keyword) {
+        LambdaQueryWrapper<User> qw = new LambdaQueryWrapper<>();
+        if (keyword != null && !keyword.isBlank()) {
+            qw.like(User::getUsername, keyword.trim()).or().like(User::getEmail, keyword.trim());
+        }
+        qw.last("LIMIT 20");
+        List<UserSearchVO> list = userMapper.selectList(qw).stream().map(u -> {
+            UserSearchVO vo = new UserSearchVO();
+            vo.setId(u.getId());
+            vo.setUsername(u.getUsername());
+            vo.setEmail(u.getEmail());
+            vo.setAvatar(u.getAvatar());
+            return vo;
+        }).collect(Collectors.toList());
+        return Result.success(list);
     }
 }

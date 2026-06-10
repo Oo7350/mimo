@@ -64,16 +64,10 @@ const items = computed<Crumb[]>(() => {
 .breadcrumb {
   &__link {
     cursor: pointer;
-    color: var(--text-secondary);
     font-weight: normal;
-
-    &:hover {
-      color: var(--color-primary);
-    }
   }
 
   &__current {
-    color: var(--text-primary);
     font-weight: 500;
   }
 }

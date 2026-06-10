@@ -128,11 +128,20 @@ public class BoardService {
         issue.setColumnId(targetColumnId);
         issue.setSortOrder(sortOrder);
 
-        // 同步 status 字段
+        // 同步 status 字段（STORY/TASK）和 bugStatus 字段（BUG）
         BoardColumn targetCol = boardColumnMapper.selectById(targetColumnId);
         if (targetCol != null) {
-            String newStatus = columnToStatus(targetCol.getName());
-            issue.setStatus(newStatus);
+            if ("BUG".equals(issue.getType())) {
+                // BUG 类型：根据目标列名映射 bugStatus
+                String newBugStatus = columnToBugStatus(targetCol.getName());
+                issue.setBugStatus(newBugStatus);
+                // 同步通用 status 字段以便看板统一展示
+                issue.setStatus(bugStatusToGenericStatus(newBugStatus));
+            } else {
+                // STORY/TASK 类型：映射通用 status
+                String newStatus = columnToStatus(targetCol.getName());
+                issue.setStatus(newStatus);
+            }
         }
 
         issueMapper.updateById(issue);
@@ -164,6 +173,33 @@ public class BoardService {
         if (lower.contains("progress") || lower.contains("进行")) return "IN_PROGRESS";
         if (lower.contains("todo") || lower.contains("待办")) return "TODO";
         return "TODO";
+    }
+
+    /**
+     * 列名 → BUG 的 bugStatus 映射
+     * 待办列 → NEW, 进行中列 → IN_PROGRESS, 完成列 → CLOSED/VERIFIED
+     */
+    private String columnToBugStatus(String colName) {
+        if (colName == null) return "NEW";
+        String lower = colName.toLowerCase();
+        if (lower.contains("done") || lower.contains("完成")) return "CLOSED";
+        if (lower.contains("progress") || lower.contains("进行")) return "IN_PROGRESS";
+        return "NEW"; // 待办列默认 NEW
+    }
+
+    /**
+     * BUG 的 bugStatus → 通用 status 映射（用于看板统一展示）
+     */
+    private String bugStatusToGenericStatus(String bugStatus) {
+        if (bugStatus == null) return "TODO";
+        switch (bugStatus) {
+            case "CLOSED":
+            case "VERIFIED":
+            case "RESOLVED": return "DONE";
+            case "IN_PROGRESS":
+            case "CONFIRMED": return "IN_PROGRESS";
+            default: return "TODO"; // NEW, REOPENED → TODO
+        }
     }
 
     private IssueVO toIssueVO(Issue issue, Map<Long, User> userMap, Map<Long, List<IssueLabelVO>> labelMap) {

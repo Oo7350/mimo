@@ -38,4 +38,12 @@ public class UserDTO {
         @Size(min = 6, message = "密码至少6位")
         private String newPassword;
     }
+
+    @Data
+    public static class UserSearchVO {
+        private Long id;
+        private String username;
+        private String email;
+        private String avatar;
+    }
 }

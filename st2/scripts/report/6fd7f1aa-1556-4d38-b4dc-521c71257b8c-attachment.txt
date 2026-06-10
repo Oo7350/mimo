@@ -1,0 +1,1 @@
+[32mINFO    [0m playwright:test_01_login.py:36 登录失败 —— 用户名：，仍在登录页: True

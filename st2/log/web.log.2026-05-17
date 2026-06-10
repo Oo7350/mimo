@@ -1,0 +1,12 @@
+2026-05-17 12:59:58,949 ERROR [test_01_login.py(test_login_parametrized:44)] - 登录用例异常：Locator.clear: Timeout 10000ms exceeded.
+Call log:
+  - waiting for locator("input[placeholder='用户名']")
+
+2026-05-17 13:00:11,799 ERROR [test_01_login.py(test_login_parametrized:44)] - 登录用例异常：Locator.clear: Timeout 10000ms exceeded.
+Call log:
+  - waiting for locator("input[placeholder='用户名']")
+
+2026-05-17 13:00:24,689 ERROR [test_01_login.py(test_login_parametrized:44)] - 登录用例异常：Locator.clear: Timeout 10000ms exceeded.
+Call log:
+  - waiting for locator("input[placeholder='用户名']")
+

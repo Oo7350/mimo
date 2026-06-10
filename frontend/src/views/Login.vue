@@ -1,12 +1,15 @@
 <template>
-  <div class="login-container">
-    <div class="login-card">
-      <h2>Mimo 敏捷管理</h2>
+  <AuthLayout>
+    <div class="auth-form">
+      <h2 class="auth-form__title">欢迎回来</h2>
+      <p class="auth-form__desc">登录你的 Mimo 账号，继续团队协作</p>
+
       <el-form
         ref="formRef"
         :model="form"
         :rules="rules"
         label-position="top"
+        class="auth-form__body"
         @keyup.enter="handleLogin"
       >
         <el-form-item label="用户名" prop="username">
@@ -32,34 +35,36 @@
             type="primary"
             size="large"
             :loading="loading"
-            style="width: 100%"
+            class="auth-form__submit"
             @click="handleLogin"
           >
             登 录
           </el-button>
         </el-form-item>
       </el-form>
-      <div style="text-align: center">
+
+      <div class="auth-form__footer">
         还没有账号？
         <router-link to="/register">立即注册</router-link>
       </div>
     </div>
-  </div>
+  </AuthLayout>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from "vue";
-import { useUserStore } from "@/store/user";
-import type { FormInstance, FormRules } from "element-plus";
+import { ref, reactive } from "vue"
+import { useUserStore } from "@/store/user"
+import type { FormInstance, FormRules } from "element-plus"
+import AuthLayout from "@/components/layout/AuthLayout.vue"
 
-const userStore = useUserStore();
-const formRef = ref<FormInstance>();
-const loading = ref(false);
+const userStore = useUserStore()
+const formRef = ref<FormInstance>()
+const loading = ref(false)
 
 const form = reactive({
   username: "",
   password: "",
-});
+})
 
 const rules: FormRules = {
   username: [
@@ -70,16 +75,54 @@ const rules: FormRules = {
     { required: true, message: "请输入密码", trigger: "blur" },
     { min: 6, message: "密码至少 6 位", trigger: "blur" },
   ],
-};
+}
 
 async function handleLogin() {
-  const valid = await formRef.value?.validate().catch(() => false);
-  if (!valid) return;
-  loading.value = true;
+  const valid = await formRef.value?.validate().catch(() => false)
+  if (!valid) return
+  loading.value = true
   try {
-    await userStore.login(form.username, form.password);
+    await userStore.login(form.username, form.password)
   } finally {
-    loading.value = false;
+    loading.value = false
   }
 }
 </script>
+
+<style scoped lang="scss">
+.auth-form {
+  &__title {
+    font-size: 28px;
+    font-weight: 800;
+    color: var(--text-primary);
+    letter-spacing: -0.5px;
+    margin-bottom: 8px;
+  }
+
+  &__desc {
+    color: var(--text-secondary);
+    font-size: 14px;
+    margin-bottom: 32px;
+  }
+
+  &__submit {
+    width: 100%;
+    height: 44px;
+    font-size: 15px;
+    font-weight: 600;
+    border-radius: 10px;
+  }
+
+  &__footer {
+    text-align: center;
+    margin-top: 24px;
+    font-size: 14px;
+    color: var(--text-secondary);
+
+    a {
+      font-weight: 600;
+      margin-left: 4px;
+    }
+  }
+}
+</style>

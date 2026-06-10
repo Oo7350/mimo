@@ -11,7 +11,7 @@
         </div>
         <div class="stat-card__info">
           <div class="stat-card__value" :style="{ color: accentColor }">
-            {{ displayValue }}
+            {{ displayValue }}{{ suffix || '' }}
           </div>
           <div class="stat-card__label">{{ title }}</div>
         </div>
@@ -31,6 +31,7 @@ const props = defineProps<{
   iconBg?: string
   icon?: string
   loading?: boolean
+  suffix?: string
 }>()
 
 const displayValue = ref(0)

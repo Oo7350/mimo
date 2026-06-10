@@ -1,0 +1,1 @@
+[32mINFO    [0m playwright:test_01_login.py:33 登录成功 —— 用户名：zhangsan

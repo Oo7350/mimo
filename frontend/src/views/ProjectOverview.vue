@@ -1,84 +1,175 @@
 <template>
   <div class="overview">
-    <div class="overview__header">
-      <div>
-        <el-button @click="$router.push('/')" text><el-icon><ArrowLeft /></el-icon></el-button>
-        <h2 class="overview__title">{{ projectName }}</h2>
+    <!-- 项目头部 -->
+    <div class="overview__hero">
+      <div class="overview__hero-left">
+        <el-button @click="$router.push('/')" text class="overview__back">
+          <el-icon><ArrowLeft /></el-icon>
+        </el-button>
+        <div class="overview__project-avatar" :style="{ background: avatarGradient(projectName) }">
+          {{ projectName.charAt(0).toUpperCase() }}
+        </div>
+        <div>
+          <h2 class="overview__title">{{ projectName }}</h2>
+          <p class="overview__subtitle">项目概览 · 数据仪表盘</p>
+        </div>
       </div>
       <el-button id="create-task-btn" type="primary" @click="showCreateIssue = true">
         <el-icon><Plus /></el-icon>新建工作项
       </el-button>
     </div>
 
-    <el-tabs v-model="activeTab" @tab-change="onTabChange">
+    <el-tabs v-model="activeTab" class="overview__tabs" @tab-change="onTabChange">
       <el-tab-pane label="概览" name="overview">
         <div v-if="loading" class="overview__loading">
           <SkeletonLoader variant="card" :count="4" />
         </div>
-        <div v-else class="overview__grid">
-          <!-- 任务状态分布 -->
-          <div class="ov-card">
-            <h4>任务状态分布</h4>
-            <div ref="statusChartRef" class="ov-card__chart"></div>
-          </div>
-          <!-- 成员工作量 -->
-          <div class="ov-card">
-            <h4>成员工作量</h4>
-            <div v-if="memberData.length === 0" style="text-align: center; padding: 30px; color: var(--text-secondary)">
-              暂无数据
+        <template v-else>
+          <!-- 统计摘要 -->
+          <div class="overview__stats">
+            <div class="stat-pill">
+              <div class="stat-pill__icon" style="background: rgba(99,102,241,0.12); color: var(--color-primary)">
+                <el-icon><Odometer /></el-icon>
+              </div>
+              <div>
+                <div class="stat-pill__value" style="color: var(--color-primary)">{{ allIssues.length }}</div>
+                <div class="stat-pill__label">总任务</div>
+              </div>
             </div>
-            <div v-else>
-              <div ref="memberChartRef" class="ov-card__chart" style="height: 160px"></div>
-              <div style="margin-top: 8px; max-height: 120px; overflow-y: auto">
-                <div v-for="(m, idx) in memberData" :key="m.name" class="ov-member-row">
-                  <span class="ov-member-row__name">{{ m.name }}</span>
-                  <span class="ov-member-row__count">{{ m.count }} 个任务</span>
-                  <el-progress
-                    :percentage="memberCompletionPct(m.name)"
-                    :color="memberCompletionPct(m.name) >= 60 ? '#10b981' : memberCompletionPct(m.name) >= 30 ? '#f59e0b' : '#ef4444'"
-                    style="width: 80px"
-                  />
+            <div class="stat-pill">
+              <div class="stat-pill__icon" style="background: rgba(245,158,11,0.12); color: var(--color-warning)">
+                <el-icon><Loading /></el-icon>
+              </div>
+              <div>
+                <div class="stat-pill__value" style="color: var(--color-warning)">{{ statusCount.IN_PROGRESS }}</div>
+                <div class="stat-pill__label">进行中</div>
+              </div>
+            </div>
+            <div class="stat-pill">
+              <div class="stat-pill__icon" style="background: rgba(16,185,129,0.12); color: var(--color-success)">
+                <el-icon><CircleCheck /></el-icon>
+              </div>
+              <div>
+                <div class="stat-pill__value" style="color: var(--color-success)">{{ statusCount.DONE }}</div>
+                <div class="stat-pill__label">已完成</div>
+              </div>
+            </div>
+            <div class="stat-pill">
+              <div class="stat-pill__icon" style="background: rgba(139,92,246,0.12); color: var(--color-accent)">
+                <el-icon><TrendCharts /></el-icon>
+              </div>
+              <div>
+                <div class="stat-pill__value" style="color: var(--color-accent)">{{ completionRate }}%</div>
+                <div class="stat-pill__label">完成率</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="overview__grid">
+            <!-- 任务状态分布 -->
+            <div class="ov-card">
+              <div class="ov-card__header">
+                <div class="ov-card__header-icon" style="background: rgba(99,102,241,0.12); color: var(--color-primary)">
+                  <el-icon><PieChart /></el-icon>
+                </div>
+                <span>任务状态分布</span>
+              </div>
+              <div ref="statusChartRef" class="ov-card__chart"></div>
+            </div>
+
+            <!-- 成员工作量 -->
+            <div class="ov-card">
+              <div class="ov-card__header">
+                <div class="ov-card__header-icon" style="background: rgba(245,158,11,0.12); color: var(--color-warning)">
+                  <el-icon><User /></el-icon>
+                </div>
+                <span>成员工作量</span>
+              </div>
+              <div v-if="memberData.length === 0" class="ov-card__empty">暂无数据</div>
+              <div v-else>
+                <div ref="memberChartRef" class="ov-card__chart ov-card__chart--sm"></div>
+                <div class="ov-member-list">
+                  <div v-for="m in memberData" :key="m.name" class="ov-member-row">
+                    <div class="ov-member-row__avatar" :style="{ background: avatarGradient(m.name) }">
+                      {{ m.name.charAt(0) }}
+                    </div>
+                    <span class="ov-member-row__name">{{ m.name }}</span>
+                    <span class="ov-member-row__count">{{ m.count }} 个</span>
+                    <el-progress
+                      :percentage="memberCompletionPct(m.name)"
+                      :color="progressColor(memberCompletionPct(m.name))"
+                      :stroke-width="6"
+                      style="flex: 1"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 即将到期 -->
+            <div class="ov-card">
+              <div class="ov-card__header">
+                <div class="ov-card__header-icon" style="background: rgba(239,68,68,0.12); color: var(--color-danger)">
+                  <el-icon><AlarmClock /></el-icon>
+                </div>
+                <span>即将到期</span>
+                <el-tag v-if="upcomingTasks.length" size="small" type="danger" effect="plain" round>
+                  {{ upcomingTasks.length }}
+                </el-tag>
+              </div>
+              <div v-if="upcomingTasks.length === 0" class="ov-card__empty">暂无近期截止的任务 🎉</div>
+              <div v-else class="ov-card__list">
+                <div
+                  v-for="t in upcomingTasks"
+                  :key="t.id"
+                  :class="['ov-task', { 'ov-task--overdue': isOverdue(t.dueDate) }]"
+                  @click="$router.push(`/projects/${projectId}/board?issue=${t.id}`)"
+                >
+                  <span class="ov-task__type">{{ typeIcon(t.type) }}</span>
+                  <span class="ov-task__key">{{ t.issueKey }}</span>
+                  <span class="ov-task__title">{{ t.title }}</span>
+                  <span class="ov-task__due">{{ t.dueDate }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 项目进度概览（替代原 Sprint 燃尽图） -->
+            <div class="ov-card">
+              <div class="ov-card__header">
+                <div class="ov-card__header-icon" style="background: rgba(6,182,212,0.12); color: #06b6d4">
+                  <el-icon><DataAnalysis /></el-icon>
+                </div>
+                <span>项目进度</span>
+              </div>
+              <div v-if="stats" ref="progressChartRef" class="ov-card__chart"></div>
+              <div v-else class="ov-card__empty">暂无任务数据</div>
+            </div>
+
+            <!-- 最近活动 -->
+            <div class="ov-card ov-card--wide">
+              <div class="ov-card__header">
+                <div class="ov-card__header-icon" style="background: rgba(148,163,184,0.15); color: var(--text-secondary)">
+                  <el-icon><Clock /></el-icon>
+                </div>
+                <span>最近活动</span>
+              </div>
+              <div v-if="recentActivities.length === 0" class="ov-card__empty">暂无动态</div>
+              <div v-else class="ov-activity-list">
+                <div v-for="a in recentActivities" :key="a.id" class="ov-activity-item">
+                  <div class="ov-activity-item__avatar" :style="{ background: avatarGradient(a.username) }">
+                    {{ a.username.charAt(0).toUpperCase() }}
+                  </div>
+                  <div class="ov-activity-item__content">
+                    <div class="ov-activity-item__text">
+                      <strong>{{ a.username }}</strong> {{ a.detail }}
+                    </div>
+                    <div class="ov-activity-item__time">{{ a.createdAt }}</div>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-          <!-- 即将到期任务 -->
-          <div class="ov-card">
-            <h4>即将到期</h4>
-            <div v-if="upcomingTasks.length === 0" class="ov-card__empty">
-              暂无近期截止的任务
-            </div>
-            <div v-else class="ov-card__list">
-              <div
-                v-for="t in upcomingTasks"
-                :key="t.id"
-                :class="['ov-task', { 'ov-task--overdue': isOverdue(t.dueDate) }]"
-                @click="$router.push(`/projects/${projectId}/board?issue=${t.id}`)"
-              >
-                <span class="ov-task__key">{{ t.issueKey }}</span>
-                <span class="ov-task__title">{{ t.title }}</span>
-                <span class="ov-task__due">{{ t.dueDate }}</span>
-              </div>
-            </div>
-          </div>
-          <!-- 燃尽图 -->
-          <div class="ov-card">
-            <h4>燃尽图</h4>
-            <div v-if="!activeSprint" class="ov-card__empty">暂无活跃 Sprint</div>
-            <div v-else ref="burndownChartRef" class="ov-card__chart" style="height: 220px"></div>
-          </div>
-          <!-- 最近活动 -->
-          <div class="ov-card">
-            <h4>最近活动</h4>
-            <div v-if="recentActivities.length === 0" class="ov-card__empty">暂无</div>
-            <div v-else class="ov-card__list">
-              <div v-for="a in recentActivities" :key="a.id" class="ov-activity">
-                <strong>{{ a.username }}</strong> {{ a.detail }}
-                <div class="ov-activity__time">{{ a.createdAt }}</div>
-              </div>
-            </div>
-          </div>
-        </div>
+        </template>
       </el-tab-pane>
 
       <el-tab-pane label="看板" name="board" lazy>
@@ -107,7 +198,7 @@ import * as echarts from "echarts"
 import { getBoard } from "@/api/board"
 import { getProjectById } from "@/api/project"
 import request from "@/api/request"
-import { getSprints, getBurndown } from "@/api/sprint"
+import { avatarGradient } from "@/utils/color"
 import SkeletonLoader from "@/components/common/SkeletonLoader.vue"
 import IssueDetailDialog from "@/components/issue/IssueDetailDialog.vue"
 import ProjectBoardView from "./ProjectBoard.vue"
@@ -124,15 +215,33 @@ const showCreateIssue = ref(false)
 
 const statusChartRef = ref<HTMLElement>()
 const memberChartRef = ref<HTMLElement>()
-const burndownChartRef = ref<HTMLElement>()
+const progressChartRef = ref<HTMLElement>()  // 替代原 burndownChartRef
 let charts: echarts.ECharts[] = []
 
-const activeSprint = ref<any>(null)
+const recentActivities = ref<any[]>([])
+const stats = ref<any>(null)  // 项目统计（替代 activeSprint）
+
+const TYPE_ICONS: Record<string, string> = { STORY: '📖', TASK: '✅', BUG: '🐛' }
+function typeIcon(t: string) { return TYPE_ICONS[t] || '📋' }
 
 const allIssues = computed(() => {
   const issues: any[] = []
   columns.value.forEach((c: any) => c.issues?.forEach((i: any) => issues.push(i)))
   return issues
+})
+
+const statusCount = computed(() => {
+  const count = { TODO: 0, IN_PROGRESS: 0, DONE: 0 }
+  allIssues.value.forEach((i: any) => {
+    if (count[i.status as keyof typeof count] !== undefined) count[i.status as keyof typeof count]++
+  })
+  return count
+})
+
+const completionRate = computed(() => {
+  const total = allIssues.value.length
+  if (total === 0) return 0
+  return Math.round((statusCount.value.DONE / total) * 100)
 })
 
 const memberData = computed(() => {
@@ -157,8 +266,6 @@ const upcomingTasks = computed(() => {
     .slice(0, 8)
 })
 
-const recentActivities = ref<any[]>([])
-
 function isOverdue(dateStr: string) {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
@@ -172,66 +279,51 @@ function memberCompletionPct(name: string): number {
   return Math.round((done / total) * 100)
 }
 
-async function fetchSprintAndBurndown() {
-  try {
-    const res = await getSprints(projectId)
-    const sprints = res.data || []
-    activeSprint.value = sprints.find((s: any) => s.isActive) || null
-    if (activeSprint.value) {
-      const burndownRes = await getBurndown(activeSprint.value.id)
-      const data = burndownRes.data
-      if (data && data.points && data.points.length > 0) {
-        await nextTick()
-        renderBurndownChart(data)
-      }
-    }
-  } catch { /* no sprint data */ }
+function progressColor(pct: number) {
+  if (pct >= 60) return '#10b981'
+  if (pct >= 30) return '#f59e0b'
+  return '#ef4444'
 }
 
-function renderBurndownChart(data: any) {
-  if (!burndownChartRef.value) return
-  const c = echarts.init(burndownChartRef.value)
+async function fetchProjectStats() {
+  try {
+    // 使用通用项目统计接口（不依赖 Sprint）
+    const res = await request.get(`/api/reports/stats/${projectId}`)
+    stats.value = res.data
+    await nextTick()
+    renderProgressChart()
+  } catch { /* no data */ }
+}
+
+/** 项目进度图 — 替代原 Sprint 燃尽图 */
+function renderProgressChart() {
+  if (!progressChartRef.value || !stats.value) return
+  const c = echarts.init(progressChartRef.value)
   charts.push(c)
-  const points = data.points || []
+  const so = stats.value.statusOverview || {}
+  const total = so.totalCount || 1
   c.setOption({
-    tooltip: { trigger: "axis" },
-    legend: {
-      bottom: 0,
-      data: ["理想剩余", "实际剩余"],
-      itemWidth: 10,
-      itemHeight: 10,
-      textStyle: { fontSize: 10 },
-    },
-    grid: { top: 10, right: 10, bottom: 30, left: 40 },
-    xAxis: {
-      type: "category",
-      data: points.map((p: any) => p.date),
-      axisLabel: { fontSize: 9, rotate: 30 },
-    },
-    yAxis: {
-      type: "value",
-      axisLabel: { fontSize: 10 },
-      minInterval: 1,
-    },
-    series: [
-      {
-        name: "理想剩余",
-        type: "line",
-        data: points.map((p: any) => p.idealRemaining),
-        smooth: true,
-        lineStyle: { color: "#94a3b8", type: "dashed", width: 2 },
-        itemStyle: { color: "#94a3b8" },
+    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+    legend: { orient: 'vertical', right: 10, top: 'center', itemWidth: 12, itemHeight: 12, textStyle: { fontSize: 12 } },
+    series: [{
+      type: 'pie',
+      radius: ['42%', '68%'],
+      center: ['38%', '50%'],
+      avoidLabelOverlap: false,
+      label: {
+        show: true,
+        position: 'center',
+        formatter: () => `{total|${total}}\n{label|任务总数}`,
+        rich: { total: { fontSize: 26, fontWeight: 'bold' }, label: { fontSize: 11, color: '#94a3b8', padding: [6,0,0,0] } },
       },
-      {
-        name: "实际剩余",
-        type: "line",
-        data: points.map((p: any) => p.actualRemaining),
-        smooth: true,
-        lineStyle: { color: "#4f6ef6", width: 2 },
-        itemStyle: { color: "#4f6ef6" },
-        areaStyle: { color: "rgba(79,110,246,0.1)" },
-      },
-    ],
+      data: [
+        { name: '待办', value: so.todoCount || 0, itemStyle: { color: '#94a3b8' } },
+        { name: '进行中', value: so.inProgressCount || 0, itemStyle: { color: '#f59e0b' } },
+        { name: '已完成', value: so.doneCount || 0, itemStyle: { color: '#10b981' } },
+      ],
+      itemStyle: { borderRadius: 6, borderColor: '#fff', borderWidth: 2 },
+      emphasis: { itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0,0,0,0.15)' } },
+    }],
   })
 }
 
@@ -246,13 +338,11 @@ async function fetchData() {
     columns.value = boardRes.data?.columns || []
     projectName.value = projRes.data?.name || ""
     teamId.value = projRes.data?.teamId || 0
-    // Filter activities for this project
-    const allActs = dashRes.data?.recentActivities || []
-    recentActivities.value = allActs.slice(0, 5)
+    recentActivities.value = (dashRes.data?.recentActivities || []).slice(0, 6)
   } finally {
     loading.value = false
   }
-  fetchSprintAndBurndown()
+  fetchProjectStats() // 替代原 fetchSprintAndBurndown
 }
 
 function renderCharts() {
@@ -260,19 +350,22 @@ function renderCharts() {
   if (!statusChartRef.value) return
   const c1 = echarts.init(statusChartRef.value)
   charts.push(c1)
-  const statusCount: Record<string, number> = { TODO: 0, IN_PROGRESS: 0, DONE: 0 }
-  allIssues.value.forEach((i: any) => { if (statusCount[i.status] !== undefined) statusCount[i.status]++ })
   c1.setOption({
-    tooltip: { trigger: "item" },
+    tooltip: { trigger: "item", formatter: '{b}: {c} ({d}%)' },
     legend: { bottom: 0, itemWidth: 8, itemHeight: 8, textStyle: { fontSize: 11 } },
     series: [{
-      type: "pie", radius: ["50%", "75%"], center: ["50%", "45%"],
+      type: "pie",
+      radius: ["48%", "72%"],
+      center: ["50%", "44%"],
+      padAngle: 3,
+      itemStyle: { borderRadius: 6 },
       data: [
-        { name: "待办", value: statusCount.TODO, itemStyle: { color: "#4f6ef6" } },
-        { name: "进行中", value: statusCount.IN_PROGRESS, itemStyle: { color: "#f59e0b" } },
-        { name: "已完成", value: statusCount.DONE, itemStyle: { color: "#10b981" } },
+        { name: "待办", value: statusCount.value.TODO, itemStyle: { color: "#6366f1" } },
+        { name: "进行中", value: statusCount.value.IN_PROGRESS, itemStyle: { color: "#f59e0b" } },
+        { name: "已完成", value: statusCount.value.DONE, itemStyle: { color: "#10b981" } },
       ],
-      label: { fontSize: 11 },
+      label: { fontSize: 11, formatter: '{b}\n{c}' },
+      emphasis: { scaleSize: 8 },
     }],
   })
 
@@ -281,13 +374,26 @@ function renderCharts() {
     charts.push(c2)
     c2.setOption({
       tooltip: { trigger: "axis" },
-      grid: { left: 60, right: 10, top: 8, bottom: 20 },
-      xAxis: { type: "value", minInterval: 1, axisLabel: { fontSize: 10 } },
-      yAxis: { type: "category", data: memberData.value.map((m: any) => m.name).reverse(), axisLabel: { fontSize: 10 } },
+      grid: { left: 70, right: 16, top: 8, bottom: 20 },
+      xAxis: { type: "value", minInterval: 1, axisLabel: { fontSize: 10, color: '#94a3b8' }, splitLine: { lineStyle: { color: '#f1f5f9' } } },
+      yAxis: {
+        type: "category",
+        data: memberData.value.map((m: any) => m.name).reverse(),
+        axisLabel: { fontSize: 11, color: '#64748b' },
+        axisLine: { show: false },
+        axisTick: { show: false },
+      },
       series: [{
-        type: "bar", data: memberData.value.map((m: any) => m.count).reverse(),
-        itemStyle: { color: "#4f6ef6", borderRadius: [0, 4, 4, 0] },
-        barWidth: 14,
+        type: "bar",
+        data: memberData.value.map((m: any) => m.count).reverse(),
+        itemStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+            { offset: 0, color: '#6366f1' },
+            { offset: 1, color: '#818cf8' },
+          ]),
+          borderRadius: [0, 6, 6, 0],
+        },
+        barWidth: 16,
       }],
     })
   }
@@ -299,14 +405,10 @@ function disposeCharts() {
 }
 
 function onTabChange(name: string | number) {
-  if (name === "overview") {
-    nextTick(renderCharts)
-  }
+  if (name === "overview") nextTick(renderCharts)
 }
 
-function onIssueCreated() {
-  fetchData()
-}
+function onIssueCreated() { fetchData().then(() => nextTick(renderCharts)) }
 
 onMounted(() => {
   fetchData().then(() => nextTick(renderCharts))
@@ -315,20 +417,64 @@ onMounted(() => {
 
 <style scoped lang="scss">
 .overview {
-  &__header {
+  &__hero {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 8px;
-    > div { display: flex; align-items: center; gap: 4px; }
+    margin-bottom: 20px;
+    gap: 16px;
+    flex-wrap: wrap;
   }
-  &__title { font-size: 20px; font-weight: 700; }
+
+  &__hero-left {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  &__back { color: var(--text-secondary); }
+
+  &__project-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-weight: 800;
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+
+  &__title {
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -0.3px;
+    color: var(--text-primary);
+  }
+
+  &__subtitle {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+  }
+
+  &__tabs { margin-top: 4px; }
+
   &__loading { padding: 16px 0; }
+
+  &__stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin-bottom: 16px;
+  }
+
   &__grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 14px;
-    margin-top: 12px;
   }
 }
 
@@ -336,44 +482,163 @@ onMounted(() => {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius-lg);
-  padding: 16px;
-  h4 { font-size: 14px; font-weight: 600; margin-bottom: 10px; color: var(--text-primary); }
-  &__chart { width: 100%; height: 210px; }
-  &__empty { text-align: center; padding: 24px; color: var(--text-secondary); font-size: 13px; }
-  &__list { max-height: 220px; overflow-y: auto; }
+  padding: 16px 18px;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--transition-normal);
+
+  &:hover { box-shadow: var(--shadow-md); }
+
+  &--wide { grid-column: 1 / -1; }
+
+  &__header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 12px;
+  }
+
+  &__header-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+  }
+
+  &__badge {
+    margin-left: auto;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--color-primary);
+    background: rgba(99,102,241,0.1);
+    padding: 3px 10px;
+    border-radius: 8px;
+  }
+
+  &__chart {
+    width: 100%;
+    height: 220px;
+
+    &--sm { height: 140px; }
+  }
+
+  &__empty {
+    text-align: center;
+    padding: 32px 16px;
+    color: var(--text-secondary);
+    font-size: 13px;
+  }
+
+  &__list { max-height: 240px; overflow-y: auto; }
 }
 
 .ov-task {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 0;
+  gap: 8px;
+  padding: 9px 0;
   border-bottom: 1px solid var(--border-color-light);
   cursor: pointer;
   font-size: 13px;
+  transition: background var(--transition-fast);
+
   &:last-child { border-bottom: none; }
   &:hover { color: var(--color-primary); }
-  &--overdue &__due { color: var(--color-danger); font-weight: 600; }
+
+  &--overdue .ov-task__due { color: var(--color-danger); font-weight: 700; }
+
+  &__type { font-size: 14px; flex-shrink: 0; }
   &__key { font-size: 11px; color: var(--text-secondary); font-family: monospace; flex-shrink: 0; }
   &__title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   &__due { font-size: 11px; color: var(--text-secondary); flex-shrink: 0; }
 }
 
-.ov-activity {
-  padding: 8px 0;
-  border-bottom: 1px solid var(--border-color-light);
-  font-size: 13px;
-  &:last-child { border-bottom: none; }
-  &__time { font-size: 11px; color: var(--text-placeholder); margin-top: 2px; }
+.ov-member-list {
+  margin-top: 8px;
+  max-height: 140px;
+  overflow-y: auto;
 }
 
 .ov-member-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 0;
+  padding: 6px 0;
   font-size: 12px;
-  &__name { flex-shrink: 0; width: 60px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  &__count { color: var(--text-secondary); flex-shrink: 0; }
+
+  &__avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  &__name {
+    width: 56px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 500;
+  }
+
+  &__count {
+    color: var(--text-secondary);
+    flex-shrink: 0;
+    width: 36px;
+  }
+}
+
+.ov-activity-list { max-height: 260px; overflow-y: auto; }
+
+.ov-activity-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-color-light);
+
+  &:last-child { border-bottom: none; }
+
+  &__avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  &__text {
+    font-size: 13px;
+    color: var(--text-regular);
+    line-height: 1.5;
+    strong { color: var(--text-primary); }
+  }
+
+  &__time {
+    font-size: 11px;
+    color: var(--text-placeholder);
+    margin-top: 3px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .overview__stats { grid-template-columns: repeat(2, 1fr); }
+  .overview__grid { grid-template-columns: 1fr; }
 }
 </style>

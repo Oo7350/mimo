@@ -52,15 +52,13 @@ public class NotificationService {
     }
 
     public void markAllRead(Long userId) {
-        List<Notification> unread = notificationMapper.selectList(
+        // 批量更新，避免逐条循环
+        Notification batchUpdate = new Notification();
+        batchUpdate.setIsRead(1);
+        notificationMapper.update(batchUpdate,
             new LambdaQueryWrapper<Notification>()
                 .eq(Notification::getUserId, userId)
-                .eq(Notification::getIsRead, 0)
-        );
-        for (Notification n : unread) {
-            n.setIsRead(1);
-            notificationMapper.updateById(n);
-        }
+                .eq(Notification::getIsRead, 0));
     }
 
     private NotificationVO toVO(Notification n) {

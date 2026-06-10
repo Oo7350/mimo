@@ -45,10 +45,20 @@ public class IssueService {
         Project project = projectMapper.selectById(request.getProjectId());
         if (project == null) throw new BusinessException(ResultCode.PROJECT_NOT_FOUND);
 
-        // Generate issue key
-        long count = issueMapper.selectCount(
-                new LambdaQueryWrapper<Issue>().eq(Issue::getProjectId, request.getProjectId()));
-        String key = project.getKey() + "-" + (count + 1);
+        // Generate issue key — 查询当前项目最大编号，避免并发冲突和软删除计数错误
+        String keyPrefix = project.getKey() + "-";
+        Issue maxKeyIssue = issueMapper.selectOne(
+            new LambdaQueryWrapper<Issue>()
+                .eq(Issue::getProjectId, request.getProjectId())
+                .likeRight(Issue::getIssueKey, keyPrefix)
+                .orderByDesc(Issue::getId)
+                .last("LIMIT 1"));
+        int nextNum = 1;
+        if (maxKeyIssue != null && maxKeyIssue.getIssueKey() != null) {
+            String numStr = maxKeyIssue.getIssueKey().substring(keyPrefix.length());
+            try { nextNum = Integer.parseInt(numStr) + 1; } catch (NumberFormatException ignored) {}
+        }
+        String key = project.getKey() + "-" + nextNum;
 
         Issue issue = new Issue();
         issue.setProjectId(request.getProjectId());
@@ -414,6 +424,7 @@ public class IssueService {
         vo.setActualResult(issue.getActualResult());
         vo.setFoundVersion(issue.getFoundVersion());
         vo.setFixedVersion(issue.getFixedVersion());
+        vo.setProjectId(issue.getProjectId());
 
         if (issue.getColumnId() != null) {
             BoardColumn col = boardColumnMapper.selectById(issue.getColumnId());

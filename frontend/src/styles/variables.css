@@ -1,15 +1,24 @@
 :root {
   /* Primary palette */
-  --color-primary: #4f6ef6;
-  --color-primary-light: #7b93fa;
-  --color-primary-lighter: #b8c7fd;
-  --color-primary-dark: #3d56d4;
+  --color-primary: #6366f1;
+  --color-primary-light: #818cf8;
+  --color-primary-lighter: #c7d2fe;
+  --color-primary-dark: #4f46e5;
+
+  /* Accent */
+  --color-accent: #8b5cf6;
+  --color-accent-light: #a78bfa;
 
   /* Status colors */
   --color-success: #10b981;
   --color-warning: #f59e0b;
   --color-danger: #ef4444;
   --color-info: #6366f1;
+
+  /* Issue type colors */
+  --type-story: #10b981;
+  --type-task: #6366f1;
+  --type-bug: #ef4444;
 
   /* Priority colors */
   --priority-highest: #ef4444;
@@ -19,20 +28,22 @@
   --priority-lowest: #94a3b8;
 
   /* Backgrounds */
-  --bg-page: #f0f2f8;
+  --bg-page: #f4f6fb;
+  --bg-page-pattern: radial-gradient(circle at 20% 20%, rgba(99, 102, 241, 0.04) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(139, 92, 246, 0.04) 0%, transparent 50%);
   --bg-card: #ffffff;
-  --bg-column: #f1f3f8;
+  --bg-column: #eef1f7;
   --bg-hover: #f8f9fc;
-  --bg-sidebar: #1d1e2c;
-  --bg-sidebar-hover: #262837;
-  --bg-sidebar-active: rgba(79, 110, 246, 0.15);
+  --bg-sidebar: #13141f;
+  --bg-sidebar-hover: #1e1f2e;
+  --bg-sidebar-active: rgba(99, 102, 241, 0.18);
 
   /* Text */
-  --text-primary: #1e293b;
+  --text-primary: #0f172a;
   --text-regular: #475569;
   --text-secondary: #94a3b8;
   --text-placeholder: #cbd5e1;
-  --text-sidebar: #a0a4b8;
+  --text-sidebar: #9498ad;
   --text-sidebar-active: #ffffff;
 
   /* Borders */
@@ -44,11 +55,17 @@
   --border-radius-xl: 18px;
 
   /* Shadows */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.08);
-  --shadow-xl: 0 12px 40px rgba(0, 0, 0, 0.10);
-  --shadow-dialog: 0 20px 60px rgba(0, 0, 0, 0.12);
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 4px 16px rgba(15, 23, 42, 0.06);
+  --shadow-lg: 0 8px 28px rgba(15, 23, 42, 0.08);
+  --shadow-xl: 0 16px 48px rgba(15, 23, 42, 0.10);
+  --shadow-dialog: 0 20px 60px rgba(15, 23, 42, 0.14);
+  --shadow-card-hover: 0 8px 24px rgba(99, 102, 241, 0.12);
+
+  /* Gradients */
+  --gradient-primary: linear-gradient(135deg, #6366f1 0%, #818cf8 100%);
+  --gradient-header: linear-gradient(135deg, #4f46e5 0%, #6366f1 50%, #818cf8 100%);
+  --gradient-hero: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
 
   /* Layout */
   --header-height: 56px;
@@ -62,4 +79,58 @@
 
   /* Typography */
   --font-family: "Inter", "Helvetica Neue", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+
+  /* Element Plus overrides */
+  --el-color-primary: #6366f1;
+  --el-color-primary-light-3: #818cf8;
+  --el-color-primary-light-5: #a5b4fc;
+  --el-color-primary-light-7: #c7d2fe;
+  --el-color-primary-light-8: #ddd6fe;
+  --el-color-primary-light-9: #eef2ff;
+  --el-color-primary-dark-2: #4f46e5;
+}
+
+/* ---------- Dark theme ---------- */
+[data-theme="dark"] {
+  --color-primary: #818cf8;
+  --color-primary-light: #a5b4fc;
+  --color-primary-dark: #6366f1;
+
+  --bg-page: #0c0e14;
+  --bg-page-pattern: radial-gradient(circle at 20% 20%, rgba(99, 102, 241, 0.08) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(139, 92, 246, 0.06) 0%, transparent 50%);
+  --bg-card: #161821;
+  --bg-column: #12141c;
+  --bg-hover: #1e2130;
+  --bg-sidebar: #0a0b10;
+  --bg-sidebar-hover: #161821;
+  --bg-sidebar-active: rgba(129, 140, 248, 0.2);
+
+  --text-primary: #f1f5f9;
+  --text-regular: #cbd5e1;
+  --text-secondary: #64748b;
+  --text-placeholder: #475569;
+  --text-sidebar: #8b8fa3;
+  --text-sidebar-active: #ffffff;
+
+  --border-color: #252836;
+  --border-color-light: #1e2130;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.25);
+  --shadow-lg: 0 8px 28px rgba(0, 0, 0, 0.3);
+  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.35);
+  --shadow-dialog: 0 20px 60px rgba(0, 0, 0, 0.45);
+  --shadow-card-hover: 0 8px 24px rgba(99, 102, 241, 0.2);
+
+  --gradient-header: linear-gradient(135deg, #312e81 0%, #4338ca 50%, #6366f1 100%);
+  --gradient-hero: linear-gradient(135deg, #4338ca 0%, #7c3aed 100%);
+
+  --el-bg-color: #161821;
+  --el-bg-color-overlay: #1e2130;
+  --el-fill-color-blank: #161821;
+  --el-text-color-primary: #f1f5f9;
+  --el-text-color-regular: #cbd5e1;
+  --el-border-color: #252836;
+  --el-border-color-light: #1e2130;
 }

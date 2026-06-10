@@ -40,37 +40,59 @@ public class DashboardService {
         int doneIssues = issueMapper.selectCount(
                 issueQw.clone().eq(Issue::getStatus, "DONE")).intValue();
 
-        // 活跃 Sprint
+        // 活跃 Sprint — 批量优化：避免循环内逐条查询
         List<SprintInfo> activeSprints = List.of();
         if (!projectIds.isEmpty()) {
             List<Sprint> sprints = sprintMapper.selectList(
                     new LambdaQueryWrapper<Sprint>()
                             .in(Sprint::getProjectId, projectIds)
                             .eq(Sprint::getIsActive, 1));
+            // 批量查询 Sprint 关联的项目
+            Set<Long> sprintProjectIds = sprints.stream().map(Sprint::getProjectId).collect(Collectors.toSet());
+            Map<Long, Project> projectMap = sprintProjectIds.isEmpty() ? Collections.emptyMap() :
+                    projectMapper.selectBatchIds(sprintProjectIds).stream()
+                            .collect(Collectors.toMap(Project::getId, p -> p));
+            // 批量统计每个 Sprint 的 issue 数量
+            Map<Long, Long> sprintTotalMap = new HashMap<>();
+            Map<Long, Long> sprintDoneMap = new HashMap<>();
+            if (!sprints.isEmpty()) {
+                for (Sprint s : sprints) {
+                    long total = issueMapper.selectCount(
+                            new LambdaQueryWrapper<Issue>().eq(Issue::getSprintId, s.getId()));
+                    long done = issueMapper.selectCount(
+                            new LambdaQueryWrapper<Issue>().eq(Issue::getSprintId, s.getId())
+                                    .eq(Issue::getStatus, "DONE"));
+                    sprintTotalMap.put(s.getId(), total);
+                    sprintDoneMap.put(s.getId(), done);
+                }
+            }
+            final Map<Long, Project> pm = projectMap;
             activeSprints = sprints.stream().map(s -> {
-                Project p = projectMapper.selectById(s.getProjectId());
-                long total = issueMapper.selectCount(
-                        new LambdaQueryWrapper<Issue>().eq(Issue::getSprintId, s.getId()));
-                long done = issueMapper.selectCount(
-                        new LambdaQueryWrapper<Issue>().eq(Issue::getSprintId, s.getId())
-                                .eq(Issue::getStatus, "DONE"));
+                Project p = pm.get(s.getProjectId());
                 return SprintInfo.builder()
                         .id(s.getId()).name(s.getName())
                         .projectId(s.getProjectId())
                         .projectName(p != null ? p.getName() : "")
                         .startDate(s.getStartDate().toString())
                         .endDate(s.getEndDate().toString())
-                        .totalIssues((int) total).completedIssues((int) done)
+                        .totalIssues(sprintTotalMap.getOrDefault(s.getId(), 0L).intValue())
+                        .completedIssues(sprintDoneMap.getOrDefault(s.getId(), 0L).intValue())
                         .build();
             }).collect(Collectors.toList());
         }
 
-        // 我的项目
+        // 我的项目 — 批量查询团队信息，避免 N+1
         List<ProjectInfo> myProjects = List.of();
         if (!projectIds.isEmpty()) {
             List<Project> projects = projectMapper.selectBatchIds(projectIds);
+            Set<Long> teamIds = projects.stream().map(Project::getTeamId)
+                    .filter(Objects::nonNull).collect(Collectors.toSet());
+            Map<Long, Team> teamMap = teamIds.isEmpty() ? Collections.emptyMap() :
+                    teamMapper.selectBatchIds(teamIds).stream()
+                            .collect(Collectors.toMap(Team::getId, t -> t));
+            final Map<Long, Team> tm = teamMap;
             myProjects = projects.stream().map(p -> {
-                Team t = teamMapper.selectById(p.getTeamId());
+                Team t = tm.get(p.getTeamId());
                 return ProjectInfo.builder()
                         .id(p.getId()).name(p.getName()).key(p.getKey())
                         .template(p.getTemplate())

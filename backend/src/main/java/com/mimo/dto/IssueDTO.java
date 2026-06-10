@@ -131,6 +131,7 @@ public class IssueDTO {
         private String actualResult;
         private String foundVersion;
         private String fixedVersion;
+        private Long projectId;
     }
 
     @Data

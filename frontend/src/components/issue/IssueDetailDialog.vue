@@ -64,14 +64,24 @@
             </el-radio-group>
           </div>
 
-          <!-- Status (edit mode, STORY/TASK only) -->
-          <div v-if="isEdit && form.type !== 'BUG'" style="margin-bottom: 12px">
-            <el-form-item label="状态">
+          <!-- Status (edit mode) — STORY/TASK 用通用 status，BUG 用 bugStatus -->
+          <div v-if="isEdit" style="margin-bottom: 12px">
+            <el-form-item v-if="form.type !== 'BUG'" label="状态">
               <el-select v-model="form.status" style="width: 200px" @change="onStatusChange">
                 <el-option label="待办" value="TODO" />
                 <el-option label="进行中" value="IN_PROGRESS" />
                 <el-option label="已完成" value="DONE" />
               </el-select>
+            </el-form-item>
+            <el-form-item v-else label="看板列位置">
+              <el-select v-model="form.status" style="width: 200px" @change="onStatusChange">
+                <el-option label="待办 (NEW)" value="TODO" />
+                <el-option label="进行中 (IN_PROGRESS)" value="IN_PROGRESS" />
+                <el-option label="已完成 (CLOSED)" value="DONE" />
+              </el-select>
+              <div style="color: var(--text-secondary); font-size: 11px; margin-top: 4px">
+                拖拽卡片到不同列也可自动切换状态
+              </div>
             </el-form-item>
           </div>
 
@@ -422,6 +432,12 @@ function statusToColumn(status: string): number | null {
 function onStatusChange(newStatus: string) {
   const colId = statusToColumn(newStatus)
   if (colId != null) form.columnId = colId
+  // BUG 类型：同步 bugStatus
+  if (form.type === 'BUG') {
+    if (newStatus === 'DONE') form.bugStatus = 'CLOSED'
+    else if (newStatus === 'IN_PROGRESS') form.bugStatus = 'IN_PROGRESS'
+    else form.bugStatus = 'NEW'
+  }
 }
 
 // ---- Acceptance Criteria handlers ----
@@ -473,7 +489,13 @@ async function handleSave() {
       projectId: props.projectId,
       columnId: colId,
       environment: env,
-      // Clean up type-specific fields that don't apply
+    }
+
+    // BUG 类型：确保 status 和 bugStatus 同步
+    if (form.type === 'BUG' && isEdit.value) {
+      if (form.status === 'DONE') data.bugStatus = form.bugStatus || 'CLOSED'
+      else if (form.status === 'IN_PROGRESS') data.bugStatus = form.bugStatus || 'IN_PROGRESS'
+      else data.bugStatus = form.bugStatus || 'NEW'
     }
 
     // For create mode, strip edit-only fields

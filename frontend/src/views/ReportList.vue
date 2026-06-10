@@ -1,22 +1,25 @@
 <template>
-  <div>
-    <el-button @click="$router.back()" text><el-icon><ArrowLeft /></el-icon> 返回看板</el-button>
-
-    <el-tabs v-model="activeTab" style="margin-top: 16px">
+  <div class="report-page">
+    <el-tabs v-model="activeTab" class="report-page__tabs">
       <el-tab-pane label="报告列表" name="list">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px">
-          <h2>日报/周报</h2>
-          <div style="display: flex; gap: 8px">
-            <el-select v-model="filterType" style="width: 120px" @change="fetchReports">
-              <el-option label="全部" value="" />
-              <el-option label="日报" value="DAILY" />
-              <el-option label="周报" value="WEEKLY" />
-            </el-select>
-            <el-button type="primary" @click="showGenerate = true">生成报告</el-button>
-          </div>
-        </div>
+        <PageHeader title="日报 / 周报" subtitle="生成、查看和导出项目报告">
+          <template #action>
+            <div class="report-page__actions">
+              <el-select v-model="filterType" style="width: 120px" @change="fetchReports">
+                <el-option label="全部" value="" />
+                <el-option label="日报" value="DAILY" />
+                <el-option label="周报" value="WEEKLY" />
+              </el-select>
+              <el-button type="primary" @click="showGenerate = true">
+                <el-icon><Plus /></el-icon> 生成报告
+              </el-button>
+            </div>
+          </template>
+        </PageHeader>
 
-    <el-table :data="reports" stripe>
+        <div class="settings-card">
+          <div class="settings-card__body settings-card__body--flush">
+            <el-table :data="reports" stripe>
       <el-table-column prop="type" label="类型" width="80">
         <template #default="{ row }">
           <el-tag :type="row.type === 'DAILY' ? '' : 'warning'" size="small">
@@ -43,8 +46,21 @@
         </template>
       </el-table-column>
     </el-table>
+          </div>
+        </div>
 
-    <el-empty v-if="reports.length === 0" description="暂无报告" />
+    <el-empty v-if="reports.length === 0" description="暂无报告">
+      <template #image>
+        <el-icon :size="60" color="#c0c4cc"><Document /></el-icon>
+      </template>
+      <template #description>
+        <p style="color: var(--text-secondary); margin-bottom: 12px">还没有生成过报告</p>
+        <p style="color: var(--text-secondary); font-size: 12px">点击上方「生成报告」按钮创建日报或周报</p>
+      </template>
+      <el-button type="primary" @click="showGenerate = true">
+        <el-icon><Plus /></el-icon> 立即生成
+      </el-button>
+    </el-empty>
 
     <!-- 生成报告 Dialog -->
     <el-dialog v-model="showGenerate" title="生成报告" width="400px">
@@ -80,23 +96,36 @@
 
       <!-- 数据看板 Tab -->
       <el-tab-pane label="数据看板" name="stats">
-        <div v-if="statsLoading" style="text-align: center; padding: 40px; color: var(--text-secondary)">
-          加载中...
-        </div>
+        <PageHeader title="数据看板" subtitle="项目报告数据可视化分析" />
+        <div v-if="statsLoading" class="report-page__loading">加载中...</div>
         <div v-else class="stats-grid">
-          <!-- 本周完成任务趋势 -->
+          <!-- 任务类型分布（始终有数据） -->
           <div class="stats-card">
+            <h3>任务类型分布</h3>
+            <div ref="typeChartRef" class="stats-chart"></div>
+          </div>
+          <!-- 状态概览（始终有数据） -->
+          <div class="stats-card">
+            <h3>任务状态概览</h3>
+            <div ref="statusChartRef" class="stats-chart"></div>
+          </div>
+          <!-- 每日活动（始终有数据） -->
+          <div class="stats-card stats-card--wide">
+            <h3>近 7 天任务活动</h3>
+            <div ref="activityChartRef" class="stats-chart"></div>
+          </div>
+
+          <!-- 原有图表：仅在数据可用时显示 -->
+          <div v-if="hasWeeklyData" class="stats-card">
             <h3>本周完成任务趋势</h3>
             <div ref="weeklyChartRef" class="stats-chart"></div>
           </div>
-          <!-- 成员任务完成分布 -->
-          <div class="stats-card">
+          <div v-if="hasMemberData" class="stats-card">
             <h3>成员任务完成分布</h3>
             <div ref="memberChartRef" class="stats-chart"></div>
           </div>
-          <!-- Sprint 故事点完成率 -->
-          <div class="stats-card">
-            <h3>最近 Sprint 故事点完成率</h3>
+          <div v-if="hasSprintData" class="stats-card">
+            <h3>Sprint 故事点完成率</h3>
             <div ref="sprintChartRef" class="stats-chart"></div>
           </div>
         </div>
@@ -112,7 +141,9 @@ import { useRoute } from "vue-router";
 import { generateReport, getReports, submitReport, updateReport, getProjectStats } from "@/api/report";
 import { renderMarkdown } from "@/utils/markdown";
 import { ElMessage } from "element-plus";
+import { Plus, Document, User, TrendCharts, DataAnalysis } from "@element-plus/icons-vue";
 import html2pdf from "html2pdf.js";
+import PageHeader from "@/components/common/PageHeader.vue";
 
 const route = useRoute();
 const projectId = Number(route.params.id);
@@ -191,9 +222,18 @@ onMounted(fetchReports);
 // Stats Tab
 const activeTab = ref("list");
 const statsLoading = ref(false);
+// 新增通用图表 refs
+const typeChartRef = ref<HTMLElement>();
+const statusChartRef = ref<HTMLElement>();
+const activityChartRef = ref<HTMLElement>();
+// 原有图表 refs
 const weeklyChartRef = ref<HTMLElement>();
 const memberChartRef = ref<HTMLElement>();
 const sprintChartRef = ref<HTMLElement>();
+// 数据看板空状态判断
+const hasWeeklyData = ref(false);
+const hasMemberData = ref(false);
+const hasSprintData = ref(false);
 let charts: echarts.ECharts[] = [];
 
 function disposeCharts() {
@@ -206,11 +246,23 @@ async function loadStats() {
   try {
     const res = await getProjectStats(projectId);
     const data = res.data;
+    // 原有数据（条件显示）
+    const weekly = data.weeklyCompleted || [];
+    const members = data.memberDistribution || [];
+    const sprints = data.sprintVelocity || [];
+    hasWeeklyData.value = weekly.some((i: any) => i.count > 0);
+    hasMemberData.value = members.length > 0;
+    hasSprintData.value = sprints.length > 0;
     await nextTick();
     disposeCharts();
-    renderWeeklyChart(data.weeklyCompleted || []);
-    renderMemberChart(data.memberDistribution || []);
-    renderSprintChart(data.sprintVelocity || []);
+    // 始终渲染的通用图表
+    renderTypeChart(data.typeDistribution || []);
+    renderStatusChart(data.statusOverview || {});
+    renderActivityChart(data.weeklyActivity || []);
+    // 条件渲染的原有图表
+    if (hasWeeklyData.value) renderWeeklyChart(weekly);
+    if (hasMemberData.value) renderMemberChart(members);
+    if (hasSprintData.value) renderSprintChart(sprints);
   } catch { /* handled */ }
   finally { statsLoading.value = false; }
 }
@@ -260,7 +312,78 @@ function renderSprintChart(d: any[]) {
     yAxis: { type: 'value', axisLabel: { fontSize: 11 } },
     series: [
       { name: '总故事点', type: 'bar', data: d.map((i: any) => i.totalPoints), itemStyle: { color: '#cbd5e1', borderRadius: [4,4,0,0] }, barGap: '10%' },
-      { name: '已完成', type: 'bar', data: d.map((i: any) => i.completedPoints), itemStyle: { color: '#4f6ef6', borderRadius: [4,4,0,0] } },
+      { name: '已完成', type: 'bar', data: d.map((i: any) => i.completedPoints), itemStyle: { color: '#6366f1', borderRadius: [4,4,0,0] } },
+    ],
+    legend: { bottom: 0, itemWidth: 10, itemHeight: 10, textStyle: { fontSize: 11 } },
+  });
+}
+
+// === 新增：通用图表（始终有数据）===
+
+/** 任务类型分布 — 饼图 */
+function renderTypeChart(d: any[]) {
+  if (!typeChartRef.value) return;
+  const c = echarts.init(typeChartRef.value);
+  charts.push(c);
+  const colors = ['#6366f1', '#ef4444', '#10b981'];
+  c.setOption({
+    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+    legend: { orient: 'vertical', right: 5, top: 'center', itemWidth: 10, itemHeight: 10, textStyle: { fontSize: 12 } },
+    series: [{
+      type: 'pie',
+      radius: ['45%', '70%'],
+      center: ['35%', '50%'],
+      avoidLabelOverlap: false,
+      label: { show: true, formatter: '{b}\n{c}', fontSize: 11 },
+      data: d.map((item: any) => ({ name: item.label, value: item.count })),
+      itemStyle: { borderRadius: 6, borderColor: '#fff', borderWidth: 2 },
+      color: colors,
+    }],
+  });
+}
+
+/** 状态概览 — 环形进度 */
+function renderStatusChart(overview: any) {
+  if (!statusChartRef.value) return;
+  const c = echarts.init(statusChartRef.value);
+  charts.push(c);
+  const total = overview.totalCount || 1;
+  c.setOption({
+    tooltip: { trigger: 'item', formatter: '{b}: {c}' },
+    legend: { orient: 'vertical', right: 5, top: 'center', itemWidth: 10, itemHeight: 10, textStyle: { fontSize: 12 } },
+    series: [{
+      type: 'pie',
+      radius: ['40%', '68%'],
+      center: ['35%', '50%'],
+      label: {
+        show: true,
+        position: 'center',
+        formatter: () => `{total|${total}}\n{label|任务总数}`,
+        rich: { total: { fontSize: 24, fontWeight: 'bold', color: '#0f172a' }, label: { fontSize: 11, color: '#94a3b8', padding: [4, 0, 0, 0] } },
+      },
+      data: [
+        { name: '待办', value: overview.todoCount || 0, itemStyle: { color: '#94a3b8' } },
+        { name: '进行中', value: overview.inProgressCount || 0, itemStyle: { color: '#f59e0b' } },
+        { name: '已完成', value: overview.doneCount || 0, itemStyle: { color: '#10b981' } },
+      ],
+      itemStyle: { borderRadius: 6, borderColor: '#fff', borderWidth: 2 },
+    }],
+  });
+}
+
+/** 每日活动 — 柱状堆叠图 */
+function renderActivityChart(d: any[]) {
+  if (!activityChartRef.value) return;
+  const c = echarts.init(activityChartRef.value);
+  charts.push(c);
+  c.setOption({
+    tooltip: { trigger: 'axis' },
+    grid: { top: 15, right: 16, bottom: 25, left: 38 },
+    xAxis: { type: 'category', data: d.map((i: any) => i.date), axisLabel: { fontSize: 11 } },
+    yAxis: { type: 'value', axisLabel: { fontSize: 11 } },
+    series: [
+      { name: '新建', type: 'bar', stack: 'activity', data: d.map((i: any) => i.created), itemStyle: { color: '#6366f1', borderRadius: [3,3,0,0] }, barMaxWidth: 28 },
+      { name: '更新', type: 'bar', stack: 'activity', data: d.map((i: any) => i.updated), itemStyle: { color: '#a78bfa', borderRadius: [0,0,3,3] }, barMaxWidth: 28 },
     ],
     legend: { bottom: 0, itemWidth: 10, itemHeight: 10, textStyle: { fontSize: 11 } },
   });
@@ -274,6 +397,23 @@ watch(activeTab, (v) => {
 </script>
 
 <style scoped>
+.report-page {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.report-page__actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.report-page__loading {
+  text-align: center;
+  padding: 40px;
+  color: var(--text-secondary);
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -284,15 +424,41 @@ watch(activeTab, (v) => {
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius-lg);
   padding: 16px;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--transition-normal);
+}
+.stats-card:hover {
+  box-shadow: var(--shadow-md);
+}
+.stats-card--wide {
+  grid-column: 1 / -1; /* 占满整行 */
 }
 .stats-card:nth-child(3) {
   grid-column: 1 / -1;
 }
 .stats-card h3 {
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
   margin-bottom: 12px;
   color: var(--text-primary);
+}
+.stats-card__empty-hint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 16px;
+  text-align: center;
+  p {
+    margin: 10px 0 4px;
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+}
+.stats-card__empty-sub {
+  font-size: 11px;
+  color: var(--text-secondary);
+  opacity: 0.7;
 }
 .stats-chart {
   width: 100%;
@@ -300,5 +466,9 @@ watch(activeTab, (v) => {
 }
 .stats-card:nth-child(3) .stats-chart {
   height: 280px;
+}
+
+.settings-card__body--flush {
+  padding: 0;
 }
 </style>
