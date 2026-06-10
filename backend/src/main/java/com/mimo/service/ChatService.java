@@ -2,7 +2,9 @@ package com.mimo.service;
 
 import com.mimo.dto.ChatMessageDTO.*;
 import com.mimo.entity.ChatMessage;
+import com.mimo.entity.User;
 import com.mimo.mapper.ChatMessageMapper;
+import com.mimo.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -17,6 +19,7 @@ import java.util.stream.Collectors;
 public class ChatService {
 
     private final ChatMessageMapper chatMessageMapper;
+    private final UserMapper userMapper;
     private final WebSocketService webSocketService;
 
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
@@ -24,7 +27,10 @@ public class ChatService {
     /**
      * 发送消息：保存到数据库 + WebSocket 广播
      */
-    public ChatMessageVO send(SendRequest request, Long senderId, String senderName) {
+    public ChatMessageVO send(SendRequest request, Long senderId) {
+        User user = userMapper.selectById(senderId);
+        String senderName = user != null ? user.getUsername() : "未知用户";
+
         ChatMessage msg = new ChatMessage();
         msg.setTeamId(request.getTeamId());
         msg.setSenderId(senderId);
