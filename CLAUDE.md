@@ -6,14 +6,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Mimo is a lightweight Trello-like project management platform for small teams. It supports team collaboration, kanban task tracking, and progress visualization.
 
-- **Version**: v2.0.0 — Issue Type Specialization (2026-06-08)
+- **Version**: v2.2.0 — Team Chat & UI Differentiation (2026-06-10)
+- **Previous**: v2.1.0 — UI Enhancement & Command Palette (2026-06-10)
 - **GitHub**: https://github.com/Oo7350/mimo
 - **API docs**: `接口文档.md` (60+ endpoints, Chinese)
 - **User manual**: `操作手册.md` (Chinese)
 
 ## Tech Stack
 
-- **Frontend**: Vue 3 + Vite + Element Plus + Pinia + Vue Router + ECharts + vuedraggable + driver.js + marked + SockJS + STOMP.js + html2pdf.js + DeepSeek API
+- **Frontend**: Vue 3 + Vite + Element Plus + Pinia + Vue Router + ECharts + vuedraggable + driver.js + marked + SockJS + STOMP.js + html2pdf.js + DeepSeek API + Inter font
 - **Backend**: Spring Boot 2.7.18 (Java 17+) + MyBatis-Plus 3.5.3.1 + MySQL 8.0 + Redis + Spring Security + JWT (jjwt 0.11.5) + Spring WebSocket + STOMP
 - **Deployment**: Docker Compose (Nginx + Spring Boot + MySQL + Redis)
 - **Build**: Maven (backend), npm (frontend)
@@ -83,10 +84,10 @@ Single backend + RBAC with two roles: `ROLE_ADMIN` (team/project admin) and `ROL
 |---------|---------|
 | `common/` | `Result<T>` response wrapper, `ResultCode` enum, `BusinessException`, `GlobalExceptionHandler` |
 | `config/` | `SecurityConfig`, `JwtAuthenticationFilter`, `CorsConfig`, `MyBatisPlusConfig`, `WebSocketConfig`, `WebSocketAuthInterceptor` |
-| `controller/` | 12 REST controllers under `/api/*` |
-| `service/` | 12 service classes including `WebSocketService` for real-time push |
+| `controller/` | 13 REST controllers under `/api/*` |
+| `service/` | 13 service classes including `WebSocketService` for real-time push and `ChatService` for team chat |
 | `mapper/` | MyBatis-Plus `BaseMapper` interfaces (no XML, all queries via `LambdaQueryWrapper`) |
-| `entity/` | 15 entity classes mapped to database tables |
+| `entity/` | 16 entity classes mapped to database tables |
 | `dto/` | Request/response DTOs per domain |
 
 ### Frontend Layout
@@ -94,15 +95,16 @@ Single backend + RBAC with two roles: `ROLE_ADMIN` (team/project admin) and `ROL
 | Directory | Purpose |
 |-----------|---------|
 | `api/` | `request.ts` (Axios instance + interceptors) + per-domain API modules + `ai.ts` (DeepSeek API) |
-| `store/` | Pinia stores — `user.ts` (auth/role), `app.ts` (sidebar, current project) |
+| `store/` | Pinia stores — `user.ts` (auth/role), `app.ts` (sidebar, current project, **dark mode**) |
 | `router/` | Vue Router with navigation guard for auth + redirect |
 | `views/` | 10 page components (Dashboard, ProjectOverview, ProjectBoard, ReportList, etc.) |
-| `components/layout/` | `MainLayout.vue` (header, sidebar, content slot), `BreadcrumbNav.vue` |
-| `components/issue/` | `IssueDetailDialog.vue` (3-tab modal: basic/detail+attachments/comments), `IssueCard.vue` |
-| `components/common/` | `StatCard.vue`, `SkeletonLoader.vue`, `AssigneeAvatar.vue` |
-| `composables/` | `useTour.ts`, `useNotifications.ts`, `useWebSocket.ts` (STOMP WebSocket singleton) |
+| `components/layout/` | `MainLayout.vue`, `AuthLayout.vue` (split login/register), `BreadcrumbNav.vue` |
+| `components/issue/` | `IssueDetailDialog.vue`, `IssueCard.vue` (hover quick actions), type-specific cards/dialogs |
+| `components/common/` | `StatCard.vue`, `SkeletonLoader.vue`, `PageHeader.vue`, **`CommandPalette.vue`**, `AssigneeAvatar.vue` |
+| `composables/` | `useTour.ts`, `useNotifications.ts`, `useWebSocket.ts`, **`useCommandPalette.ts`** (Ctrl+K) |
 | `types/` | TypeScript interfaces for all domain objects |
-| `utils/` | `constants.ts` (label/color maps), `markdown.ts` (marked renderer) |
+| `utils/` | `constants.ts`, `markdown.ts`, **`color.ts`** (avatar gradient hash) |
+| `styles/` | `variables.css` (light/dark CSS tokens), `global.css` |
 
 ### API Pattern
 
@@ -115,7 +117,7 @@ Single backend + RBAC with two roles: `ROLE_ADMIN` (team/project admin) and `ROL
 
 ### Database
 
-15 MySQL tables (InnoDB, utf8mb4): `users`, `teams`, `team_members`, `projects`, `project_members`, `board_columns`, `issues`, `issue_labels`, `attachments`, `sprints`, `burndown_snapshots`, `reports`, `activity_logs`, `comments`, `notifications`.
+16 MySQL tables (InnoDB, utf8mb4): `users`, `teams`, `team_members`, `projects`, `project_members`, `board_columns`, `issues`, `issue_labels`, `attachments`, `sprints`, `burndown_snapshots`, `reports`, `activity_logs`, `comments`, `notifications`, `chat_messages`.
 
 - Schema at `backend/src/main/resources/db/init.sql`
 - Seed data: 3 users (admin/zhangsan/lisi, password `123456`), 1 team, 3 team members
@@ -123,15 +125,24 @@ Single backend + RBAC with two roles: `ROLE_ADMIN` (team/project admin) and `ROL
 
 ## Key Features
 
-- **Kanban Board**: 3 fixed columns (TODO/IN_PROGRESS/DONE) with drag-and-drop, priority color bars, search and filter (assignee/priority/type)
+- **Kanban Board**: 3 fixed columns (TODO/IN_PROGRESS/DONE) with drag-and-drop, **swimlanes** (by assignee/epic), **filter presets**, card **hover quick actions** (complete/edit), search and filter (assignee/priority/type)
+- **Command Palette**: **Ctrl+K** global search — cross-project issue query, page navigation, quick actions; header search trigger in `MainLayout`
+- **UI/UX (v2.1)**: Split-screen auth (`AuthLayout`), dashboard hero + 4 stat cards, dark mode (`data-theme` + `appStore.darkMode`), consistent card grids (teams/projects), polished project overview charts
 - **Real-time Collaboration**: WebSocket-powered board sync — drag-and-drop broadcasts to all users on the same board; instant notification push (no polling)
-- **Project Overview**: Status pie chart, member workload bar chart with completion rates, upcoming due tasks, sprint burndown chart (ideal vs actual), recent activity
+- **Notifications**: Click ISSUE notification → fetch issue by id → navigate to `/projects/{projectId}/board?issue={id}` (requires `projectId` on `IssueVO`, v2.1+)
+- **Project Overview**: Status pie chart, member workload bar chart with completion rates, upcoming due tasks, sprint burndown chart (ideal vs actual), recent activity timeline
 - **Task Comments**: Markdown-enabled discussion thread per issue, Ctrl+Enter to send; commenter notification to assignee
-- **Notifications**: WebSocket real-time push (replaced 30s polling), ASSIGNED / STATUS_CHANGED / COMMENT types, bell badge with dropdown
 - **Reports**: Daily/weekly report generation with auto-draft content; data dashboard with 3 ECharts charts; one-click PDF export
 - **Sprint**: Quick-start 2-week iteration with auto task assignment; burndown chart with snapshots; member statistics (completion rate, overdue rate, avg time in column); complete-with-migration for undone tasks
 - **AI Assistant**: DeepSeek-powered polish description (professionalize draft text) and priority recommendation (analyze urgency/importance), frontend-only integration
 - **Onboarding Tour**: driver.js guided walkthrough triggered on first board visit
+
+### Frontend deep links
+
+| URL query | Behavior |
+|-----------|----------|
+| `?issue={id}` | Open issue detail dialog on board (used by notifications, dashboard todos, command palette) |
+| `?create=1` | Open create-issue dialog on board (used by command palette) |
 
 ## Known Issues
 
@@ -159,9 +170,66 @@ This file defines allowed Bash commands for Claude Code in this repo — if you 
 - **Topics**:
   - `/topic/notifications/{userId}` — personal notification push
   - `/topic/board/{projectId}` — board sync events (ISSUE_MOVED/CREATED/DELETED)
+  - `/topic/team-chat/{teamId}` — team group chat messages (CHAT_MESSAGE event)
 - **Board Sync Flow**: Drag → `PUT /api/board/issue/move` → backend updates issue + logs + WebSocket broadcast → all board subscribers receive event → optimistic UI update
 
 ## Version History
+
+### v2.2.0 — Team Chat & UI Differentiation (2026-06-10)
+
+Team collaboration enhancement with real-time group chat, report-kanban integration, and visual differentiation between team and project pages.
+
+**Backend new files**:
+- `entity/ChatMessage.java` — chat message entity (teamId, senderId, content, createdAt)
+- `mapper/ChatMessageMapper.java` — mapper with `findRecentByTeamId()` (last 100 messages)
+- `dto/ChatMessageDTO.java` — SendRequest / ChatMessageVO / ChatEvent (WS broadcast DTO)
+- `service/ChatService.java` — send message (persist + WS broadcast) + load history
+- `controller/ChatController.java` — `POST /api/chat/send`, `GET /api/chat/history/{teamId}`
+- `db/migration/V3__chat_messages.sql` — `chat_messages` table
+
+**Backend modified**:
+- `WebSocketService` — added `sendTeamChat(teamId, event)` for `/topic/team-chat/{teamId}` broadcast
+
+**Frontend — team UI redesign**:
+- `TeamList.vue` — complete redesign: **green theme** hero with decorative orbs, horizontal card layout with left accent bar, avatar ring, hover glow effects
+- `TeamDetail.vue` — **dual-column layout**: left = members + projects; right = sticky **group chat panel**; green-gradient hero header
+- Team pages now visually distinct from project pages (green vs indigo palette)
+
+**Frontend — kanban-report integration**:
+- `ProjectBoard.vue` toolbar: "报告" button with **recent 7-day report count badge**; "新建工作项" → dropdown menu (新建/生成日报/生成周报)
+- `ProjectBoard.vue` bottom: **project overview stats bar** showing total/todo/in-progress/done/bug counts with color coding + "查看报告与数据看板" link
+
+**Frontend — group chat panel** (`TeamDetail.vue`):
+- Real-time message list via WebSocket subscription to `/topic/team-chat/{teamId}`
+- Message bubbles: self-sent (green gradient, right-aligned) vs others (gray, left-aligned)
+- Date divider lines between different days; sender name + timestamp per message
+- Unread badge on Hero "群聊" button; auto-clear on scroll-to-bottom
+- Enter to send; textarea autosize up to 4 lines; loading states
+- Responsive: chat panel moves below on narrow screens (<900px)
+
+**Database**: New `chat_messages` table (InnoDB, indexed on team_id+created_at)
+
+### v2.1.0 — UI Enhancement & Command Palette (2026-06-10)
+
+Full-stack UI polish and productivity features.
+
+**Backend**:
+- `IssueVO.projectId` — returned on create/get/query; enables notification deep-link and global search navigation
+
+**Frontend — visual**:
+- `AuthLayout.vue` — split-screen login/register with product preview
+- Dashboard hero banner, 4 stat cards (incl. completion rate), sprint banner, activity timeline
+- `PageHeader.vue`, list-card grids for TeamList / ProjectList / TeamDetail
+- Profile hero + settings cards; dark mode via `[data-theme="dark"]` and `appStore.toggleDarkMode()`
+- ProjectOverview stat pills + chart card headers; ReportList table card wrapper
+- Design tokens in `variables.css` (Indigo palette, gradients); Inter font; custom favicon
+
+**Frontend — interaction**:
+- `CommandPalette.vue` + `useCommandPalette.ts` — Ctrl+K global search (issues via `POST /api/issues/query`)
+- Board swimlanes (assignee / epic), filter presets (全部/缺陷/故事/我的)
+- `IssueCard` hover actions: quick complete + edit
+- Notification click → `/projects/{projectId}/board?issue={id}`
+- Board deeplink `?create=1` for command palette "新建工作项"
 
 ### v2.0.0 — Issue Type Specialization (2026-06-08)
 

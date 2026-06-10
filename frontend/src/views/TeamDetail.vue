@@ -1,73 +1,203 @@
 <template>
-  <div>
-    <div style="margin-bottom: 20px">
-      <el-button @click="$router.back()" text>
+  <div class="team-detail-page">
+    <!-- 团队详情 Hero -->
+    <div class="td-hero">
+      <div class="td-hero__bg" :style="{ background: avatarGradient(team?.name || 'T') }">
+        <div class="td-hero__overlay" />
+      </div>
+      <el-button class="td-hero__back" @click="$router.push('/teams')" text round>
         <el-icon><ArrowLeft /></el-icon> 返回
       </el-button>
+      <div class="td-hero__body">
+        <div class="td-hero__avatar" :style="{ background: avatarGradient(team?.name || 'T') }">
+          {{ (team?.name || '?').charAt(0).toUpperCase() }}
+        </div>
+        <div class="td-hero__info">
+          <h1 class="td-hero__name">{{ team?.name || '加载中...' }}</h1>
+          <p class="td-hero__desc">{{ team?.description || '暂无描述' }}</p>
+        </div>
+        <div class="td-hero__actions">
+          <el-tag round effect="dark" type="success">{{ members.length }} 名成员</el-tag>
+          <el-badge :value="unreadCount" :hidden="unreadCount === 0" :max="99" class="td-hero__badge">
+            <el-button type="primary" round @click="scrollToChat">
+              <el-icon><ChatDotRound /></el-icon> 群聊
+            </el-button>
+          </el-badge>
+          <el-button type="success" plain round @click="showInviteDialog = true">
+            <el-icon><Plus /></el-icon> 邀请成员
+          </el-button>
+        </div>
+      </div>
     </div>
 
-    <el-row :gutter="20">
-      <el-col :span="16">
-        <el-card shadow="hover">
-          <template #header>
-            <div style="display: flex; justify-content: space-between; align-items: center">
-              <span style="font-size: 18px; font-weight: bold">{{ team?.name }}</span>
-              <el-button type="primary" size="small" @click="showInviteDialog = true">邀请成员</el-button>
+    <!-- 主内容区：左栏信息 + 右栏聊天 -->
+    <div class="td-grid">
+      <!-- 左侧：成员 & 项目 -->
+      <div class="td-left">
+        <!-- 成员列表 -->
+        <div class="td-section">
+          <div class="td-section__header">
+            <div class="td-section__icon td-section__icon--member">
+              <el-icon><UserFilled /></el-icon>
+            </div>
+            <h2>团队成员</h2>
+            <span class="td-section__count">{{ members.length }}</span>
+          </div>
+          <div class="td-member-list">
+            <div v-for="m in members" :key="m.userId" class="td-member">
+              <div class="td-member__avatar" :style="{ background: avatarGradient(m.username) }">
+                {{ m.username.charAt(0).toUpperCase() }}
+              </div>
+              <div class="td-member__info">
+                <span class="td-member__name">{{ m.username }}</span>
+                <span class="td-member__email">{{ m.email }}</span>
+              </div>
+              <el-tag
+                :type="m.role === 'ROLE_ADMIN' ? 'danger' : ''"
+                size="small"
+                round
+                effect="plain"
+              >
+                {{ m.role === 'ROLE_ADMIN' ? '管理员' : '成员' }}
+              </el-tag>
+              <el-button
+                v-if="m.role !== 'ROLE_ADMIN'"
+                type="danger"
+                size="small"
+                text
+                @click="handleRemove(m.userId)"
+              >移除</el-button>
+            </div>
+            <div v-if="members.length === 0" class="td-member-empty">暂无成员，邀请你的队友加入吧</div>
+          </div>
+        </div>
+
+        <!-- 项目列表 -->
+        <div class="td-section">
+          <div class="td-section__header">
+            <div class="td-section__icon td-section__icon--project">
+              <el-icon><Folder /></el-icon>
+            </div>
+            <h2>关联项目</h2>
+            <el-button size="small" type="success" round @click="showCreateProject = true">
+              <el-icon><Plus /></el-icon> 创建项目
+            </el-button>
+          </div>
+          <div v-if="projects.length" class="td-project-grid">
+            <div
+              v-for="p in projects"
+              :key="p.id"
+              class="td-project-card"
+              @click="$router.push(`/projects/${p.id}/board`)"
+            >
+              <div class="td-project-card__key">{{ p.key }}</div>
+              <div class="td-project-card__name">{{ p.name }}</div>
+              <el-icon class="td-project-card__arrow"><ArrowRight /></el-icon>
+            </div>
+          </div>
+          <div v-else class="td-project-empty">
+            <p>团队还没有项目</p>
+            <el-button size="small" type="success" round @click="showCreateProject = true">创建第一个项目</el-button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 右侧：群聊面板 -->
+      <div ref="chatPanelRef" class="td-chat-panel">
+        <div class="td-chat-header">
+          <div class="td-chat-header__icon">
+            <el-icon><ChatDotRound /></el-icon>
+          </div>
+          <div>
+            <h3>团队群聊</h3>
+            <span class="td-chat-header__online">{{ onlineCount }} 人在线</span>
+          </div>
+        </div>
+
+        <!-- 消息列表 -->
+        <div ref="chatMsgListRef" class="td-chat-messages" @scroll="onChatScroll">
+          <div v-if="messages.length === 0 && !loadingChat" class="td-chat-empty">
+            <el-icon :size="36" color="#10b981"><ChatDotRound /></el-icon>
+            <p>暂无消息</p>
+            <span>发送第一条消息吧~</span>
+          </div>
+          <template v-for="(msg, idx) in messages" :key="msg.id">
+            <!-- 时间分隔 -->
+            <div v-if="shouldShowDateDivider(idx)" class="td-chat-divider">
+              {{ formatDate(msg.createdAt) }}
+            </div>
+            <!-- 消息气泡 -->
+            <div class="td-msg" :class="{ 'td-msg--mine': msg.isMine }">
+              <div
+                class="td-msg__avatar"
+                :style="{ background: msg.isMine ? undefined : avatarGradient(msg.senderName) }"
+              >
+                {{ msg.senderName.charAt(0).toUpperCase() }}
+              </div>
+              <div class="td-msg__body">
+                <span class="td-msg__sender">{{ msg.senderName }}</span>
+                <div class="td-msg__bubble">{{ msg.content }}</div>
+                <span class="td-msg__time">{{ formatTime(msg.createdAt) }}</span>
+              </div>
             </div>
           </template>
-          <p style="color: #909399; margin-bottom: 20px">{{ team?.description || '暂无描述' }}</p>
+          <div v-if="loadingChat" class="td-chat-loading">
+            <el-icon class="is-loading"><Loading /></el-icon>
+          </div>
+        </div>
 
-          <el-table :data="members" stripe>
-            <el-table-column prop="username" label="用户名" />
-            <el-table-column prop="email" label="邮箱" />
-            <el-table-column prop="role" label="角色" width="120">
-              <template #default="{ row }">
-                <el-tag :type="row.role === 'ROLE_ADMIN' ? 'danger' : 'info'" size="small">
-                  {{ row.role === 'ROLE_ADMIN' ? '管理员' : '成员' }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="100">
-              <template #default="{ row }">
-                <el-button
-                  v-if="row.role !== 'ROLE_ADMIN'"
-                  type="danger"
-                  size="small"
-                  text
-                  @click="handleRemove(row.userId)"
-                >移除</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-        </el-card>
-      </el-col>
-
-      <el-col :span="8">
-        <el-card shadow="hover">
-          <template #header><span style="font-weight: bold">项目列表</span></template>
-          <div v-if="projects.length === 0" style="color: #909399; text-align: center; padding: 20px">
-            暂无项目
-          </div>
-          <div v-for="p in projects" :key="p.id" style="padding: 10px 0; border-bottom: 1px solid #ebeef5; cursor: pointer"
-               @click="$router.push(`/projects/${p.id}/board`)">
-            <div style="font-weight: bold">{{ p.name }}</div>
-            <div style="color: #909399; font-size: 12px">{{ p.key }}</div>
-          </div>
-          <div style="margin-top: 12px; text-align: center">
-            <el-button size="small" @click="showCreateProject = true">创建项目</el-button>
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
+        <!-- 输入框 -->
+        <div class="td-chat-input-wrap">
+          <el-input
+            v-model="chatInput"
+            type="textarea"
+            :autosize="{ minRows: 1, maxRows: 4 }"
+            placeholder="输入消息... Enter 发送"
+            resize="none"
+            @keydown.enter.exact.prevent="sendChatMessage"
+          />
+          <el-button
+            type="primary"
+            circle
+            :disabled="!chatInput.trim()"
+            :loading="sendingChat"
+            @click="sendChatMessage"
+          >
+            <el-icon><Promotion /></el-icon>
+          </el-button>
+        </div>
+      </div>
+    </div>
 
     <!-- 邀请成员 Dialog -->
-    <el-dialog v-model="showInviteDialog" title="邀请成员" width="400px">
+    <el-dialog v-model="showInviteDialog" title="邀请成员" width="420px">
       <el-form label-position="top">
-        <el-form-item label="用户ID">
-          <el-input v-model="inviteUserIdInput" style="width: 100%" placeholder="输入用户ID，下方可查已注册用户" />
-          <div style="color: var(--text-secondary); font-size: 11px; margin-top: 6px">
-            已注册用户：admin(1)、zhangsan(2)、lisi(3)
-          </div>
+        <el-form-item label="搜索用户">
+          <el-select
+            v-model="inviteUserId"
+            filterable
+            remote
+            reserve-keyword
+            placeholder="输入用户名或邮箱搜索..."
+            :remote-method="searchUserOptions"
+            :loading="searchingUsers"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="u in userSearchResults"
+              :key="u.id"
+              :label="`${u.username} (${u.email})`"
+              :value="u.id"
+            >
+              <div style="display: flex; align-items: center; gap: 8px">
+                <div class="td-search-avatar" :style="{ background: avatarGradient(u.username) }">
+                  {{ u.username.charAt(0).toUpperCase() }}
+                </div>
+                <span>{{ u.username }}</span>
+                <span style="color: var(--text-secondary); font-size: 12px">{{ u.email }}</span>
+              </div>
+            </el-option>
+          </el-select>
         </el-form-item>
         <el-form-item label="角色">
           <el-select v-model="inviteRole" style="width: 100%">
@@ -78,7 +208,7 @@
       </el-form>
       <template #footer>
         <el-button @click="showInviteDialog = false">取消</el-button>
-        <el-button type="primary" @click="handleInvite">邀请</el-button>
+        <el-button type="primary" :disabled="!inviteUserId" @click="handleInvite">邀请</el-button>
       </template>
     </el-dialog>
 
@@ -107,60 +237,692 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, reactive } from "vue";
-import { useRoute } from "vue-router";
-import { getTeamById, getMembers, inviteMember, removeMember } from "@/api/team";
-import { getProjectsByTeam, createProject } from "@/api/project";
-import { ElMessage, ElMessageBox } from "element-plus";
+import { ref, reactive, computed, nextTick, onMounted, onUnmounted } from "vue"
+import { useRoute } from "vue-router"
+import { getTeamById, getMembers, inviteMember, removeMember } from "@/api/team"
+import { getProjectsByTeam, createProject } from "@/api/project"
+import { searchUsers } from "@/api/user"
+import { sendChatMessage as apiSendChat, getChatHistory } from "@/api/chat"
+import { useWebSocket } from "@/composables/useWebSocket"
+import { ElMessage, ElMessageBox } from "element-plus"
+import {
+  Plus, ArrowLeft, UserFilled, Folder, ArrowRight,
+  ChatDotRound, Promotion, Loading,
+} from "@element-plus/icons-vue"
+import { avatarGradient } from "@/utils/color"
 
-const route = useRoute();
-const teamId = Number(route.params.id);
-const team = ref<any>(null);
-const members = ref<any[]>([]);
-const projects = ref<any[]>([]);
-const showInviteDialog = ref(false);
-const inviteUserIdInput = ref("");
-const inviteRole = ref("ROLE_MEMBER");
-const showCreateProject = ref(false);
-const projectForm = reactive({ name: "", key: "", template: "SCRUM" });
+const route = useRoute()
+const teamId = Number(route.params.id)
+
+// ========== 基础数据 ==========
+const team = ref<any>(null)
+const members = ref<any[]>([])
+const projects = ref<any[]>([])
+const showInviteDialog = ref(false)
+const inviteUserId = ref<number | null>(null)
+const inviteRole = ref("ROLE_MEMBER")
+const showCreateProject = ref(false)
+const projectForm = reactive({ name: "", key: "", template: "SCRUM" })
+const userSearchResults = ref<any[]>([])
+const searchingUsers = ref(false)
+
+// ========== 聊天 ==========
+interface ChatMsg {
+  id: number; teamId: number; senderId: number;
+  senderName: string; senderAvatar: string; content: string;
+  createdAt: string; isMine: boolean;
+}
+const messages = ref<ChatMsg[]>([])
+const chatInput = ref("")
+const sendingChat = ref(false)
+const loadingChat = ref(true)
+const unreadCount = ref(0)
+const onlineCount = ref(1)
+const chatPanelRef = ref<HTMLElement>()
+const chatMsgListRef = ref<HTMLElement>()
+let myUserId: number | null = null
+let lastReadTime = Date.now()
+
+// WebSocket 实时接收消息
+const ws = useWebSocket()
+ws.subscribe(`/topic/team-chat/${teamId}`, (data: any) => {
+  if (data.type === "CHAT_MESSAGE" && data.message) {
+    const msg: ChatMsg = data.message
+    // 标记是否为当前用户的消息
+    msg.isMine = msg.senderId === myUserId
+    messages.value.push(msg)
+    if (!msg.isMine) unreadCount.value++
+    nextTick(scrollToBottom)
+  }
+})
+
+// 加载历史消息
+async function loadChatHistory() {
+  loadingChat.value = true
+  try {
+    const res = await getChatHistory(teamId)
+    const list: ChatMsg[] = res.data || []
+    // 标记自己的消息（从 JWT 解析 userId）
+    const storedUser = localStorage.getItem("user")
+    if (storedUser) {
+      try { myUserId = JSON.parse(storedUser).id } catch {}
+    }
+    messages.value = list.map((m: ChatMsg) => ({
+      ...m,
+      isMine: m.senderId === myUserId,
+    }))
+    lastReadTime = Date.now()
+  } finally {
+    loadingChat.value = false
+    nextTick(scrollToBottom)
+  }
+}
+
+// 发送消息
+async function sendChatMessage() {
+  const text = chatInput.value.trim()
+  if (!text) return
+  sendingChat.value = true
+  try {
+    await apiSendChat({ teamId, content: text })
+    chatInput.value = ""
+    nextTick(scrollToBottom)
+  } catch {
+    // 错误由拦截器处理
+  } finally {
+    sendingChat.value = false
+  }
+}
+
+// 滚动到底部
+function scrollToBottom() {
+  if (!chatMsgListRef.value) return
+  chatMsgListRef.value.scrollTop = chatMsgListRef.value.scrollHeight
+}
+
+// 滚动到聊天区域
+function scrollToChat() {
+  chatPanelRef.value?.scrollIntoView({ behavior: "smooth", block: "start" })
+  unreadCount.value = 0
+  lastReadTime = Date.now()
+}
+
+// 滚动时清除未读
+function onChatScroll() {
+  const el = chatMsgListRef.value
+  if (!el) return
+  const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40
+  if (atBottom && unreadCount.value > 0) {
+    unreadCount.value = 0
+    lastReadTime = Date.now()
+  }
+}
+
+// 时间分隔线判断
+function shouldShowDateDivider(idx: number): boolean {
+  if (idx === 0) return true
+  const prev = messages.value[idx - 1]?.createdAt?.split(" ")[0]
+  const curr = messages.value[idx]?.createdAt?.split(" ")[0]
+  return prev !== curr
+}
+
+// 格式化日期/时间
+function formatDate(dt?: string) {
+  if (!dt) return ""
+  return dt.split(" ")[0] || ""
+}
+function formatTime(dt?: string) {
+  if (!dt) return ""
+  return dt.split(" ")[1]?.substring(0, 5) || ""
+}
+
+// ========== 基础操作 ==========
+async function searchUserOptions(query: string) {
+  if (!query || query.length < 1) { userSearchResults.value = []; return }
+  searchingUsers.value = true
+  try {
+    const res = await searchUsers(query)
+    userSearchResults.value = res.data || []
+  } finally {
+    searchingUsers.value = false
+  }
+}
 
 async function fetchData() {
   const [teamRes, membersRes, projectsRes] = await Promise.all([
     getTeamById(teamId),
     getMembers(teamId),
     getProjectsByTeam(teamId),
-  ]);
-  team.value = teamRes.data;
-  members.value = membersRes.data || [];
-  projects.value = projectsRes.data || [];
+  ])
+  team.value = teamRes.data
+  members.value = membersRes.data || []
+  projects.value = projectsRes.data || []
 }
 
 async function handleInvite() {
-  const uid = parseInt(inviteUserIdInput.value)
-  if (!uid) { ElMessage.warning("请输入有效的用户ID"); return }
-  await inviteMember({ teamId, userId: uid, role: inviteRole.value })
+  if (!inviteUserId.value) { ElMessage.warning("请选择要邀请的用户"); return }
+  await inviteMember({ teamId, userId: inviteUserId.value, role: inviteRole.value })
   ElMessage.success("邀请成功")
   showInviteDialog.value = false
-  inviteUserIdInput.value = ""
+  inviteUserId.value = null
   await fetchData()
 }
 
 async function handleRemove(userId: number) {
-  await ElMessageBox.confirm("确定移除该成员?", "提示", { type: "warning" });
-  await removeMember(teamId, userId);
-  ElMessage.success("已移除");
-  await fetchData();
+  await ElMessageBox.confirm("确定移除该成员?", "提示", { type: "warning" })
+  await removeMember(teamId, userId)
+  ElMessage.success("已移除")
+  await fetchData()
 }
 
 async function handleCreateProject() {
-  if (!projectForm.name || !projectForm.key) { ElMessage.warning("请填写项目信息"); return; }
-  await createProject({ ...projectForm, teamId });
-  ElMessage.success("项目创建成功");
-  showCreateProject.value = false;
-  projectForm.name = "";
-  projectForm.key = "";
-  await fetchData();
+  if (!projectForm.name || !projectForm.key) { ElMessage.warning("请填写项目信息"); return }
+  await createProject({ ...projectForm, teamId })
+  ElMessage.success("项目创建成功")
+  showCreateProject.value = false
+  projectForm.name = ""
+  projectForm.key = ""
+  await fetchData()
 }
 
-onMounted(fetchData);
+onMounted(() => {
+  fetchData()
+  loadChatHistory()
+})
 </script>
+
+<style scoped lang="scss">
+.team-detail-page {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+// ========== Hero ==========
+.td-hero {
+  position: relative;
+  margin-bottom: 24px;
+  border-radius: 18px;
+  overflow: hidden;
+
+  &__bg {
+    position: absolute;
+    inset: 0;
+    opacity: 0.08;
+  }
+
+  &__overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(6,95,70,0.92), rgba(4,120,87,0.85));
+  }
+
+  &__back {
+    position: absolute;
+    top: 14px;
+    left: 16px;
+    z-index: 2;
+    color: rgba(255,255,255,0.8);
+    font-weight: 600;
+
+    &:hover { color: #fff; }
+  }
+
+  &__body {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 28px 24px 24px;
+    flex-wrap: wrap;
+  }
+
+  &__avatar {
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-weight: 800;
+    font-size: 22px;
+    flex-shrink: 0;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+  }
+
+  &__info {
+    flex: 1;
+    min-width: 160px;
+  }
+
+  &__name {
+    font-size: 20px;
+    font-weight: 800;
+    color: #fff;
+    margin: 0 0 4px;
+    letter-spacing: -0.3px;
+  }
+
+  &__desc {
+    font-size: 13px;
+    color: rgba(255,255,255,0.7);
+    margin: 0;
+  }
+
+  &__actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  &__badge {
+    margin-right: 4px;
+  }
+}
+
+// ========== 网格布局 ==========
+.td-grid {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 18px;
+  align-items: start;
+}
+
+.td-left {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+// ========== Section 通用 ==========
+.td-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  overflow: hidden;
+
+  &__header {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border-color);
+
+    h2 {
+      font-size: 14px;
+      font-weight: 700;
+      margin: 0;
+      color: var(--text-primary);
+      flex: 1;
+    }
+  }
+
+  &__count {
+    font-size: 12px;
+    color: var(--text-secondary);
+    background: var(--bg-hover);
+    padding: 2px 8px;
+    border-radius: 10px;
+  }
+
+  &__icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+
+    &--member {
+      background: rgba(16,185,129,0.12);
+      color: #059669;
+    }
+
+    &--project {
+      background: rgba(245,158,11,0.12);
+      color: #d97706;
+    }
+  }
+}
+
+// ========== 成员列表 ==========
+.td-member-list {
+  padding: 6px 0;
+}
+
+.td-member {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 18px;
+  transition: background 0.15s;
+
+  &:hover { background: var(--bg-hover); }
+
+  &__avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-weight: 700;
+    font-size: 13px;
+    flex-shrink: 0;
+  }
+
+  &__info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  &__name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  &__email {
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+}
+
+.td-member-empty {
+  padding: 20px 18px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+// ========== 项目卡片 ==========
+.td-project-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+  padding: 14px 18px;
+}
+
+.td-project-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    border-color: rgba(16,185,129,0.35);
+    box-shadow: 0 2px 12px rgba(16,185,129,0.08);
+    .td-project-card__arrow { color: #10b981; transform: translateX(2px); }
+  }
+
+  &__key {
+    font-family: monospace;
+    font-weight: 700;
+    font-size: 11px;
+    color: #059669;
+    background: rgba(16,185,129,0.1);
+    padding: 2px 7px;
+    border-radius: 5px;
+    flex-shrink: 0;
+  }
+
+  &__name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &__arrow {
+    margin-left: auto;
+    color: var(--text-placeholder);
+    transition: all 0.2s;
+    flex-shrink: 0;
+  }
+}
+
+.td-project-empty {
+  padding: 20px 18px;
+  text-align: center;
+  p {
+    color: var(--text-secondary);
+    font-size: 13px;
+    margin: 0 0 10px;
+  }
+}
+
+// ========== 群聊面板 ==========
+.td-chat-panel {
+  position: sticky;
+  top: 72px;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 140px);
+  min-height: 480px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+.td-chat-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-color);
+  background: linear-gradient(135deg, rgba(16,185,129,0.06), rgba(245,158,11,0.04));
+
+  h3 {
+    font-size: 14px;
+    font-weight: 700;
+    margin: 0;
+    color: var(--text-primary);
+  }
+
+  &__icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    background: rgba(16,185,129,0.12);
+    color: #059669;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    flex-shrink: 0;
+  }
+
+  &__online {
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+}
+
+// 消息列表
+.td-chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  &::-webkit-scrollbar { width: 4px; }
+  &::-webkit-scrollbar-thumb { background: transparent; border-radius: 4px; }
+  &:hover::-webkit-scrollbar-thumb { background: var(--border-color); }
+}
+
+.td-chat-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 48px 0;
+  color: var(--text-secondary);
+
+  p {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 0;
+  }
+
+  span {
+    font-size: 12px;
+  }
+}
+
+.td-chat-loading {
+  display: flex;
+  justify-content: center;
+  padding: 8px;
+  color: var(--text-placeholder);
+}
+
+// 时间分隔线
+.td-chat-divider {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-placeholder);
+  padding: 8px 0;
+  position: relative;
+
+  &::before, &::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    width: 28%;
+    height: 1px;
+    background: var(--border-color);
+  }
+  &::before { left: 0; }
+  &::after { right: 0; }
+}
+
+// 消息气泡
+.td-msg {
+  display: flex;
+  gap: 8px;
+  max-width: 85%;
+  padding: 4px 0;
+
+  &--mine {
+    align-self: flex-end;
+    flex-direction: row-reverse;
+
+    .td-msg__bubble {
+      background: linear-gradient(135deg, #059669, #10b981);
+      color: #fff;
+      border-bottom-right-radius: 4px;
+    }
+    .td-msg__sender { display: none; }
+    .td-msg__time { text-align: right; }
+  }
+
+  &__avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-weight: 700;
+    font-size: 12px;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  &__body {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  &__sender {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 2px;
+    padding-left: 2px;
+  }
+
+  &__bubble {
+    padding: 8px 12px;
+    border-radius: 12px;
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    font-size: 13px;
+    line-height: 1.5;
+    word-break: break-word;
+    border-bottom-left-radius: 4px;
+  }
+
+  &__time {
+    font-size: 10px;
+    color: var(--text-placeholder);
+    margin-top: 2px;
+    padding: 0 4px;
+  }
+}
+
+// 输入框
+.td-chat-input-wrap {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-card);
+
+  .el-textarea {
+    flex: 1;
+  }
+
+  .el-button {
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+  }
+}
+
+// 搜索头像
+.td-search-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 10px;
+  flex-shrink: 0;
+}
+
+// 响应式：窄屏时聊天面板下移
+@media (max-width: 900px) {
+  .td-grid {
+    grid-template-columns: 1fr;
+  }
+  .td-chat-panel {
+    position: static;
+    height: 420px;
+    min-height: unset;
+  }
+}
+</style>

@@ -1,91 +1,96 @@
 <template>
   <div class="board">
-    <!-- 顶部栏 -->
-    <div class="board__header">
-      <div class="board__header-left">
-        <el-button @click="$router.push('/')" text>
+    <!-- 顶部工具栏 -->
+    <div class="board__toolbar">
+      <div class="board__toolbar-left">
+        <el-button class="board__back" @click="$router.push(`/projects/${projectId}`)" text>
           <el-icon><ArrowLeft /></el-icon>
         </el-button>
-        <h3 class="board__title">{{ projectName }}</h3>
-        <!-- View switcher -->
-        <div class="board__view-switcher">
-          <el-button
-            :type="currentView === 'kanban' ? 'primary' : ''"
-            size="small"
-            @click="currentView = 'kanban'"
+        <div class="board__project-info">
+          <h3 class="board__title">{{ projectName }}</h3>
+          <span class="board__subtitle">看板 · 拖拽卡片更新状态</span>
+        </div>
+        <div class="segmented-control board__view-switcher">
+          <button
+            v-for="v in views"
+            :key="v.key"
+            :class="['segmented-control__item', { 'is-active': currentView === v.key }]"
+            @click="currentView = v.key as any"
           >
-            <el-icon><Grid /></el-icon> 看板
-          </el-button>
-          <el-button
-            :type="currentView === 'buglist' ? 'primary' : ''"
-            size="small"
-            @click="currentView = 'buglist'"
-          >
-            <el-icon><List /></el-icon> 缺陷列表
-          </el-button>
-          <el-button
-            :type="currentView === 'storymap' ? 'primary' : ''"
-            size="small"
-            @click="currentView = 'storymap'"
-          >
-            <el-icon><Connection /></el-icon> 故事地图
-          </el-button>
+            <el-icon><component :is="v.icon" /></el-icon>
+            {{ v.label }}
+          </button>
         </div>
       </div>
-      <div class="board__header-right">
-        <template v-if="currentView === 'kanban' || currentView === 'buglist'">
-          <el-input
-            v-model="searchKeyword"
-            placeholder="搜索..."
-            :prefix-icon="Search"
-            clearable
-            size="small"
-            style="width: 160px"
-          />
-          <el-select v-model="filterAssignee" placeholder="指派人" size="small" clearable style="width: 110px">
-            <el-option v-for="a in assigneeOptions" :key="a" :label="a" :value="a" />
-          </el-select>
-          <el-select v-model="filterPriority" placeholder="优先级" size="small" clearable style="width: 90px">
-            <el-option label="最高" value="HIGHEST" />
-            <el-option label="高" value="HIGH" />
-            <el-option label="中" value="MEDIUM" />
-            <el-option label="低" value="LOW" />
-            <el-option label="最低" value="LOWEST" />
-          </el-select>
-          <!-- Type quick filter buttons -->
-          <div class="board__type-filters">
-            <el-button
-              :type="filterType === '' ? 'primary' : ''"
-              size="small"
-              @click="filterType = ''"
-            >全部</el-button>
-            <el-button
-              :type="filterType === 'STORY' ? 'success' : ''"
-              size="small"
-              @click="filterType = filterType === 'STORY' ? '' : 'STORY'"
-            >故事</el-button>
-            <el-button
-              :type="filterType === 'TASK' ? '' : ''"
-              size="small"
-              :class="{ 'is-active': filterType === 'TASK' }"
-              @click="filterType = filterType === 'TASK' ? '' : 'TASK'"
-              style="border-color: var(--color-primary); color: var(--color-primary);"
-              v-if="filterType === '' || filterType === 'TASK'"
-              :plain="filterType !== 'TASK'"
-            >任务</el-button>
-            <el-button
-              :type="filterType === 'BUG' ? 'danger' : ''"
-              size="small"
-              @click="filterType = filterType === 'BUG' ? '' : 'BUG'"
-            >缺陷</el-button>
-          </div>
-          <el-button @click="$router.push(`/projects/${projectId}/reports`)">
-            <el-icon><Document /></el-icon>报告
-          </el-button>
-        </template>
+      <div class="board__toolbar-right">
         <el-button id="create-task-btn" type="primary" @click="showCreateIssue = true">
           <el-icon><Plus /></el-icon>新建工作项
         </el-button>
+      </div>
+    </div>
+
+    <!-- 筛选栏 -->
+    <div v-if="currentView === 'kanban' || currentView === 'buglist'" class="board__filters">
+      <el-input
+        v-model="searchKeyword"
+        placeholder="搜索标题、编号、指派人..."
+        :prefix-icon="Search"
+        clearable
+        size="default"
+        class="board__search"
+      />
+      <el-select v-model="filterAssignee" placeholder="指派人" clearable class="board__filter-select">
+        <el-option v-for="a in assigneeOptions" :key="a" :label="a" :value="a" />
+      </el-select>
+      <el-select v-model="filterPriority" placeholder="优先级" clearable class="board__filter-select board__filter-select--sm">
+        <el-option label="最高" value="HIGHEST" />
+        <el-option label="高" value="HIGH" />
+        <el-option label="中" value="MEDIUM" />
+        <el-option label="低" value="LOW" />
+        <el-option label="最低" value="LOWEST" />
+      </el-select>
+      <el-select v-if="currentView === 'kanban'" v-model="swimlaneMode" placeholder="泳道" class="board__filter-select board__filter-select--sm">
+        <el-option label="无泳道" value="" />
+        <el-option label="按指派人" value="assignee" />
+        <el-option label="按史诗" value="epic" />
+      </el-select>
+      <div class="board__presets">
+        <button
+          v-for="p in filterPresets"
+          :key="p.name"
+          :class="['board__preset-btn', { 'is-active': activePreset === p.name }]"
+          @click="applyPreset(p)"
+        >
+          {{ p.name }}
+        </button>
+      </div>
+      <div class="board__type-filters">
+        <button
+          v-for="t in typeFilters"
+          :key="t.value"
+          :class="['board__type-btn', { 'is-active': filterType === t.value }, t.class]"
+          @click="filterType = filterType === t.value && t.value ? '' : t.value"
+        >
+          {{ t.label }}
+        </button>
+      </div>
+      <div class="board__toolbar-actions">
+        <el-button class="board__report-btn" @click="$router.push(`/projects/${projectId}/reports`)">
+          <el-icon><Document /></el-icon>报告
+          <span v-if="recentReportCount > 0" class="board__report-badge">{{ recentReportCount }}</span>
+        </el-button>
+        <el-dropdown trigger="click" @command="handleQuickReport">
+          <el-button type="primary">
+            <el-icon><Plus /></el-icon>新建工作项
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="issue">新建工作项</el-dropdown-item>
+              <el-dropdown-item command="daily" divided>生成今日日报</el-dropdown-item>
+              <el-dropdown-item command="weekly">生成本周周报</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
       </div>
     </div>
 
@@ -95,44 +100,91 @@
         v-for="(col, idx) in columns"
         :key="col.id"
         :class="['board__column', { 'column-drop-target': dragOverColumnId === col.id }]"
-        :style="columnBarStyle(idx)"
       >
-        <!-- 列头 -->
-        <div class="board__column-header">
+        <div class="board__column-header" :style="{ borderTopColor: columnColors[idx] }">
           <div class="board__column-title">
-            <span class="board__column-dot" :style="{ background: col.color }" />
+            <span class="board__column-dot" :style="{ background: columnColors[idx] }" />
             <span class="board__column-name">{{ col.name }}</span>
-            <el-tag size="small" round>{{ filteredIssues(col).length }}</el-tag>
           </div>
+          <span class="board__column-count">{{ filteredIssues(col).length }}</span>
         </div>
 
-        <!-- 任务卡片列表 -->
         <draggable
           :list="col.issues"
           group="issues"
           itemKey="id"
           ghost-class="issue-card-ghost"
           drag-class="issue-card-dragging"
+          :pull="true"
+          :put="true"
+          :force-fallback="true"
+          fallback-class="issue-card-ghost"
+          :fallback-on-body="false"
           @change="(evt: any) => handleDragChange(evt, col.id)"
           @start="() => dragOverColumnId = col.id"
           @end="() => dragOverColumnId = null"
           class="board__column-body"
         >
-          <template #item="{ element }">
-            <div v-if="issueMatchesFilter(element)">
+          <template #item="{ element, index }">
+            <div :class="['board__drag-item', { 'is-hidden': !issueMatchesFilter(element) }]">
+              <div v-if="shouldShowLaneHeader(col, element)" class="board__swimlane-header">
+                <div
+                  class="board__swimlane-avatar"
+                  :style="{ background: avatarGradient(laneLabel(element)) }"
+                >
+                  {{ swimlaneMode === 'assignee' ? laneLabel(element).charAt(0) : '📂' }}
+                </div>
+                <span>{{ laneLabel(element) }}</span>
+                <span class="board__swimlane-count">{{ laneIssueCount(col, element) }}</span>
+              </div>
               <IssueCard
                 :issue="element"
                 @click="openIssue(element)"
                 @edit="openIssue(element)"
+                @complete="quickComplete"
               />
             </div>
           </template>
         </draggable>
+
+        <div v-if="filteredIssues(col).length === 0" class="board__column-empty">
+          <el-icon :size="28"><Box /></el-icon>
+          <span>暂无任务</span>
+        </div>
       </div>
     </div>
 
+    <!-- 项目概览栏（看板底部，关联报告） -->
+    <div v-if="currentView === 'kanban'" class="board__overview">
+      <div class="board__overview-stat" @click="$router.push(`/projects/${projectId}/reports`)">
+        <span class="board__overview-num">{{ boardStats.total }}</span>
+        <span class="board__overview-label">总任务</span>
+      </div>
+      <div class="board__overview-divider" />
+      <div class="board__overview-stat">
+        <span class="board__overview-num board__overview-num--todo">{{ boardStats.todo }}</span>
+        <span class="board__overview-label">待办</span>
+      </div>
+      <div class="board__overview-stat">
+        <span class="board__overview-num board__overview-num--progress">{{ boardStats.inProgress }}</span>
+        <span class="board__overview-label">进行中</span>
+      </div>
+      <div class="board__overview-stat">
+        <span class="board__overview-num board__overview-num--done">{{ boardStats.done }}</span>
+        <span class="board__overview-label">已完成</span>
+      </div>
+      <div class="board__overview-divider" />
+      <div class="board__overview-stat">
+        <span class="board__overview-num board__overview-num--bug">{{ boardStats.bugs }}</span>
+        <span class="board__overview-label">缺陷</span>
+      </div>
+      <el-button size="small" text type="primary" class="board__overview-link" @click="$router.push(`/projects/${projectId}/reports`)">
+        查看报告与数据看板 →
+      </el-button>
+    </div>
+
     <!-- Bug Table View -->
-    <div v-else-if="currentView === 'buglist'">
+    <div v-else-if="currentView === 'buglist'" class="board__alt-view">
       <BugTableView
         :bugs="allBugs"
         :search-keyword="searchKeyword"
@@ -142,11 +194,10 @@
     </div>
 
     <!-- Story Map View -->
-    <div v-else-if="currentView === 'storymap'">
+    <div v-else-if="currentView === 'storymap'" class="board__alt-view">
       <StoryMap />
     </div>
 
-    <!-- 新建/编辑 Dialog -->
     <IssueDetailDialog
       v-model:visible="showCreateIssue"
       :project-id="projectId"
@@ -164,24 +215,29 @@
       mode="edit"
       @updated="fetchBoard"
     />
-
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue"
+import { ref, computed, onMounted, watch } from "vue"
 import { useRoute } from "vue-router"
+import { useUserStore } from "@/store/user"
 import { getBoard, moveIssue } from "@/api/board"
 import { getProjectById } from "@/api/project"
+import { updateIssue } from "@/api/issue"
+import { avatarGradient } from "@/utils/color"
 import draggable from "vuedraggable"
+import { ElMessage } from "element-plus"
 import IssueDetailDialog from "@/components/issue/IssueDetailDialog.vue"
 import IssueCard from "@/components/issue/IssueCard.vue"
 import BugTableView from "@/components/issue/bug/BugTableView.vue"
 import StoryMap from "@/components/issue/story/StoryMap.vue"
-import { Search, Grid, List, Connection } from "@element-plus/icons-vue"
+import { Search, Grid, List, Connection, Box, Document } from "@element-plus/icons-vue"
 import { useWebSocket } from "@/composables/useWebSocket"
+import { getReports, generateReport } from "@/api/report"
 
 const route = useRoute()
+const userStore = useUserStore()
 const projectId = Number(route.params.id)
 const projectName = ref("")
 const teamId = ref<number>(0)
@@ -194,9 +250,27 @@ const searchKeyword = ref("")
 const filterAssignee = ref("")
 const filterPriority = ref("")
 const filterType = ref("")
+const swimlaneMode = ref<'assignee' | 'epic' | ''>('')
+const activePreset = ref("全部")
 const currentView = ref<'kanban' | 'buglist' | 'storymap'>('kanban')
+const recentReportCount = ref(0)
 
-const { subscribe: wsSubscribe, unsubscribe: wsUnsubscribe } = useWebSocket()
+const columnColors = ['#6366f1', '#f59e0b', '#10b981']
+
+const views = [
+  { key: 'kanban', label: '看板', icon: Grid },
+  { key: 'buglist', label: '缺陷列表', icon: List },
+  { key: 'storymap', label: '故事地图', icon: Connection },
+]
+
+const typeFilters = [
+  { value: '', label: '全部', class: '' },
+  { value: 'STORY', label: '故事', class: 'board__type-btn--story' },
+  { value: 'TASK', label: '任务', class: 'board__type-btn--task' },
+  { value: 'BUG', label: '缺陷', class: 'board__type-btn--bug' },
+]
+
+const { subscribe: wsSubscribe } = useWebSocket()
 
 const assigneeOptions = computed(() => {
   const names = new Set<string>()
@@ -212,6 +286,21 @@ const allBugs = computed(() => {
     if (i.type === 'BUG') bugs.push(i)
   }))
   return bugs
+})
+
+// 看板底部统计（关联报告数据）
+const boardStats = computed(() => {
+  let total = 0, todo = 0, inProgress = 0, done = 0, bugs = 0
+  columns.value.forEach((c: any) => {
+    (c.issues || []).forEach((i: any) => {
+      total++
+      if (i.type === 'BUG') { bugs++ }
+      else if (i.status === 'TODO') { todo++ }
+      else if (i.status === 'DONE') { done++ }
+      else { inProgress++ }
+    })
+  })
+  return { total, todo, inProgress, done, bugs }
 })
 
 const issueMatchesFilter = (issue: any) => {
@@ -233,23 +322,103 @@ const issueMatchesFilter = (issue: any) => {
 const filteredIssues = (col: any) =>
   col.issues?.filter((i: any) => issueMatchesFilter(i)) || []
 
-function columnBarStyle(idx: number) {
-  const colors = ['var(--color-primary)', 'var(--color-warning)', 'var(--color-success)']
-  return { borderTop: `3px solid ${colors[idx] || colors[0]}` }
+function laneKey(issue: any): string {
+  if (swimlaneMode.value === 'assignee') return issue.assigneeName || '未指派'
+  if (swimlaneMode.value === 'epic') {
+    if (issue.type === 'STORY') return issue.epic || '未分类史诗'
+    return '— 其他类型 —'
+  }
+  return ''
 }
 
-function onCreated() {
-  fetchBoard()
+function laneLabel(issue: any) { return laneKey(issue) }
+
+function sortedVisibleIssues(col: any) {
+  const list = filteredIssues(col)
+  if (!swimlaneMode.value) return list
+  return [...list].sort((a, b) => laneKey(a).localeCompare(laneKey(b), 'zh'))
 }
+
+function shouldShowLaneHeader(col: any, issue: any): boolean {
+  if (!swimlaneMode.value) return false
+  const sorted = sortedVisibleIssues(col)
+  const idx = sorted.findIndex((i: any) => i.id === issue.id)
+  if (idx <= 0) return true
+  return laneKey(sorted[idx - 1]) !== laneKey(issue)
+}
+
+function laneIssueCount(col: any, issue: any): number {
+  const key = laneKey(issue)
+  return filteredIssues(col).filter((i: any) => laneKey(i) === key).length
+}
+
+function sortColumnsByLane() {
+  columns.value.forEach((col: any) => {
+    col.issues?.sort((a: any, b: any) => laneKey(a).localeCompare(laneKey(b), 'zh'))
+  })
+}
+
+interface FilterPreset {
+  name: string
+  apply: () => void
+}
+
+const filterPresets = computed<FilterPreset[]>(() => [
+  { name: '全部', apply: () => clearFilters() },
+  { name: '缺陷', apply: () => { clearFilters(); filterType.value = 'BUG' } },
+  { name: '故事', apply: () => { clearFilters(); filterType.value = 'STORY' } },
+  { name: '我的', apply: () => { clearFilters(); filterAssignee.value = userStore.username || '' } },
+])
+
+function clearFilters() {
+  searchKeyword.value = ''
+  filterAssignee.value = ''
+  filterPriority.value = ''
+  filterType.value = ''
+}
+
+function applyPreset(p: FilterPreset) {
+  activePreset.value = p.name
+  p.apply()
+}
+
+watch([searchKeyword, filterAssignee, filterPriority, filterType], () => {
+  activePreset.value = ''
+})
+
+watch(swimlaneMode, (mode) => {
+  if (mode) sortColumnsByLane()
+  else fetchBoard()
+})
+
+function onCreated() { fetchBoard() }
 
 async function fetchBoard() {
-  const [boardRes, projRes] = await Promise.all([
+  const [boardRes, projRes, reportRes] = await Promise.all([
     getBoard(projectId),
     getProjectById(projectId),
+    getReports({ projectId }).catch(() => ({ data: [] })),
   ])
   columns.value = boardRes.data?.columns || []
   projectName.value = projRes.data?.name || ""
   teamId.value = projRes.data?.teamId || 0
+  recentReportCount.value = (reportRes.data || []).filter((r: any) => {
+    const d = r.reportDate || ''
+    // 近7天的报告
+    return d >= new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10)
+  }).length
+}
+
+// 快捷操作：新建工作项 / 生成报告
+function handleQuickReport(cmd: string) {
+  if (cmd === 'issue') {
+    showCreateIssue.value = true
+  } else {
+    const type = cmd === 'daily' ? 'DAILY' : 'WEEKLY'
+    generateReport({ projectId, type })
+      .then(() => ElMessage.success(`${type === 'DAILY' ? '日报' : '周报'}已生成`))
+      .catch(() => {})
+  }
 }
 
 function columnToStatus(colName: string): string {
@@ -259,24 +428,60 @@ function columnToStatus(colName: string): string {
 }
 
 async function handleDragChange(evt: any, targetColId: number) {
+  // 跨列拖拽：卡片从其他列进入当前列
   if (evt.added) {
     const issue = evt.added.element
-    const newIndex = evt.added.newIndex
+    if (!issue?.id) return
+    const newIndex = evt.added.newIndex ?? 0
     const targetCol = columns.value.find((c: any) => c.id === targetColId)
-    // Optimistic UI: update status locally immediately
     if (targetCol) {
-      issue.status = columnToStatus(targetCol.name)
+      if (issue.type === 'BUG') {
+        issue.bugStatus = bugStatusToColumn(targetCol.name)
+      } else {
+        issue.status = columnToStatus(targetCol.name)
+      }
     }
-    // Backend handles status sync + activity log + WebSocket broadcast
-    await moveIssue({ issueId: issue.id, targetColumnId: targetColId, sortOrder: newIndex })
+    try {
+      await moveIssue({ issueId: issue.id, targetColumnId: targetColId, sortOrder: newIndex })
+    } catch (e) {
+      ElMessage.error("移动失败，正在恢复...")
+      await fetchBoard()
+    }
   }
+  // 同列内排序：卡片在当前列中改变位置
+  else if (evt.moved) {
+    const issue = evt.moved.element
+    if (!issue?.id) return
+    const newIndex = evt.moved.newIndex ?? 0
+    try {
+      await moveIssue({ issueId: issue.id, targetColumnId: targetColId, sortOrder: newIndex })
+    } catch (e) {
+      ElMessage.error("排序失败，正在恢复...")
+      await fetchBoard()
+    }
+  }
+}
+
+// BUG 的 bugStatus → 列名映射（反向）
+function bugStatusToColumn(colName: string): string {
+  const lower = (colName || '').toLowerCase()
+  if (lower.includes('done') || lower.includes('完成')) return 'CLOSED'
+  if (lower.includes('progress') || lower.includes('进行')) return 'IN_PROGRESS'
+  return 'NEW' // 待办列 → NEW/CONFIRMED
+}
+
+async function quickComplete(issue: any) {
+  try {
+    await updateIssue({ id: issue.id, status: 'DONE' })
+    ElMessage.success(`${issue.issueKey} 已标记完成`)
+    await fetchBoard()
+  } catch { /* handled */ }
 }
 
 function handleBoardSync(event: any) {
   if (!event || !event.type) return
   switch (event.type) {
     case "ISSUE_MOVED": {
-      // Remove from all columns, then add to target
       let movedIssue: any = null
       for (const col of columns.value) {
         const idx = col.issues?.findIndex((i: any) => i.id === event.issueId)
@@ -289,7 +494,13 @@ function handleBoardSync(event: any) {
         const targetCol = columns.value.find((c: any) => c.id === event.targetColumnId)
         if (targetCol) {
           movedIssue.columnId = event.targetColumnId
-          movedIssue.status = columnToStatus(columns.value.find((c: any) => c.id === event.targetColumnId)?.name || "")
+          // BUG 类型同步 bugStatus，其他类型同步 status
+          if (movedIssue.type === 'BUG') {
+            movedIssue.bugStatus = bugStatusToColumn(targetCol.name)
+            movedIssue.status = columnToStatus(targetCol.name)
+          } else {
+            movedIssue.status = columnToStatus(targetCol.name)
+          }
           targetCol.issues?.push(movedIssue)
         }
       }
@@ -320,8 +531,10 @@ function openIssue(issue: any) {
   showEditIssue.value = true
 }
 
-// Task deeplink: ?issue=123 opens the issue dialog
 function checkDeeplink() {
+  if (route.query.create === '1') {
+    showCreateIssue.value = true
+  }
   const q = route.query.issue
   if (q) {
     editingIssueId.value = Number(q)
@@ -332,72 +545,228 @@ function checkDeeplink() {
 onMounted(async () => {
   await fetchBoard()
   checkDeeplink()
-  // Subscribe to board real-time sync
   wsSubscribe(`/topic/board/${projectId}`, handleBoardSync)
 })
 </script>
 
 <style scoped lang="scss">
 .board {
-  &__header {
+  &__toolbar {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 16px;
-  }
-
-  &__header-left {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    gap: 16px;
     flex-wrap: wrap;
   }
 
-  &__view-switcher {
+  &__toolbar-left {
     display: flex;
-    gap: 4px;
-    margin-left: 12px;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  &__toolbar-right {
+    flex-shrink: 0;
+  }
+
+  &__toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  &__report-btn {
+    position: relative;
+
+    .board__report-badge {
+      position: absolute;
+      top: -2px;
+      right: -6px;
+      min-width: 16px;
+      height: 16px;
+      padding: 0 4px;
+      border-radius: 8px;
+      background: var(--color-danger, #ef4444);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 16px;
+      text-align: center;
+    }
+  }
+
+  &__back {
+    color: var(--text-secondary);
+    &:hover { color: var(--color-primary); }
+  }
+
+  &__project-info {
+    margin-right: 8px;
+  }
+
+  &__title {
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--text-primary);
+    letter-spacing: -0.3px;
+    line-height: 1.2;
+  }
+
+  &__subtitle {
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  &__view-switcher {
+    margin-left: 4px;
+  }
+
+  &__filters {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 12px 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-lg);
+    margin-bottom: 16px;
+    box-shadow: var(--shadow-sm);
+  }
+
+  &__search {
+    width: 220px;
+  }
+
+  &__filter-select {
+    width: 120px;
+    &--sm { width: 100px; }
   }
 
   &__type-filters {
     display: flex;
-    gap: 4px;
+    gap: 6px;
   }
 
-  &__title {
-    font-size: 18px;
-    font-weight: bold;
-    color: var(--text-primary);
-  }
-
-  &__header-right {
+  &__presets {
     display: flex;
-    gap: 8px;
+    gap: 6px;
+    margin-left: auto;
+  }
+
+  &__preset-btn {
+    padding: 5px 12px;
+    border-radius: 7px;
+    font-size: 12px;
+    font-weight: 500;
+    border: 1px solid var(--border-color);
+    background: var(--bg-page);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+
+    &:hover { border-color: var(--color-primary); color: var(--color-primary); }
+    &.is-active {
+      background: rgba(99, 102, 241, 0.1);
+      border-color: var(--color-primary);
+      color: var(--color-primary);
+      font-weight: 600;
+    }
+  }
+
+  &__swimlane-header {
+    display: flex;
     align-items: center;
+    gap: 8px;
+    padding: 8px 4px 6px;
+    margin-top: 4px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-regular);
+    border-bottom: 1px dashed var(--border-color);
+    margin-bottom: 6px;
+  }
+
+  &__swimlane-avatar {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  &__swimlane-count {
+    margin-left: auto;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: var(--bg-card);
+    padding: 1px 7px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+  }
+
+  &__type-btn {
+    padding: 5px 12px;
+    border-radius: 7px;
+    font-size: 12px;
+    font-weight: 600;
+    border: 1px solid var(--border-color);
+    background: var(--bg-page);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+
+    &:hover { border-color: var(--color-primary); color: var(--color-primary); }
+    &.is-active {
+      background: var(--color-primary);
+      border-color: var(--color-primary);
+      color: #fff;
+    }
+    &--story.is-active { background: var(--type-story); border-color: var(--type-story); }
+    &--task.is-active { background: var(--type-task); border-color: var(--type-task); }
+    &--bug.is-active { background: var(--type-bug); border-color: var(--type-bug); }
   }
 
   &__columns {
     display: flex;
     gap: 16px;
     overflow-x: auto;
-    min-height: 70vh;
+    min-height: calc(70vh - 80px);
     padding-bottom: 16px;
     align-items: flex-start;
   }
 
   &__column {
-    flex: 0 0 300px;
+    flex: 0 0 310px;
     background: var(--bg-column);
-    border-radius: var(--border-radius-md);
-    padding: 12px;
-    transition: border var(--transition-fast), background var(--transition-fast);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-lg);
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 220px);
+    transition: border var(--transition-fast), box-shadow var(--transition-fast);
+
+    &:hover {
+      box-shadow: var(--shadow-sm);
+    }
   }
 
   &__column-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 12px;
+    padding: 14px 16px 10px;
+    border-top: 3px solid;
+    border-radius: var(--border-radius-lg) var(--border-radius-lg) 0 0;
   }
 
   &__column-title {
@@ -407,20 +776,141 @@ onMounted(async () => {
   }
 
   &__column-dot {
-    width: 10px;
-    height: 10px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
-    display: inline-block;
     flex-shrink: 0;
   }
 
   &__column-name {
-    font-weight: bold;
+    font-weight: 700;
+    font-size: 14px;
     color: var(--text-primary);
   }
 
-  &__column-body {
-    min-height: 60px;
+  &__column-count {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    background: var(--bg-card);
+    padding: 2px 9px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
   }
+
+  &__column-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 12px 12px;
+    min-height: 80px;
+  }
+
+  &__column-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 32px 16px;
+    color: var(--text-placeholder);
+    font-size: 13px;
+
+    .el-icon { opacity: 0.5; }
+  }
+
+  &__alt-view {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-lg);
+    padding: 16px;
+    box-shadow: var(--shadow-sm);
+  }
+
+  // 拖拽增强视觉反馈
+  &__column--drag-over {
+    border-color: var(--color-primary) !important;
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15), var(--shadow-md) !important;
+  }
+
+  // 筛选隐藏（用 display:none 而非 v-if，避免破坏 draggable 索引）
+  &__drag-item {
+    &.is-hidden {
+      display: none;
+    }
+  }
+
+  // 底部项目概览栏（关联报告入口）
+  &__overview {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    margin-top: 16px;
+    padding: 14px 20px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-lg);
+    box-shadow: var(--shadow-sm);
+  }
+
+  &__overview-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    cursor: default;
+
+    &:first-of-type {
+      cursor: pointer;
+      &:hover .board__overview-num { color: var(--color-primary); }
+    }
+  }
+
+  &__overview-num {
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--text-primary);
+    line-height: 1.1;
+    transition: color 0.2s;
+
+    &--todo { color: #94a3b8; }
+    &--progress { color: #f59e0b; }
+    &--done { color: #10b981; }
+    &--bug { color: #ef4444; }
+  }
+
+  &__overview-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-weight: 500;
+  }
+
+  &__overview-divider {
+    width: 1px;
+    height: 28px;
+    background: var(--border-color);
+    flex-shrink: 0;
+  }
+
+  &__overview-link {
+    margin-left: auto;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+  }
+}
+
+// 全局拖拽样式（sortable.js 使用，不能用 scoped）
+:global(.issue-card-ghost) {
+  opacity: 0.4;
+  background: rgba(99, 102, 241, 0.06) !important;
+  border: 2px dashed var(--color-primary) !important;
+  border-radius: var(--border-radius-md) !important;
+  transform: scale(0.98);
+}
+
+:global(.issue-card-dragging) {
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18), 0 4px 8px rgba(0, 0, 0, 0.08) !important;
+  transform: rotate(2deg) scale(1.03);
+  opacity: 0.95 !important;
+  cursor: grabbing !important;
+  z-index: 1000;
 }
 </style>
