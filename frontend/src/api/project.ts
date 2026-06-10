@@ -19,3 +19,7 @@ export function createProject(data: { name: string; key: string; description?: s
 export function addProjectMember(projectId: number, userId: number) {
   return request.post(`/projects/${projectId}/members/${userId}`);
 }
+
+export function deleteProject(projectId: number) {
+  return request.delete(`/projects/${projectId}`);
+}

@@ -44,4 +44,10 @@ public class ProjectController {
         projectService.addMember(projectId, userId);
         return Result.successMessage("添加成功");
     }
+
+    @DeleteMapping("/{projectId}")
+    public Result<Void> deleteProject(@PathVariable Long projectId) {
+        projectService.deleteProject(projectId);
+        return Result.successMessage("项目已删除");
+    }
 }

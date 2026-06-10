@@ -107,6 +107,22 @@ public class TeamService {
                 .eq(TeamMember::getTeamId, teamId).eq(TeamMember::getUserId, userId));
     }
 
+    /**
+     * 删除团队：仅团队所有者可操作，级联删除成员关系
+     */
+    @Transactional
+    public void deleteTeam(Long teamId, Long operatorId) {
+        Team team = teamMapper.selectById(teamId);
+        if (team == null) throw new BusinessException(ResultCode.TEAM_NOT_FOUND);
+        if (!team.getOwnerId().equals(operatorId)) {
+            throw new BusinessException(ResultCode.FORBIDDEN, "仅团队所有者可删除团队");
+        }
+        // 删除团队成员
+        teamMemberMapper.delete(new LambdaQueryWrapper<TeamMember>().eq(TeamMember::getTeamId, teamId));
+        // 删除团队（关联项目不删除，项目独立存在）
+        teamMapper.deleteById(teamId);
+    }
+
     private TeamVO toVO(Team team) {
         User owner = userMapper.selectById(team.getOwnerId());
         long count = teamMemberMapper.selectCount(

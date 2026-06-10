@@ -46,8 +46,15 @@
               <span class="team-card__meta-dot">·</span>
               <span>{{ team.ownerName }}</span>
             </div>
-            <div class="team-card__arrow">
-              <el-icon><ArrowRight /></el-icon>
+            <div class="team-card__actions">
+              <el-button
+                type="danger"
+                size="small"
+                text
+                :icon="Delete"
+                @click.stop="handleDelete(team)"
+              >删除</el-button>
+              <el-icon class="team-card__arrow"><ArrowRight /></el-icon>
             </div>
           </div>
         </div>
@@ -87,9 +94,9 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from "vue"
 import { useRouter } from "vue-router"
-import { createTeam, getMyTeams } from "@/api/team"
-import { ElMessage } from "element-plus"
-import { Plus, User, ArrowRight, UserFilled } from "@element-plus/icons-vue"
+import { createTeam, getMyTeams, deleteTeam } from "@/api/team"
+import { ElMessage, ElMessageBox } from "element-plus"
+import { Plus, User, ArrowRight, UserFilled, Delete } from "@element-plus/icons-vue"
 import { avatarGradient } from "@/utils/color"
 import type { TeamVO } from "@/types"
 
@@ -124,6 +131,21 @@ async function handleCreate() {
 
 function goToTeam(teamId: number) {
   router.push(`/teams/${teamId}`)
+}
+
+async function handleDelete(team: TeamVO) {
+  try {
+    await ElMessageBox.confirm(`确定删除团队「${team.name}」？此操作不可恢复。`, '确认删除', {
+      confirmButtonText: '确定删除',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+    await deleteTeam(team.id)
+    ElMessage.success('团队已删除')
+    await fetchTeams()
+  } catch (e: any) {
+    if (e !== 'cancel') throw e
+  }
 }
 
 onMounted(fetchTeams)
@@ -332,6 +354,12 @@ onMounted(fetchTeams)
     color: var(--text-placeholder);
     transition: all 0.25s;
     font-size: 16px;
+  }
+
+  &__actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
   }
 }
 

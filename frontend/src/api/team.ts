@@ -23,3 +23,7 @@ export function getMembers(teamId: number) {
 export function removeMember(teamId: number, userId: number) {
   return request.delete(`/teams/${teamId}/members/${userId}`);
 }
+
+export function deleteTeam(teamId: number) {
+  return request.delete(`/teams/${teamId}`);
+}

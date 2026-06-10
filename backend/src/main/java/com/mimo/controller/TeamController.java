@@ -55,4 +55,11 @@ public class TeamController {
         teamService.removeMember(teamId, userId, opId);
         return Result.successMessage("移除成功");
     }
+
+    @DeleteMapping("/{teamId}")
+    public Result<Void> deleteTeam(@PathVariable Long teamId, Authentication auth) {
+        Long userId = (Long) auth.getPrincipal();
+        teamService.deleteTeam(teamId, userId);
+        return Result.successMessage("团队已删除");
+    }
 }

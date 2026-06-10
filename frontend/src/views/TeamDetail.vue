@@ -88,11 +88,20 @@
               v-for="p in projects"
               :key="p.id"
               class="td-project-card"
-              @click="$router.push(`/projects/${p.id}/board`)"
             >
-              <div class="td-project-card__key">{{ p.key }}</div>
-              <div class="td-project-card__name">{{ p.name }}</div>
-              <el-icon class="td-project-card__arrow"><ArrowRight /></el-icon>
+              <div class="td-project-card__main" @click="$router.push(`/projects/${p.id}/board`)">
+                <div class="td-project-card__key">{{ p.key }}</div>
+                <div class="td-project-card__name">{{ p.name }}</div>
+                <el-icon class="td-project-card__arrow"><ArrowRight /></el-icon>
+              </div>
+              <el-button
+                class="td-project-card__del"
+                type="danger"
+                size="small"
+                text
+                :icon="Delete"
+                @click.stop="handleDeleteProject(p)"
+              >删除</el-button>
             </div>
           </div>
           <div v-else class="td-project-empty">
@@ -240,14 +249,14 @@
 import { ref, reactive, computed, nextTick, onMounted, onUnmounted } from "vue"
 import { useRoute } from "vue-router"
 import { getTeamById, getMembers, inviteMember, removeMember } from "@/api/team"
-import { getProjectsByTeam, createProject } from "@/api/project"
+import { getProjectsByTeam, createProject, deleteProject } from "@/api/project"
 import { searchUsers } from "@/api/user"
 import { sendChatMessage as apiSendChat, getChatHistory } from "@/api/chat"
 import { useWebSocket } from "@/composables/useWebSocket"
 import { ElMessage, ElMessageBox } from "element-plus"
 import {
   Plus, ArrowLeft, UserFilled, Folder, ArrowRight,
-  ChatDotRound, Promotion, Loading,
+  ChatDotRound, Promotion, Loading, Delete,
 } from "@element-plus/icons-vue"
 import { avatarGradient } from "@/utils/color"
 
@@ -423,6 +432,21 @@ async function handleCreateProject() {
   projectForm.name = ""
   projectForm.key = ""
   await fetchData()
+}
+
+async function handleDeleteProject(p: any) {
+  try {
+    await ElMessageBox.confirm(`确定删除项目「${p.name}」？此操作不可恢复。`, '确认删除', {
+      confirmButtonText: '确定删除',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+    await deleteProject(p.id)
+    ElMessage.success('项目已删除')
+    await fetchData()
+  } catch (e: any) {
+    if (e !== 'cancel') throw e
+  }
 }
 
 onMounted(() => {
@@ -657,13 +681,29 @@ onMounted(() => {
   padding: 10px 12px;
   border-radius: 10px;
   border: 1px solid var(--border-color);
-  cursor: pointer;
   transition: all 0.2s;
 
   &:hover {
     border-color: rgba(16,185,129,0.35);
     box-shadow: 0 2px 12px rgba(16,185,129,0.08);
+
     .td-project-card__arrow { color: #10b981; transform: translateX(2px); }
+    .td-project-card__del { opacity: 1; }
+  }
+
+  &__main {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+    cursor: pointer;
+  }
+
+  &__del {
+    opacity: 0;
+    transition: opacity 0.2s;
+    flex-shrink: 0;
   }
 
   &__key {

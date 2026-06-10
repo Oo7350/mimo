@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Mimo is a lightweight Trello-like project management platform for small teams. It supports team collaboration, kanban task tracking, and progress visualization.
 
-- **Version**: v2.2.0 — Team Chat & UI Differentiation (2026-06-10)
+- **Version**: v2.3.0 — Delete Operations (2026-06-10)
 - **Previous**: v2.1.0 — UI Enhancement & Command Palette (2026-06-10)
 - **GitHub**: https://github.com/Oo7350/mimo
 - **API docs**: `接口文档.md` (60+ endpoints, Chinese)
@@ -174,6 +174,23 @@ This file defines allowed Bash commands for Claude Code in this repo — if you 
 - **Board Sync Flow**: Drag → `PUT /api/board/issue/move` → backend updates issue + logs + WebSocket broadcast → all board subscribers receive event → optimistic UI update
 
 ## Version History
+
+### v2.3.0 — Delete Operations (2026-06-10)
+
+Added delete functionality for teams and projects across all relevant UI locations.
+
+**Backend changes**:
+- `TeamService.java` — added `deleteTeam(teamId, operatorId)` (owner-only, cascades team members)
+- `TeamController.java` — added `DELETE /api/teams/{teamId}`
+- `ProjectService.java` — added `deleteProject(projectId)` (cascades board columns, issues, members, reports, sprints)
+- `ProjectController.java` — added `DELETE /api/projects/{projectId}`
+
+**Frontend changes**:
+- `TeamList.vue` — added delete button on each team card (with confirmation dialog)
+- `ProjectList.vue` — added delete button on each project card (with confirmation dialog)
+- `TeamDetail.vue` — added delete button on each project card in team's project list
+- `api/team.ts` — added `deleteTeam(teamId)`
+- `api/project.ts` — added `deleteProject(projectId)`
 
 ### v2.2.0 — Team Chat & UI Differentiation (2026-06-10)
 

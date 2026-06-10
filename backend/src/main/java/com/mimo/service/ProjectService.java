@@ -100,6 +100,23 @@ public class ProjectService {
         }
     }
 
+    /**
+     * 删除项目：级联删除看板列、任务、成员关系、报告等
+     */
+    @Transactional
+    public void deleteProject(Long projectId) {
+        Project project = projectMapper.selectById(projectId);
+        if (project == null) throw new BusinessException(ResultCode.PROJECT_NOT_FOUND);
+        // 级联删除关联数据
+        boardColumnMapper.delete(new LambdaQueryWrapper<BoardColumn>().eq(BoardColumn::getProjectId, projectId));
+        issueMapper.delete(new LambdaQueryWrapper<Issue>().eq(Issue::getProjectId, projectId));
+        projectMemberMapper.delete(new LambdaQueryWrapper<ProjectMember>().eq(ProjectMember::getProjectId, projectId));
+        reportMapper.delete(new LambdaQueryWrapper<Report>().eq(Report::getProjectId, projectId));
+        sprintMapper.delete(new LambdaQueryWrapper<Sprint>().eq(Sprint::getProjectId, projectId));
+        // 删除项目
+        projectMapper.deleteById(projectId);
+    }
+
     private ProjectVO toVO(Project project) {
         User owner = userMapper.selectById(project.getOwnerId());
         Team team = teamMapper.selectById(project.getTeamId());
