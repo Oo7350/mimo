@@ -117,9 +117,6 @@
           drag-class="issue-card-dragging"
           :pull="true"
           :put="true"
-          :force-fallback="true"
-          fallback-class="issue-card-ghost"
-          :fallback-on-body="false"
           @change="(evt: any) => handleDragChange(evt, col.id)"
           @start="() => dragOverColumnId = col.id"
           @end="() => dragOverColumnId = null"
@@ -432,18 +429,17 @@ async function handleDragChange(evt: any, targetColId: number) {
   if (evt.added) {
     const issue = evt.added.element
     if (!issue?.id) return
-    const newIndex = evt.added.newIndex ?? 0
     const targetCol = columns.value.find((c: any) => c.id === targetColId)
-    if (targetCol) {
-      if (issue.type === 'BUG') {
-        issue.bugStatus = bugStatusToColumn(targetCol.name)
-      } else {
-        issue.status = columnToStatus(targetCol.name)
-      }
+    if (!targetCol) return
+    // 先更新本地状态（乐观更新）
+    if (issue.type === 'BUG') {
+      issue.bugStatus = bugStatusToColumn(targetCol.name)
+    } else {
+      issue.status = columnToStatus(targetCol.name)
     }
     try {
-      await moveIssue({ issueId: issue.id, targetColumnId: targetColId, sortOrder: newIndex })
-    } catch (e) {
+      await moveIssue({ issueId: issue.id, targetColumnId: targetColId, sortOrder: evt.added.newIndex ?? 0 })
+    } catch (e: any) {
       ElMessage.error("移动失败，正在恢复...")
       await fetchBoard()
     }
@@ -452,10 +448,9 @@ async function handleDragChange(evt: any, targetColId: number) {
   else if (evt.moved) {
     const issue = evt.moved.element
     if (!issue?.id) return
-    const newIndex = evt.moved.newIndex ?? 0
     try {
-      await moveIssue({ issueId: issue.id, targetColumnId: targetColId, sortOrder: newIndex })
-    } catch (e) {
+      await moveIssue({ issueId: issue.id, targetColumnId: targetColId, sortOrder: evt.moved.newIndex ?? 0 })
+    } catch (e: any) {
       ElMessage.error("排序失败，正在恢复...")
       await fetchBoard()
     }
@@ -472,7 +467,17 @@ function bugStatusToColumn(colName: string): string {
 
 async function quickComplete(issue: any) {
   try {
-    await updateIssue({ id: issue.id, status: 'DONE' })
+    // 找到"完成"列的 ID，同时更新 status 和 columnId
+    const doneCol = columns.value.find((c: any) => {
+      const n = (c.name || '').toLowerCase()
+      return n.includes('done') || n.includes('完成')
+    })
+    await updateIssue({
+      id: issue.id,
+      status: 'DONE',
+      columnId: doneCol?.id ?? issue.columnId,
+      ...(issue.type === 'BUG' ? { bugStatus: 'CLOSED' } : {}),
+    })
     ElMessage.success(`${issue.issueKey} 已标记完成`)
     await fetchBoard()
   } catch { /* handled */ }
@@ -831,10 +836,16 @@ onMounted(async () => {
     box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15), var(--shadow-md) !important;
   }
 
-  // 筛选隐藏（用 display:none 而非 v-if，避免破坏 draggable 索引）
+  // 筛选隐藏：用 visibility+height:0 保持元素在文档流中，避免破坏 sortablejs 索引计算
   &__drag-item {
     &.is-hidden {
-      display: none;
+      visibility: hidden;
+      height: 0;
+      overflow: hidden;
+      padding: 0 !important;
+      margin: 0 !important;
+      border: none !important;
+      pointer-events: none;
     }
   }
 
