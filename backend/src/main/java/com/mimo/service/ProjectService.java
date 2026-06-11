@@ -25,6 +25,9 @@ public class ProjectService {
     private final UserMapper userMapper;
     private final TeamMapper teamMapper;
     private final ActivityLogMapper activityLogMapper;
+    private final IssueMapper issueMapper;
+    private final ReportMapper reportMapper;
+    private final SprintMapper sprintMapper;
 
     @Transactional
     public ProjectVO create(CreateRequest request, Long ownerId) {

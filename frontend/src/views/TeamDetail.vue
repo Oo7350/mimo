@@ -323,7 +323,7 @@ const emojiGroups = [
 ]
 
 function insertEmoji(emoji: string) {
-  const textarea = chatInput.value?.$el?.querySelector('textarea')
+  const textarea = chatInputRef.value?.$el?.querySelector('textarea')
   if (textarea) {
     const start = textarea.selectionStart
     const end = textarea.selectionEnd

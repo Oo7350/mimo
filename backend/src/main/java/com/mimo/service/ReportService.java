@@ -32,6 +32,8 @@ public class ReportService {
         if ("WEEKLY".equals(request.getType())) {
             startDate = startDate.minusDays(6);
         }
+        // lambda 需要 effectively final 变量
+        final LocalDate reportStart = startDate;
 
         List<Issue> allProjectIssues = issueMapper.selectList(
                 new LambdaQueryWrapper<Issue>()
@@ -40,7 +42,7 @@ public class ReportService {
         // 已完成任务（按 updatedAt 在报告周期内筛选）
         List<Issue> completedIssues = allProjectIssues.stream()
                 .filter(i -> "DONE".equals(i.getStatus()))
-                .filter(i -> i.getUpdatedAt() != null && !i.getUpdatedAt().toLocalDate().isBefore(startDate))
+                .filter(i -> i.getUpdatedAt() != null && !i.getUpdatedAt().toLocalDate().isBefore(reportStart))
                 .collect(Collectors.toList());
 
         // 进行中的任务
