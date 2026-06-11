@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Mimo is a lightweight Trello-like project management platform for small teams. It supports team collaboration, kanban task tracking, and progress visualization.
 
-- **Version**: v2.4.0 — Emoji, Enhanced Reports, Audit Log (2026-06-10)
+- **Version**: v2.5.0 — Chat Recall, Single-Session Login, @Mention (2026-06-11)
 - **Previous**: v2.1.0 — UI Enhancement & Command Palette (2026-06-10)
 - **GitHub**: https://github.com/Oo7350/mimo
 - **API docs**: `接口文档.md` (60+ endpoints, Chinese)
@@ -136,6 +136,10 @@ Single backend + RBAC with two roles: `ROLE_ADMIN` (team/project admin) and `ROL
 - **Sprint**: Quick-start 2-week iteration with auto task assignment; burndown chart with snapshots; member statistics (completion rate, overdue rate, avg time in column); complete-with-migration for undone tasks
 - **AI Assistant**: DeepSeek-powered polish description (professionalize draft text) and priority recommendation (analyze urgency/importance), frontend-only integration
 - **Onboarding Tour**: driver.js guided walkthrough triggered on first board visit
+- **Chat Recall**: Messages can be recalled within 2 minutes; recalled messages show gray italic text; WS broadcast syncs recall state
+- **Single-Session Login**: Redis-backed token validation — same account login kicks previous session (401 "账号已在其他设备登录")
+- **@Mention**: Type `@` in chat input to trigger member picker; selected username inserted as `@username`; rendered as green highlight in message bubbles
+- **403 Fix**: JwtAuthenticationFilter now returns 401 JSON directly for invalid/expired tokens instead of passing through to Spring Security (which caused misleading 403)
 
 ### Frontend deep links
 
@@ -174,6 +178,35 @@ This file defines allowed Bash commands for Claude Code in this repo — if you 
 - **Board Sync Flow**: Drag → `PUT /api/board/issue/move` → backend updates issue + logs + WebSocket broadcast → all board subscribers receive event → optimistic UI update
 
 ## Version History
+
+### v2.5.0 — Chat Recall, Single-Session Login, @Mention (2026-06-11)
+
+Four bug fixes and feature enhancements discovered through team chat usage.
+
+**Bug 1 — Message Recall**:
+- `ChatMessage` entity: added `recalled` Boolean field (DB migration V4)
+- `ChatService.recallMessage(messageId, userId)`: validates sender ownership + 2-minute time limit + WS broadcast recall event
+- `ChatController`: `PUT /api/chat/recall/{messageId}` endpoint
+- `TeamDetail.vue`: hover shows "撤回" button on own messages; recalled messages rendered as gray italic "消息已撤回"
+
+**Bug 2 — Single-Session Login (Kick Previous Session)**:
+- `UserService.login()`: writes new token to Redis key `mimo:token:{userId}` (24h TTL)
+- `JwtAuthenticationFilter`: on each request, compares request token with Redis-stored token; mismatch → 401 JSON "账号已在其他设备登录"
+- Frontend `request.ts` 401 interceptor: clears user localStorage on 401
+
+**Bug 3 — Fix Misleading 403**:
+- Root cause: invalid/expired JWT was passed through to Spring Security's authorization phase, which returned 403 instead of 401
+- Fix: `JwtAuthenticationFilter` now returns `Result.fail(401, ...)` directly via response writer for invalid/expired tokens
+
+**Bug 4 — @Mention in Team Chat**:
+- `TeamDetail.vue` chat input: typing `@` triggers member popover (fuzzy search, max 8 results)
+- Clicking member inserts `@username ` at cursor position
+- Message rendering: `renderMention()` regex replaces `@xxx` with green highlighted `<span>`
+
+**Files modified (10)**:
+- Backend: `ChatMessage.java`, `ChatService.java`, `ChatController.java`, `UserService.java`, `JwtAuthenticationFilter.java`
+- Frontend: `TeamDetail.vue`, `request.ts`
+- DB: `V4__chat_recall.sql`
 
 ### v2.4.0 — Emoji, Enhanced Reports, Audit Log (2026-06-10)
 
