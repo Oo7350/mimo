@@ -9,7 +9,7 @@ import com.mimo.dto.RegisterRequest;
 import com.mimo.entity.User;
 import com.mimo.mapper.UserMapper;
 import com.mimo.util.JwtUtil;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -17,13 +17,19 @@ import org.springframework.stereotype.Service;
 import java.util.concurrent.TimeUnit;
 
 @Service
-@RequiredArgsConstructor
 public class UserService {
 
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
-    private final StringRedisTemplate redisTemplate;
+    @Autowired(required = false)
+    private StringRedisTemplate redisTemplate;
+
+    public UserService(UserMapper userMapper, PasswordEncoder passwordEncoder, JwtUtil jwtUtil) {
+        this.userMapper = userMapper;
+        this.passwordEncoder = passwordEncoder;
+        this.jwtUtil = jwtUtil;
+    }
 
     public LoginResponse login(LoginRequest request) {
         User user = userMapper.selectOne(
@@ -36,11 +42,13 @@ public class UserService {
         }
         String token = jwtUtil.generateToken(user.getId(), user.getUsername(), user.getRole());
 
-        // 单设备登录：将新 Token 存入 Redis，旧 Token 自动失效
-        redisTemplate.opsForValue().set(
-                "mimo:token:" + user.getId(),
-                token,
-                24, TimeUnit.HOURS);
+        // 单设备登录：Redis 可用时将新 Token 存入 Redis
+        if (redisTemplate != null) {
+            redisTemplate.opsForValue().set(
+                    "mimo:token:" + user.getId(),
+                    token,
+                    24, TimeUnit.HOURS);
+        }
 
         LoginResponse.UserInfo info = LoginResponse.UserInfo.builder()
                 .id(user.getId())

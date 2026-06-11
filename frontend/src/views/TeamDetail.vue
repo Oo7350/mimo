@@ -200,7 +200,7 @@
               v-model="chatInput"
               type="textarea"
               :autosize="{ minRows: 1, maxRows: 4 }"
-              placeholder="输入消息... @ 成员  Enter 发送"
+              placeholder="输入消息... Enter 发送"
               resize="none"
               @input="onChatInput"
               @keydown.enter.exact.prevent="sendChatMessage"
@@ -339,14 +339,19 @@ interface ChatMsg {
   createdAt: string; isMine: boolean; recalled?: boolean;
 }
 const userStore = useUserStore()
-let myUserId: number | null = null
-// 提前获取当前用户 ID（确保 WS 消息到达时能正确判断是否为自己）
-if (userStore.userInfo?.id) {
-  myUserId = userStore.userInfo.id
-} else {
-  const storedUser = localStorage.getItem("user")
-  if (storedUser) { try { myUserId = JSON.parse(storedUser).id } catch {} }
+// 立即获取当前用户 ID（确保 WS 消息到达时能正确判断是否为自己）
+function getMyUserId(): number | null {
+  // 优先从 Pinia store 获取
+  const storeId = userStore.userInfo?.id
+  if (storeId) return storeId
+  // 其次从 localStorage 获取
+  const stored = localStorage.getItem("user")
+  if (stored) {
+    try { return JSON.parse(stored).id } catch { /* ignore */ }
+  }
+  return null
 }
+let myUserId = getMyUserId()
 
 const messages = ref<ChatMsg[]>([])
 const chatInput = ref("")
@@ -414,11 +419,8 @@ async function loadChatHistory() {
   try {
     const res = await getChatHistory(teamId)
     const list: ChatMsg[] = res.data || []
-    // 标记自己的消息（从 JWT 解析 userId）
-    const storedUser = localStorage.getItem("user")
-    if (storedUser) {
-      try { myUserId = JSON.parse(storedUser).id } catch {}
-    }
+    // 确保有 myUserId（可能 store 已在页面加载期间完成 hydration）
+    if (!myUserId) myUserId = getMyUserId()
     messages.value = list.map((m: ChatMsg) => ({
       ...m,
       isMine: m.senderId === myUserId,
@@ -1028,6 +1030,7 @@ onMounted(() => {
 
   &--mine {
     align-self: flex-end;
+    margin-left: auto;  // 确保右对齐
     flex-direction: row-reverse;
 
     .td-msg__bubble {
