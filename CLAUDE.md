@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Mimo is a lightweight Trello-like project management platform for small teams. It supports team collaboration, kanban task tracking, and progress visualization.
 
-- **Version**: v2.3.1 — Kanban Drag & Status Fix (2026-06-10)
+- **Version**: v2.4.0 — Emoji, Enhanced Reports, Audit Log (2026-06-10)
 - **Previous**: v2.1.0 — UI Enhancement & Command Palette (2026-06-10)
 - **GitHub**: https://github.com/Oo7350/mimo
 - **API docs**: `接口文档.md` (60+ endpoints, Chinese)
@@ -174,6 +174,22 @@ This file defines allowed Bash commands for Claude Code in this repo — if you 
 - **Board Sync Flow**: Drag → `PUT /api/board/issue/move` → backend updates issue + logs + WebSocket broadcast → all board subscribers receive event → optimistic UI update
 
 ## Version History
+
+### v2.4.0 — Emoji, Enhanced Reports, Audit Log (2026-06-10)
+
+Feature enhancements: emoji picker in team chat, richer report content, and operation audit logging for delete actions.
+
+**Frontend changes**:
+- `TeamDetail.vue` — added emoji picker (4 categories: 表情/手势/物品/符号, 200+ emojis) with popover, cursor position preservation
+- Report generation now includes: task counts in headers, assignee info, todo preview (top 10), bug summary, project overview stats
+
+**Backend changes**:
+- `ReportService.generateDraft()` — enhanced with todo list, bug statistics, project overview section; uses stream filter instead of DB query for completed issues
+- `TeamService.deleteTeam()` — adds audit log record before deletion (targetType=TEAM, action=DELETE)
+- `ProjectService.deleteProject(projectId, operatorId)` — adds audit log record; updated signature to accept operatorId
+- `ProjectController.deleteProject()` — passes userId to service for audit trail
+
+**Audit log fields**: userId, username, projectId, targetType (TEAM/PROJECT), targetId, action (DELETE), detail
 
 ### v2.3.1 — Kanban Drag & Status Fix (2026-06-10)
 

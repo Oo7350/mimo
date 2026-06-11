@@ -33,17 +33,31 @@ public class ReportService {
             startDate = startDate.minusDays(6);
         }
 
-        List<Issue> completedIssues = issueMapper.selectList(
+        List<Issue> allProjectIssues = issueMapper.selectList(
                 new LambdaQueryWrapper<Issue>()
-                        .eq(Issue::getProjectId, request.getProjectId())
-                        .eq(Issue::getStatus, "DONE")
-                        .ge(Issue::getUpdatedAt, startDate.atStartOfDay()));
+                        .eq(Issue::getProjectId, request.getProjectId()));
 
-        // 查询进行中的任务（让报告更有内容）
-        List<Issue> inProgressIssues = issueMapper.selectList(
-                new LambdaQueryWrapper<Issue>()
-                        .eq(Issue::getProjectId, request.getProjectId())
-                        .eq(Issue::getStatus, "IN_PROGRESS"));
+        // 已完成任务（按 updatedAt 在报告周期内筛选）
+        List<Issue> completedIssues = allProjectIssues.stream()
+                .filter(i -> "DONE".equals(i.getStatus()))
+                .filter(i -> i.getUpdatedAt() != null && !i.getUpdatedAt().toLocalDate().isBefore(startDate))
+                .collect(Collectors.toList());
+
+        // 进行中的任务
+        List<Issue> inProgressIssues = allProjectIssues.stream()
+                .filter(i -> "IN_PROGRESS".equals(i.getStatus()))
+                .collect(Collectors.toList());
+
+        // 待办任务概览
+        List<Issue> todoIssues = allProjectIssues.stream()
+                .filter(i -> "TODO".equals(i.getStatus()) || ("BUG".equals(i.getType()) && "NEW".equals(i.getBugStatus())))
+                .collect(Collectors.toList());
+
+        // 缺陷统计
+        long bugCount = allProjectIssues.stream().filter(i -> "BUG".equals(i.getType())).count();
+        long openBugs = allProjectIssues.stream()
+                .filter(i -> "BUG".equals(i.getType()) && !"CLOSED".equals(i.getBugStatus()))
+                .count();
 
         StringBuilder content = new StringBuilder();
         content.append("## ").append("DAILY".equals(request.getType()) ? "日报" : "周报").append("\n\n");
@@ -51,24 +65,52 @@ public class ReportService {
         if (!startDate.equals(reportDate)) {
             content.append(" 至 ").append(reportDate);
         }
-        content.append("\n\n### 已完成任务\n\n");
+        content.append("\n\n### 已完成任务 (").append(completedIssues.size()).append(")\n\n");
         if (!completedIssues.isEmpty()) {
             for (Issue issue : completedIssues) {
-                content.append("- [").append(issue.getIssueKey()).append("] ")
-                        .append(issue.getTitle()).append("\n");
+                content.append("- [x] **[").append(issue.getIssueKey()).append("]** ")
+                        .append(issue.getTitle())
+                        .append(issue.getAssigneeId() != null ? " → @" + issue.getAssigneeId() : "")
+                        .append("\n");
             }
         } else {
             content.append("暂无已完成任务\n");
         }
-        content.append("\n### 进行中任务\n\n");
+        content.append("\n### 进行中任务 (").append(inProgressIssues.size()).append(")\n\n");
         if (!inProgressIssues.isEmpty()) {
             for (Issue issue : inProgressIssues) {
-                content.append("- [").append(issue.getIssueKey()).append("] ")
+                content.append("- 🔄 **[").append(issue.getIssueKey()).append("]** ")
                         .append(issue.getTitle()).append("\n");
             }
         } else {
             content.append("暂无进行中任务\n");
         }
+
+        // 新增：待办和缺陷摘要
+        if (!todoIssues.isEmpty()) {
+            content.append("\n### 待办任务 (").append(todoIssues.size()).append(")\n\n");
+            for (Issue issue : todoIssues.subList(0, Math.min(10, todoIssues.size()))) {
+                content.append("- ⏳ **[").append(issue.getIssueKey()).append("]** ")
+                        .append(issue.getTitle()).append("\n");
+            }
+            if (todoIssues.size() > 10) {
+                content.append("- _... 还有 ").append(todoIssues.size() - 10).append(" 项_\n");
+            }
+        }
+
+        if (bugCount > 0) {
+            content.append("\n### 缺陷概况\n\n");
+            content.append("- 总缺陷: **").append(bugCount).append("**\n");
+            content.append("- 未关闭: **").append(openBugs).append("**\n");
+            content.append("- 已关闭: **").append(bugCount - openBugs).append("**\n");
+        }
+
+        // 项目总览
+        content.append("\n---\n\n");
+        content.append("**项目总览**: 共 **").append(allProjectIssues.size()).append("** 项任务 | ");
+        content.append("完成: **").append(completedIssues.size()).append("** | ");
+        content.append("进行中: **").append(inProgressIssues.size()).append("** | ");
+        content.append("待办: **").append(todoIssues.size()).append("**\n");
 
         Report report = new Report();
         report.setUserId(userId);

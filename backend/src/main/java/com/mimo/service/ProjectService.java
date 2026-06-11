@@ -6,6 +6,7 @@ import com.mimo.common.ResultCode;
 import com.mimo.dto.ProjectDTO.*;
 import com.mimo.entity.*;
 import com.mimo.mapper.*;
+import com.mimo.entity.ActivityLog;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,11 +22,9 @@ public class ProjectService {
     private final ProjectMemberMapper projectMemberMapper;
     private final TeamMemberMapper teamMemberMapper;
     private final BoardColumnMapper boardColumnMapper;
-    private final IssueMapper issueMapper;
-    private final ReportMapper reportMapper;
-    private final SprintMapper sprintMapper;
     private final UserMapper userMapper;
     private final TeamMapper teamMapper;
+    private final ActivityLogMapper activityLogMapper;
 
     @Transactional
     public ProjectVO create(CreateRequest request, Long ownerId) {
@@ -107,9 +106,20 @@ public class ProjectService {
      * 删除项目：级联删除看板列、任务、成员关系、报告等
      */
     @Transactional
-    public void deleteProject(Long projectId) {
+    public void deleteProject(Long projectId, Long operatorId) {
         Project project = projectMapper.selectById(projectId);
         if (project == null) throw new BusinessException(ResultCode.PROJECT_NOT_FOUND);
+        // 审计日志
+        User operator = userMapper.selectById(operatorId);
+        ActivityLog log = new ActivityLog();
+        log.setUserId(operatorId);
+        log.setUsername(operator != null ? operator.getUsername() : "未知");
+        log.setProjectId(projectId);
+        log.setTargetType("PROJECT");
+        log.setTargetId(projectId);
+        log.setAction("DELETE");
+        log.setDetail("删除项目: " + project.getName() + " (" + project.getKey() + ")");
+        activityLogMapper.insert(log);
         // 级联删除关联数据
         boardColumnMapper.delete(new LambdaQueryWrapper<BoardColumn>().eq(BoardColumn::getProjectId, projectId));
         issueMapper.delete(new LambdaQueryWrapper<Issue>().eq(Issue::getProjectId, projectId));

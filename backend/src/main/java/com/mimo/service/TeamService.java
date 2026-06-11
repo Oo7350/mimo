@@ -12,6 +12,8 @@ import com.mimo.entity.User;
 import com.mimo.mapper.TeamMapper;
 import com.mimo.mapper.TeamMemberMapper;
 import com.mimo.mapper.UserMapper;
+import com.mimo.mapper.ActivityLogMapper;
+import com.mimo.entity.ActivityLog;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,6 +28,7 @@ public class TeamService {
     private final TeamMapper teamMapper;
     private final TeamMemberMapper teamMemberMapper;
     private final UserMapper userMapper;
+    private final ActivityLogMapper activityLogMapper;
 
     public TeamVO create(CreateRequest request, Long ownerId) {
         if (teamMapper.exists(new LambdaQueryWrapper<Team>().eq(Team::getName, request.getName()))) {
@@ -117,6 +120,16 @@ public class TeamService {
         if (!team.getOwnerId().equals(operatorId)) {
             throw new BusinessException(ResultCode.FORBIDDEN, "仅团队所有者可删除团队");
         }
+        // 审计日志
+        User operator = userMapper.selectById(operatorId);
+        ActivityLog log = new ActivityLog();
+        log.setUserId(operatorId);
+        log.setUsername(operator != null ? operator.getUsername() : "未知");
+        log.setTargetType("TEAM");
+        log.setTargetId(teamId);
+        log.setAction("DELETE");
+        log.setDetail("删除团队: " + team.getName());
+        activityLogMapper.insert(log);
         // 删除团队成员
         teamMemberMapper.delete(new LambdaQueryWrapper<TeamMember>().eq(TeamMember::getTeamId, teamId));
         // 删除团队（关联项目不删除，项目独立存在）

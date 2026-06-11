@@ -157,7 +157,28 @@
 
         <!-- 输入框 -->
         <div class="td-chat-input-wrap">
+          <el-popover trigger="click" placement="top-start" :width="320" :show-after="0">
+            <template #reference>
+              <el-button class="td-chat-emoji-btn" circle size="small" text>
+                <span style="font-size: 18px">😊</span>
+              </el-button>
+            </template>
+            <div class="emoji-picker">
+              <div v-for="group in emojiGroups" :key="group.label" class="emoji-group">
+                <div class="emoji-group__label">{{ group.label }}</div>
+                <div class="emoji-grid">
+                  <span
+                    v-for="e in group.items"
+                    :key="e"
+                    class="emoji-item"
+                    @click="insertEmoji(e)"
+                  >{{ e }}</span>
+                </div>
+              </div>
+            </div>
+          </el-popover>
           <el-input
+            ref="chatInputRef"
             v-model="chatInput"
             type="textarea"
             :autosize="{ minRows: 1, maxRows: 4 }"
@@ -289,8 +310,33 @@ const unreadCount = ref(0)
 const onlineCount = ref(1)
 const chatPanelRef = ref<HTMLElement>()
 const chatMsgListRef = ref<HTMLElement>()
+const chatInputRef = ref<any>()
 let myUserId: number | null = null
 let lastReadTime = Date.now()
+
+// Emoji 数据
+const emojiGroups = [
+  { label: '表情', items: ['😀','😃','😄','😁','😆','😅','🤣','😂','🙂','🙃','😉','😊','😇','🥰','😍','🤩','😘','😗','😚','😙','🥲','😋','😛','😜','🤪','😝','🤑','🤗','🤭','🫢','🫣','🤫','🤔','🫡','🤐','🤨','😐','😑','😶','🫥','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮','🥵','🥶','🥴','😵','🤯','🤠','🥳','🥸','😎','🤓','🧐','😕','🫤','😟','🙁','☹️','😮','😯','😲','😳','🥺','🥹','😦','😧','😨','😰','😥','😢','😭','😱','😖','😣','😞','😓','😩','😫','🥱','😤','😡','😠','🤬','😈','👿','💀','☠️','💩','🤡','👹','👺','👻','👽','👾','🤖'] },
+  { label: '手势', items: ['👋','🤚','🖐️','✋','🖖','👌','🤏','✌️','🤞','🤟','🤘','🤙','👈','👉','👆','🖕','👇','☝️','👍','👎','✊','👊','🤛','🤜','👏','🙌','👐','🤲','🤝','🙏','✍️','💪','🦾','🦿','🦵','🦶','👂','🦻','👃','🧠','🫀','🫁','🦷','🦴','👀','👁️','👅','👄'] },
+  { label: '物品', items: ['❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❤️‍🔥','❤️‍🩹','💯','💢','💥','💫','💦','💨','🕳️','💣','💬','👁️‍🗨️','🗨️','🗯️','💭','💤','👋','🤚','✋','🖖','👌','🤞','🤟','🤘','🤙','👈','👉','👆','🖕','👇','☝️','👍','👎','✊','👊','🤛','🤜','👏','🙌','👐','🤲','🤝','🙏','✍️','💪','🦾','🦿','🦵','🦶','👂','🦻','👃','🧠','🫀','🫁','🦷','🦴','👀','👁️','👅','👄'] },
+  { label: '符号', items: ['⭐','🌟','✨','⚡','🔥','💥','🎉','🎊','🎈','🎁','🏆','🥇','🥈','🥉','👑','💎','🔔','📢','📣','🎯','🚀','💡','🔧','🛠️','📝','📋','📌','📍','🔒','🔓','🔑','⚠️','❓','❗','✅','❌','➕','➖','✖️','➗','♾️','💯','🔄','↔️','⬆️','⬇️','➡️','⬅️','↩️','↪️','⤴️','⤵️','#️⃣','*️⃣','0️⃣','1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟','🔠','🔡','🔢','🔣','🔤','🅰️','🆎','🅱️','🆑','🆒','🆓','ℹ️','🆗','🆙','🆘','🆔','🚫','🔞','📵','🚯','🚱','🚳','🚷','🚼','🚽','🚾','🛂','🛃','🛄','🛅','🚹','🚺','🚻','🚼','🚽','🚾','🛂','🛃','🛄','🛅','🚹','🚺','🚻'] },
+]
+
+function insertEmoji(emoji: string) {
+  const textarea = chatInput.value?.$el?.querySelector('textarea')
+  if (textarea) {
+    const start = textarea.selectionStart
+    const end = textarea.selectionEnd
+    chatInput.value = chatInput.value.slice(0, start) + emoji + chatInput.value.slice(end)
+    // 恢复光标位置
+    nextTick(() => {
+      textarea.focus()
+      textarea.setSelectionRange(start + emoji.length, start + emoji.length)
+    })
+  } else {
+    chatInput.value += emoji
+  }
+}
 
 // WebSocket 实时接收消息
 const ws = useWebSocket()
@@ -937,6 +983,64 @@ onMounted(() => {
     flex-shrink: 0;
     width: 36px;
     height: 36px;
+  }
+
+  &__emoji-btn {
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+
+    &:hover { background: var(--bg-hover); }
+  }
+}
+
+// Emoji 选择器
+.emoji-picker {
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.emoji-group {
+  &:not(:last-child) {
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  &__label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-weight: 600;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+}
+
+.emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 2px;
+}
+
+.emoji-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  aspect-ratio: 1;
+  font-size: 18px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.15s, transform 0.1s;
+
+  &:hover {
+    background: rgba(16,185,129,0.12);
+    transform: scale(1.2);
+  }
+
+  &:active {
+    transform: scale(0.9);
   }
 }
 

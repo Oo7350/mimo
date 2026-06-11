@@ -46,8 +46,9 @@ public class ProjectController {
     }
 
     @DeleteMapping("/{projectId}")
-    public Result<Void> deleteProject(@PathVariable Long projectId) {
-        projectService.deleteProject(projectId);
+    public Result<Void> deleteProject(@PathVariable Long projectId, Authentication auth) {
+        Long userId = (Long) auth.getPrincipal();
+        projectService.deleteProject(projectId, userId);
         return Result.successMessage("项目已删除");
     }
 }
