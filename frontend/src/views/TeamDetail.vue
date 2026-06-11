@@ -5,9 +5,11 @@
       <div class="td-hero__bg" :style="{ background: avatarGradient(team?.name || 'T') }">
         <div class="td-hero__overlay" />
       </div>
-      <el-button class="td-hero__back" @click="$router.push('/teams')" text round>
-        <el-icon><ArrowLeft /></el-icon> 返回
-      </el-button>
+      <div class="td-hero__top-bar">
+        <el-button class="td-hero__back" @click="$router.push('/teams')" text round>
+          <el-icon><ArrowLeft /></el-icon> 返回
+        </el-button>
+      </div>
       <div class="td-hero__body">
         <div class="td-hero__avatar" :style="{ background: avatarGradient(team?.name || 'T') }">
           {{ (team?.name || '?').charAt(0).toUpperCase() }}
@@ -648,11 +650,13 @@ onMounted(() => {
     background: linear-gradient(135deg, rgba(6,95,70,0.92), rgba(4,120,87,0.85));
   }
 
-  &__back {
-    position: absolute;
-    top: 14px;
-    left: 16px;
+  &__top-bar {
+    position: relative;
     z-index: 2;
+    padding: 12px 16px 0;
+  }
+
+  &__back {
     color: rgba(255,255,255,0.8);
     font-weight: 600;
 
