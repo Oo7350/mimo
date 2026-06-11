@@ -73,9 +73,22 @@ public class ChatService {
         if (msg.getCreatedAt() != null && msg.getCreatedAt().plusMinutes(2).isBefore(java.time.LocalDateTime.now())) {
             throw new com.mimo.common.BusinessException(com.mimo.common.ResultCode.BAD_REQUEST, "超过2分钟，无法撤回");
         }
-        msg.setRecalled(true);
-        msg.setContent("[消息已撤回]");
-        chatMessageMapper.updateById(msg);
+        // 仅更新 content 和 recalled 字段，避免 updateById 因缺少 DB 列报错
+        com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<ChatMessage> uw =
+            new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<>();
+        uw.eq("id", messageId)
+          .set("content", "[消息已撤回]")
+          .set("recalled", true);
+        chatMessageMapper.update(null, uw);
+
+        // 重新查询获取最新状态
+        msg = chatMessageMapper.selectById(messageId);
+        if (msg == null) {
+            msg = new ChatMessage();
+            msg.setId(messageId);
+            msg.setContent("[消息已撤回]");
+            msg.setRecalled(true);
+        }
 
         ChatMessageVO vo = toVO(msg);
 

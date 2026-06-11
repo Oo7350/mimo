@@ -665,7 +665,7 @@ onMounted(() => {
     display: flex;
     align-items: center;
     gap: 16px;
-    padding: 28px 24px 24px;
+    padding: 32px 24px 24px 56px;  /* 左侧留出空间避免与返回按钮重叠 */
     flex-wrap: wrap;
   }
 
