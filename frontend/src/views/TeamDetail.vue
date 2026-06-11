@@ -274,6 +274,7 @@ import { getProjectsByTeam, createProject, deleteProject } from "@/api/project"
 import { searchUsers } from "@/api/user"
 import { sendChatMessage as apiSendChat, getChatHistory } from "@/api/chat"
 import { useWebSocket } from "@/composables/useWebSocket"
+import { useUserStore } from "@/store/user"
 import { ElMessage, ElMessageBox } from "element-plus"
 import {
   Plus, ArrowLeft, UserFilled, Folder, ArrowRight,
@@ -302,16 +303,25 @@ interface ChatMsg {
   senderName: string; senderAvatar: string; content: string;
   createdAt: string; isMine: boolean;
 }
+const userStore = useUserStore()
+let myUserId: number | null = null
+// 提前获取当前用户 ID（确保 WS 消息到达时能正确判断是否为自己）
+if (userStore.userInfo?.id) {
+  myUserId = userStore.userInfo.id
+} else {
+  const storedUser = localStorage.getItem("user")
+  if (storedUser) { try { myUserId = JSON.parse(storedUser).id } catch {} }
+}
+
 const messages = ref<ChatMsg[]>([])
 const chatInput = ref("")
 const sendingChat = ref(false)
 const loadingChat = ref(true)
 const unreadCount = ref(0)
-const onlineCount = ref(1)
+const onlineCount = computed(() => members.value.length)
 const chatPanelRef = ref<HTMLElement>()
 const chatMsgListRef = ref<HTMLElement>()
 const chatInputRef = ref<any>()
-let myUserId: number | null = null
 let lastReadTime = Date.now()
 
 // Emoji 数据
