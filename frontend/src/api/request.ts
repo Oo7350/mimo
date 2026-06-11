@@ -39,10 +39,11 @@ request.interceptors.response.use(
       const status = error.response.status;
       if (status === 401) {
         localStorage.removeItem("token");
+        localStorage.removeItem("user");
         router.push("/login");
         ElMessage.error("登录已过期，请重新登录");
       } else if (status === 403) {
-        ElMessage.error("无权限操作");
+        ElMessage.error("无操作权限");
       } else if (status >= 500) {
         ElMessage.error("服务器错误");
       }

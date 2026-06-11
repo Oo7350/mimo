@@ -24,6 +24,7 @@ public class ChatMessageDTO {
         private String senderName;
         private String senderAvatar;
         private String content;
+        private Boolean recalled;
         private String createdAt;
         /** 是否为当前用户自己发的（前端用） */
         private boolean isMine;

@@ -27,6 +27,15 @@ public class ChatController {
     }
 
     /**
+     * 撤回消息（仅发送者，2分钟内）
+     */
+    @PutMapping("/recall/{messageId}")
+    public Result<ChatMessageVO> recall(@PathVariable Long messageId, Authentication auth) {
+        Long userId = (Long) auth.getPrincipal();
+        return Result.success(chatService.recallMessage(messageId, userId));
+    }
+
+    /**
      * 获取团队聊天历史
      */
     @GetMapping("/history/{teamId}")

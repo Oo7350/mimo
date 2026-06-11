@@ -3,6 +3,7 @@ package com.mimo.config;
 import com.mimo.util.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -23,6 +24,7 @@ import java.util.Collections;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
+    private final StringRedisTemplate redisTemplate;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -31,18 +33,45 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         String token = extractToken(request);
 
-        if (StringUtils.hasText(token) && jwtUtil.validateToken(token)) {
-            String username = jwtUtil.getUsername(token);
-            String role = jwtUtil.getRole(token);
-            Long userId = jwtUtil.getUserId(token);
+        if (StringUtils.hasText(token)) {
+            try {
+                if (jwtUtil.validateToken(token)) {
+                    Long userId = jwtUtil.getUserId(token);
 
-            UsernamePasswordAuthenticationToken authentication =
-                    new UsernamePasswordAuthenticationToken(
-                            userId, null,
-                            Collections.singletonList(new SimpleGrantedAuthority(role)));
-            authentication.setDetails(username);
+                    // 单设备登录校验：Redis 中的 Token 必须与当前一致
+                    String storedToken = redisTemplate.opsForValue().get("mimo:token:" + userId);
+                    if (storedToken != null && !storedToken.equals(token)) {
+                        // 账号在其他设备登录，当前 Token 失效
+                        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                        response.setContentType("application/json;charset=UTF-8");
+                        response.getWriter().write("{\"code\":401,\"message\":\"账号已在其他设备登录\"}");
+                        return;
+                    }
 
-            SecurityContextHolder.getContext().setAuthentication(authentication);
+                    String username = jwtUtil.getUsername(token);
+                    String role = jwtUtil.getRole(token);
+
+                    UsernamePasswordAuthenticationToken authentication =
+                            new UsernamePasswordAuthenticationToken(
+                                    userId, null,
+                                    Collections.singletonList(new SimpleGrantedAuthority(role)));
+                    authentication.setDetails(username);
+
+                    SecurityContextHolder.getContext().setAuthentication(authentication);
+                } else {
+                    // Token 无效或已过期，明确返回 401 而非让后续流程返回 403
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.setContentType("application/json;charset=UTF-8");
+                    response.getWriter().write("{\"code\":401,\"message\":\"登录已过期，请重新登录\"}");
+                    return;
+                }
+            } catch (Exception e) {
+                log.warn("JWT 解析异常: {}", e.getMessage());
+                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                response.setContentType("application/json;charset=UTF-8");
+                response.getWriter().write("{\"code\":401,\"message\":\"Token无效，请重新登录\"}");
+                return;
+            }
         }
 
         filterChain.doFilter(request, response);

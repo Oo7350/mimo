@@ -15,8 +15,9 @@ public class ChatMessage {
     private Long teamId;
     private Long senderId;
     private String senderName;
-    private String senderAvatar; // 颜色渐变值（前端生成）
+    private String senderAvatar;
     private String content;
+    private Boolean recalled;
 
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;

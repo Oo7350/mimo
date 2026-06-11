@@ -60,6 +60,35 @@ public class ChatService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * 撤回消息：仅发送者可撤回，2分钟内有效
+     */
+    public ChatMessageVO recallMessage(Long messageId, Long senderId) {
+        ChatMessage msg = chatMessageMapper.selectById(messageId);
+        if (msg == null) throw new com.mimo.common.BusinessException(com.mimo.common.ResultCode.NOT_FOUND, "消息不存在");
+        if (!msg.getSenderId().equals(senderId)) {
+            throw new com.mimo.common.BusinessException(com.mimo.common.ResultCode.FORBIDDEN, "只能撤回自己的消息");
+        }
+        // 2分钟内可撤回
+        if (msg.getCreatedAt() != null && msg.getCreatedAt().plusMinutes(2).isBefore(java.time.LocalDateTime.now())) {
+            throw new com.mimo.common.BusinessException(com.mimo.common.ResultCode.BAD_REQUEST, "超过2分钟，无法撤回");
+        }
+        msg.setRecalled(true);
+        msg.setContent("[消息已撤回]");
+        chatMessageMapper.updateById(msg);
+
+        ChatMessageVO vo = toVO(msg);
+
+        // WebSocket 广播撤回事件
+        ChatEvent event = new ChatEvent();
+        event.setType("CHAT_RECALL");
+        event.setTeamId(msg.getTeamId());
+        event.setMessage(vo);
+        webSocketService.sendTeamChat(msg.getTeamId(), event);
+
+        return vo;
+    }
+
     private ChatMessageVO toVO(ChatMessage msg) {
         ChatMessageVO vo = new ChatMessageVO();
         vo.setId(msg.getId());
@@ -68,6 +97,7 @@ public class ChatService {
         vo.setSenderName(msg.getSenderName());
         vo.setSenderAvatar(msg.getSenderAvatar());
         vo.setContent(msg.getContent());
+        vo.setRecalled(msg.getRecalled());
         vo.setCreatedAt(msg.getCreatedAt() != null ? msg.getCreatedAt().format(FMT) : "");
         return vo;
     }

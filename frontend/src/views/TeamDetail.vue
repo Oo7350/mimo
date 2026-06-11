@@ -136,7 +136,7 @@
               {{ formatDate(msg.createdAt) }}
             </div>
             <!-- 消息气泡 -->
-            <div class="td-msg" :class="{ 'td-msg--mine': msg.isMine }">
+            <div class="td-msg" :class="{ 'td-msg--mine': msg.isMine, 'td-msg--recalled': msg.recalled }">
               <div
                 class="td-msg__avatar"
                 :style="{ background: msg.isMine ? undefined : avatarGradient(msg.senderName) }"
@@ -145,7 +145,24 @@
               </div>
               <div class="td-msg__body">
                 <span class="td-msg__sender">{{ msg.senderName }}</span>
-                <div class="td-msg__bubble">{{ msg.content }}</div>
+                <!-- 已撤回消息 -->
+                <div v-if="msg.recalled" class="td-msg__bubble td-msg__bubble--recalled">
+                  [消息已撤回]
+                </div>
+                <!-- 正常消息 + 撤回按钮 -->
+                <template v-else>
+                  <div class="td-msg__bubble td-msg__content-wrap">
+                    <span v-html="renderMention(msg.content)"></span>
+                    <el-button
+                      v-if="msg.isMine && canRecall(msg.createdAt)"
+                      class="td-msg__recall-btn"
+                      type="info"
+                      size="small"
+                      text
+                      @click.stop="handleRecall(msg)"
+                    >撤回</el-button>
+                  </div>
+                </template>
                 <span class="td-msg__time">{{ formatTime(msg.createdAt) }}</span>
               </div>
             </div>
@@ -177,15 +194,33 @@
               </div>
             </div>
           </el-popover>
-          <el-input
-            ref="chatInputRef"
-            v-model="chatInput"
-            type="textarea"
-            :autosize="{ minRows: 1, maxRows: 4 }"
-            placeholder="输入消息... Enter 发送"
-            resize="none"
-            @keydown.enter.exact.prevent="sendChatMessage"
-          />
+          <div class="td-chat-input-main">
+            <el-input
+              ref="chatInputRef"
+              v-model="chatInput"
+              type="textarea"
+              :autosize="{ minRows: 1, maxRows: 4 }"
+              placeholder="输入消息... @ 成员  Enter 发送"
+              resize="none"
+              @input="onChatInput"
+              @keydown.enter.exact.prevent="sendChatMessage"
+            />
+            <!-- @提及成员下拉 -->
+            <div v-if="mentionList.length > 0" class="td-mention-dropdown">
+              <div
+                v-for="(m, i) in mentionList"
+                :key="m.userId"
+                class="td-mention-item"
+                :class="{ 'td-mention-item--active': i === mentionActiveIndex }"
+                @click="selectMention(m)"
+              >
+                <div class="td-mention-item__avatar" :style="{ background: avatarGradient(m.username) }">
+                  {{ m.username.charAt(0).toUpperCase() }}
+                </div>
+                <span>{{ m.username }}</span>
+              </div>
+            </div>
+          </div>
           <el-button
             type="primary"
             circle
@@ -272,7 +307,7 @@ import { useRoute } from "vue-router"
 import { getTeamById, getMembers, inviteMember, removeMember } from "@/api/team"
 import { getProjectsByTeam, createProject, deleteProject } from "@/api/project"
 import { searchUsers } from "@/api/user"
-import { sendChatMessage as apiSendChat, getChatHistory } from "@/api/chat"
+import { sendChatMessage as apiSendChat, getChatHistory, recallMessage } from "@/api/chat"
 import { useWebSocket } from "@/composables/useWebSocket"
 import { useUserStore } from "@/store/user"
 import { ElMessage, ElMessageBox } from "element-plus"
@@ -301,7 +336,7 @@ const searchingUsers = ref(false)
 interface ChatMsg {
   id: number; teamId: number; senderId: number;
   senderName: string; senderAvatar: string; content: string;
-  createdAt: string; isMine: boolean;
+  createdAt: string; isMine: boolean; recalled?: boolean;
 }
 const userStore = useUserStore()
 let myUserId: number | null = null
@@ -323,6 +358,11 @@ const chatPanelRef = ref<HTMLElement>()
 const chatMsgListRef = ref<HTMLElement>()
 const chatInputRef = ref<any>()
 let lastReadTime = Date.now()
+
+// @提及
+const mentionList = ref<any[]>([])
+const mentionActiveIndex = ref(0)
+let mentionStartPos = -1  // @ 符号在输入框中的位置
 
 // Emoji 数据
 const emojiGroups = [
@@ -353,11 +393,18 @@ const ws = useWebSocket()
 ws.subscribe(`/topic/team-chat/${teamId}`, (data: any) => {
   if (data.type === "CHAT_MESSAGE" && data.message) {
     const msg: ChatMsg = data.message
-    // 标记是否为当前用户的消息
     msg.isMine = msg.senderId === myUserId
     messages.value.push(msg)
     if (!msg.isMine) unreadCount.value++
     nextTick(scrollToBottom)
+  }
+  // 处理撤回事件：更新本地消息列表中对应的消息
+  if (data.type === "CHAT_RECALL" && data.message) {
+    const idx = messages.value.findIndex((m: ChatMsg) => m.id === data.message.id)
+    if (idx >= 0) {
+      messages.value[idx].recalled = true
+      messages.value[idx].content = "[消息已撤回]"
+    }
   }
 })
 
@@ -391,12 +438,68 @@ async function sendChatMessage() {
   try {
     await apiSendChat({ teamId, content: text })
     chatInput.value = ""
+    mentionList.value = []
     nextTick(scrollToBottom)
   } catch {
     // 错误由拦截器处理
   } finally {
     sendingChat.value = false
   }
+}
+
+// 撤回消息（2分钟内）
+function canRecall(createdAt: string): boolean {
+  if (!createdAt) return false
+  const msgTime = new Date(createdAt).getTime()
+  return Date.now() - msgTime < 2 * 60 * 1000
+}
+
+async function handleRecall(msg: ChatMsg) {
+  try {
+    await recallMessage(msg.id)
+    // 本地更新
+    msg.recalled = true
+    msg.content = "[消息已撤回]"
+    ElMessage.success("消息已撤回")
+  } catch { /* 错误由拦截器处理 */ }
+}
+
+// @提及：输入时检测 @ 并弹出成员列表
+function onChatInput(val: string) {
+  const textarea = chatInputRef.value?.$el?.querySelector('textarea')
+  if (!textarea) { mentionList.value = []; return }
+
+  const cursorPos = textarea.selectionStart
+  // 找光标前最近的 @ 符号
+  let atIdx = -1
+  for (let i = cursorPos - 1; i >= 0; i--) {
+    if (val[i] === '@') { atIdx = i; break }
+    if (val[i] === ' ' && i < cursorPos - 1) break  // 遇到空格且不是紧跟@后，停止搜索
+  }
+
+  if (atIdx >= 0) {
+    const query = val.substring(atIdx + 1, cursorPos).toLowerCase()
+    mentionStartPos = atIdx
+    mentionActiveIndex.value = 0
+    mentionList.value = members.value.filter((m: any) =>
+      m.username.toLowerCase().includes(query)
+    ).slice(0, 8)
+  } else {
+    mentionList.value = []
+  }
+}
+
+// 选择 @ 成员
+function selectMention(m: any) {
+  if (mentionStartPos < 0) return
+  const before = chatInput.value.slice(0, mentionStartPos)
+  const after = chatInput.value.slice(mentionStartPos + 1)  // 跳过 @
+  // 找到 @ 后面到光标位置的内容并替换
+  const cursorEnd = chatInputRef.value?.$el?.querySelector('textarea')?.selectionStart ?? chatInput.value.length
+  const afterAt = chatInput.value.slice(cursorEnd)
+  chatInput.value = before + `@${m.username} ` + afterAt
+  mentionList.value = []
+  mentionStartPos = -1
 }
 
 // 滚动到底部
@@ -439,6 +542,13 @@ function formatDate(dt?: string) {
 function formatTime(dt?: string) {
   if (!dt) return ""
   return dt.split(" ")[1]?.substring(0, 5) || ""
+}
+
+// 渲染消息中的 @提及（高亮显示）
+function renderMention(content: string): string {
+  if (!content) return ""
+  // 将 @username 替换为高亮 span
+  return content.replace(/@(\S+)/g, '<span class="td-mention-highlight">@$1</span>')
 }
 
 // ========== 基础操作 ==========
@@ -929,6 +1039,18 @@ onMounted(() => {
     .td-msg__time { text-align: right; }
   }
 
+  &--recalled {
+    opacity: 0.6;
+
+    .td-msg__bubble--recalled {
+      font-style: italic;
+      color: var(--text-secondary);
+      background: transparent;
+      padding: 4px 8px;
+      font-size: 12px;
+    }
+  }
+
   &__avatar {
     width: 30px;
     height: 30px;
@@ -968,6 +1090,26 @@ onMounted(() => {
     border-bottom-left-radius: 4px;
   }
 
+  &__content-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  &__recall-btn {
+    opacity: 0;
+    transition: opacity 0.2s;
+    font-size: 11px;
+    flex-shrink: 0;
+    padding: 2px 6px;
+  }
+
+  &:hover &__recall-btn {
+    opacity: 1;
+  }
+
   &__time {
     font-size: 10px;
     color: var(--text-placeholder);
@@ -1002,6 +1144,11 @@ onMounted(() => {
 
     &:hover { background: var(--bg-hover); }
   }
+}
+
+.td-chat-input-main {
+  position: relative;
+  flex: 1;
 }
 
 // Emoji 选择器
@@ -1078,5 +1225,60 @@ onMounted(() => {
     height: 420px;
     min-height: unset;
   }
+}
+
+// @提及下拉
+.td-mention-dropdown {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 10;
+  margin-bottom: 4px;
+}
+
+.td-mention-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+
+  &:hover, &--active {
+    background: rgba(16,185,129,0.1);
+  }
+
+  &__avatar {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-weight: 700;
+    font-size: 10px;
+    flex-shrink: 0;
+  }
+
+  span {
+    font-size: 13px;
+  }
+}
+
+// @提及高亮（消息内容中）
+.td-mention-highlight {
+  color: #059669;
+  font-weight: 600;
+  background: rgba(16,185,129,0.1);
+  padding: 0 2px;
+  border-radius: 3px;
 }
 </style>
