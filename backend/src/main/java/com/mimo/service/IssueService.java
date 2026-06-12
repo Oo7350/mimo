@@ -30,6 +30,7 @@ public class IssueService {
     private final ActivityLogMapper activityLogMapper;
     private final NotificationService notificationService;
     private final WebSocketService webSocketService;
+    private final NotificationMapper notificationMapper;
 
     // ---- BUG status transition rules ----
     private static final Map<String, Set<String>> BUG_TRANSITIONS = Map.of(
@@ -293,10 +294,21 @@ public class IssueService {
             log.setDetail("删除了" + typeLabel(issue.getType()) + " " + issue.getIssueKey());
             activityLogMapper.insert(log);
         }
-        // 清理关联数据：评论、附件、标签
+        // 清理关联数据：评论、附件、标签、通知
         commentMapper.delete(new LambdaQueryWrapper<com.mimo.entity.Comment>().eq(com.mimo.entity.Comment::getIssueId, issueId));
         attachmentMapper.delete(new LambdaQueryWrapper<com.mimo.entity.Attachment>().eq(com.mimo.entity.Attachment::getIssueId, issueId));
         issueLabelMapper.delete(new LambdaQueryWrapper<IssueLabel>().eq(IssueLabel::getIssueId, issueId));
+        // 清理相关通知
+        notificationMapper.delete(new LambdaQueryWrapper<Notification>()
+                .eq(Notification::getRelatedId, issueId)
+                .eq(Notification::getRelatedType, "ISSUE"));
+        // 处理子任务：将子任务的 parentId 设为 null
+        List<Issue> childIssues = issueMapper.selectList(
+                new LambdaQueryWrapper<Issue>().eq(Issue::getParentId, issueId));
+        for (Issue child : childIssues) {
+            child.setParentId(null);
+            issueMapper.updateById(child);
+        }
         issueMapper.deleteById(issueId);
 
         if (projectId != null) {

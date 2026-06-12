@@ -6,8 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Mimo is a lightweight Trello-like project management platform for small teams. It supports team collaboration, kanban task tracking, and progress visualization.
 
-- **Version**: v2.5.0 — Chat Recall, Single-Session Login, @Mention (2026-06-11)
-- **Previous**: v2.1.0 — UI Enhancement & Command Palette (2026-06-10)
+- **Version**: v2.6.0 — Kanban Tab Switch, Delete/Move Fix (2026-06-12)
+- **Previous**: v2.5.0 — Chat Recall, Single-Session Login, @Mention (2026-06-11)
 - **GitHub**: https://github.com/Oo7350/mimo
 - **API docs**: `接口文档.md` (60+ endpoints, Chinese)
 - **User manual**: `操作手册.md` (Chinese)
@@ -178,6 +178,33 @@ This file defines allowed Bash commands for Claude Code in this repo — if you 
 - **Board Sync Flow**: Drag → `PUT /api/board/issue/move` → backend updates issue + logs + WebSocket broadcast → all board subscribers receive event → optimistic UI update
 
 ## Version History
+
+### v2.6.0 — Kanban Tab Switch, Delete/Move Fix (2026-06-12)
+
+Two critical bug fixes and one UI enhancement for kanban board.
+
+**Bug 1 — Issue Delete 500 Error**:
+- Root cause: `IssueService.delete()` didn't clean up related notifications (notifications table has related_id referencing issue)
+- Fix: Added cleanup of notifications (`relatedType='ISSUE'`) and child tasks (set parentId to null) before deleting the issue
+- Full cascade delete order: comments → attachments → labels → notifications → child task parent reset → issue itself
+- All operations in single `@Transactional` — any failure rolls back entire deletion
+
+**Bug 2 — Issue Move 500 Error for BUG type**:
+- Root cause: `BoardService.moveIssue()` directly set bugStatus without validating state transition rules
+- Fix: Added `isValidBugTransition()` method with full transition matrix validation
+- If transition is invalid: only update position (columnId + sortOrder), skip status update — no error thrown
+- Extracted `logMoveActivity()` and `broadcastMove()` helper methods for cleaner code
+
+**Feature — Kanban Tab Switch**:
+- `ProjectBoard.vue`: Added tab bar above kanban columns to switch between "工作项" (Tasks) and "缺陷" (Bugs)
+- Tasks tab: Shows STORY + TASK in classic 3-column layout (TODO/IN_PROGRESS/DONE)
+- Bugs tab: Shows BUG items in 6 dedicated status columns (NEW/CONFIRMED/IN_PROGRESS/RESOLVED/VERIFIED/CLOSED), full-width layout
+- Tab switch auto-syncs with type filter buttons
+- Each tab shows count badge of its item type
+
+**Files modified (3)**:
+- Backend: `IssueService.java` (delete cascade), `BoardService.java` (move validation)
+- Frontend: `ProjectBoard.vue` (tab switching UI)
 
 ### v2.5.0 — Chat Recall, Single-Session Login, @Mention (2026-06-11)
 

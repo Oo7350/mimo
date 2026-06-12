@@ -134,6 +134,17 @@ public class BoardService {
             if ("BUG".equals(issue.getType())) {
                 // BUG 类型：根据目标列名映射 bugStatus
                 String newBugStatus = columnToBugStatus(targetCol.getName());
+                // 验证 BUG 状态转换是否合法
+                String oldBugStatus = issue.getBugStatus();
+                if (oldBugStatus != null && !oldBugStatus.equals(newBugStatus)) {
+                    if (!isValidBugTransition(oldBugStatus, newBugStatus)) {
+                        // 如果转换不合法，只更新位置不更新状态
+                        issueMapper.updateById(issue);
+                        logMoveActivity(issue, oldColumnId, targetCol);
+                        broadcastMove(issue.getProjectId(), issueId, targetColumnId, sortOrder);
+                        return;
+                    }
+                }
                 issue.setBugStatus(newBugStatus);
                 // 同步通用 status 字段以便看板统一展示
                 issue.setStatus(bugStatusToGenericStatus(newBugStatus));
@@ -145,8 +156,11 @@ public class BoardService {
         }
 
         issueMapper.updateById(issue);
+        logMoveActivity(issue, oldColumnId, targetCol);
+        broadcastMove(issue.getProjectId(), issueId, targetColumnId, sortOrder);
+    }
 
-        // 记录操作日志
+    private void logMoveActivity(Issue issue, Long oldColumnId, BoardColumn targetCol) {
         BoardColumn oldCol = oldColumnId != null ? boardColumnMapper.selectById(oldColumnId) : null;
         String detail = "将 " + issue.getIssueKey() + " 从 " +
                 (oldCol != null ? oldCol.getName() : "未知") + " 移动到 " +
@@ -158,12 +172,31 @@ public class BoardService {
         log.setAction("MOVE");
         log.setDetail(detail);
         activityLogMapper.insert(log);
+    }
 
-        // WebSocket 广播看板更新
+    private void broadcastMove(Long projectId, Long issueId, Long targetColumnId, Integer sortOrder) {
         try {
-            webSocketService.sendBoardUpdate(issue.getProjectId(),
-                    BoardSyncEvent.moved(issue.getProjectId(), issueId, targetColumnId, sortOrder));
+            webSocketService.sendBoardUpdate(projectId,
+                    BoardSyncEvent.moved(projectId, issueId, targetColumnId, sortOrder));
         } catch (Exception ignored) { /* WebSocket optional */ }
+    }
+
+    /**
+     * 验证 BUG 状态转换是否合法
+     */
+    private boolean isValidBugTransition(String from, String to) {
+        // 允许的 BUG 状态转换规则
+        Map<String, Set<String>> transitions = Map.of(
+            "NEW",         Set.of("CONFIRMED", "CLOSED"),
+            "CONFIRMED",   Set.of("IN_PROGRESS"),
+            "IN_PROGRESS", Set.of("RESOLVED"),
+            "RESOLVED",    Set.of("VERIFIED", "REOPENED"),
+            "VERIFIED",    Set.of("CLOSED"),
+            "CLOSED",      Set.of("REOPENED"),
+            "REOPENED",    Set.of("IN_PROGRESS")
+        );
+        Set<String> allowed = transitions.get(from);
+        return allowed != null && allowed.contains(to);
     }
 
     private String columnToStatus(String colName) {
