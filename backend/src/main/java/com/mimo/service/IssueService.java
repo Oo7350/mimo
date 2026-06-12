@@ -283,34 +283,56 @@ public class IssueService {
     @Transactional
     public void delete(Long issueId) {
         Issue issue = issueMapper.selectById(issueId);
-        Long projectId = null;
-        if (issue != null) {
-            projectId = issue.getProjectId();
-            ActivityLog log = new ActivityLog();
-            log.setProjectId(issue.getProjectId());
-            log.setTargetType("ISSUE");
-            log.setTargetId(issue.getId());
-            log.setAction("DELETE");
-            log.setDetail("删除了" + typeLabel(issue.getType()) + " " + issue.getIssueKey());
-            activityLogMapper.insert(log);
-        }
-        // 清理关联数据：评论、附件、标签、通知
-        commentMapper.delete(new LambdaQueryWrapper<com.mimo.entity.Comment>().eq(com.mimo.entity.Comment::getIssueId, issueId));
-        attachmentMapper.delete(new LambdaQueryWrapper<com.mimo.entity.Attachment>().eq(com.mimo.entity.Attachment::getIssueId, issueId));
-        issueLabelMapper.delete(new LambdaQueryWrapper<IssueLabel>().eq(IssueLabel::getIssueId, issueId));
+        if (issue == null) throw new BusinessException(ResultCode.ISSUE_NOT_FOUND);
+
+        Long projectId = issue.getProjectId();
+
+        // 记录操作日志
+        ActivityLog log = new ActivityLog();
+        log.setProjectId(projectId);
+        log.setTargetType("ISSUE");
+        log.setTargetId(issue.getId());
+        log.setAction("DELETE");
+        log.setDetail("删除了" + typeLabel(issue.getType()) + " " + issue.getIssueKey());
+        activityLogMapper.insert(log);
+
+        // 清理关联数据：评论、附件、标签
+        try {
+            commentMapper.delete(new LambdaQueryWrapper<com.mimo.entity.Comment>()
+                .eq(com.mimo.entity.Comment::getIssueId, issueId));
+        } catch (Exception e) { /* 评论清理失败不阻断 */ }
+
+        try {
+            attachmentMapper.delete(new LambdaQueryWrapper<com.mimo.entity.Attachment>()
+                .eq(com.mimo.entity.Attachment::getIssueId, issueId));
+        } catch (Exception e) { /* 附件清理失败不阻断 */ }
+
+        try {
+            issueLabelMapper.delete(new LambdaQueryWrapper<IssueLabel>()
+                .eq(IssueLabel::getIssueId, issueId));
+        } catch (Exception e) { /* 标签清理失败不阻断 */ }
+
         // 清理相关通知
-        notificationMapper.delete(new LambdaQueryWrapper<Notification>()
+        try {
+            notificationMapper.delete(new LambdaQueryWrapper<Notification>()
                 .eq(Notification::getRelatedId, issueId)
                 .eq(Notification::getRelatedType, "ISSUE"));
+        } catch (Exception e) { /* 通知清理失败不阻断 */ }
+
         // 处理子任务：将子任务的 parentId 设为 null
-        List<Issue> childIssues = issueMapper.selectList(
+        try {
+            List<Issue> childIssues = issueMapper.selectList(
                 new LambdaQueryWrapper<Issue>().eq(Issue::getParentId, issueId));
-        for (Issue child : childIssues) {
-            child.setParentId(null);
-            issueMapper.updateById(child);
-        }
+            for (Issue child : childIssues) {
+                child.setParentId(null);
+                issueMapper.updateById(child);
+            }
+        } catch (Exception e) { /* 子任务处理失败不阻断 */ }
+
+        // 最后删除任务本身
         issueMapper.deleteById(issueId);
 
+        // WebSocket 广播
         if (projectId != null) {
             try {
                 webSocketService.sendBoardUpdate(projectId, BoardSyncEvent.deleted(projectId, issueId));

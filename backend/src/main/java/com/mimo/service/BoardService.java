@@ -138,11 +138,9 @@ public class BoardService {
                 String oldBugStatus = issue.getBugStatus();
                 if (oldBugStatus != null && !oldBugStatus.equals(newBugStatus)) {
                     if (!isValidBugTransition(oldBugStatus, newBugStatus)) {
-                        // 如果转换不合法，只更新位置不更新状态
-                        issueMapper.updateById(issue);
-                        logMoveActivity(issue, oldColumnId, targetCol);
-                        broadcastMove(issue.getProjectId(), issueId, targetColumnId, sortOrder);
-                        return;
+                        // 状态回退不合法，返回明确错误信息供前端显示toast
+                        throw new BusinessException(ResultCode.BAD_REQUEST,
+                            "不能将缺陷从「" + bugStatusLabel(oldBugStatus) + "」状态返回到「" + bugStatusLabel(newBugStatus) + "」状态");
                     }
                 }
                 issue.setBugStatus(newBugStatus);
@@ -197,6 +195,23 @@ public class BoardService {
         );
         Set<String> allowed = transitions.get(from);
         return allowed != null && allowed.contains(to);
+    }
+
+    /**
+     * BUG 状态码 → 中文标签
+     */
+    private String bugStatusLabel(String status) {
+        if (status == null) return "未知";
+        switch (status) {
+            case "NEW": return "新建";
+            case "CONFIRMED": return "已确认";
+            case "IN_PROGRESS": return "修复中";
+            case "RESOLVED": return "已解决";
+            case "VERIFIED": return "已验证";
+            case "CLOSED": return "已关闭";
+            case "REOPENED": return "重新打开";
+            default: return status;
+        }
     }
 
     private String columnToStatus(String colName) {
