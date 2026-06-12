@@ -9,10 +9,12 @@ import com.mimo.dto.TeamDTO.*;
 import com.mimo.entity.Team;
 import com.mimo.entity.TeamMember;
 import com.mimo.entity.User;
+import com.mimo.entity.UserLevel;
 import com.mimo.mapper.TeamMapper;
 import com.mimo.mapper.TeamMemberMapper;
 import com.mimo.mapper.UserMapper;
 import com.mimo.mapper.ActivityLogMapper;
+import com.mimo.mapper.UserLevelMapper;
 import com.mimo.entity.ActivityLog;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -29,8 +31,16 @@ public class TeamService {
     private final TeamMemberMapper teamMemberMapper;
     private final UserMapper userMapper;
     private final ActivityLogMapper activityLogMapper;
+    private final UserLevelMapper userLevelMapper;
 
     public TeamVO create(CreateRequest request, Long ownerId) {
+        // 检查用户等级：L2以上才能创建团队
+        UserLevel userLevel = userLevelMapper.selectOne(new LambdaQueryWrapper<UserLevel>()
+                .eq(UserLevel::getUserId, ownerId));
+        if (userLevel == null || userLevel.getLevel() < 2) {
+            throw new BusinessException(ResultCode.FORBIDDEN, "L2及以上等级才能创建团队");
+        }
+
         if (teamMapper.exists(new LambdaQueryWrapper<Team>().eq(Team::getName, request.getName()))) {
             throw new BusinessException(ResultCode.TEAM_NAME_EXISTS);
         }
@@ -39,7 +49,7 @@ public class TeamService {
         team.setDescription(request.getDescription());
         team.setOwnerId(ownerId);
         teamMapper.insert(team);
-        // 创建者自动成为团队管理员
+        // 创建者自动成为团队管理员（群主）
         TeamMember member = new TeamMember();
         member.setTeamId(team.getId());
         member.setUserId(ownerId);
@@ -76,10 +86,19 @@ public class TeamService {
                 .eq(TeamMember::getTeamId, request.getTeamId()).eq(TeamMember::getUserId, request.getUserId()))) {
             throw new BusinessException(ResultCode.ALREADY_IN_TEAM);
         }
+
+        // 检查被邀请用户的等级，L3以上自动设为管理员
+        UserLevel inviteeLevel = userLevelMapper.selectOne(new LambdaQueryWrapper<UserLevel>()
+                .eq(UserLevel::getUserId, request.getUserId()));
+        String role = request.getRole() != null ? request.getRole() : "ROLE_MEMBER";
+        if (inviteeLevel != null && inviteeLevel.getLevel() >= 3) {
+            role = "ROLE_ADMIN"; // L3及以上自动为管理员
+        }
+
         TeamMember member = new TeamMember();
         member.setTeamId(request.getTeamId());
         member.setUserId(request.getUserId());
-        member.setRole(request.getRole() != null ? request.getRole() : "ROLE_MEMBER");
+        member.setRole(role);
         teamMemberMapper.insert(member);
     }
 
@@ -134,6 +153,30 @@ public class TeamService {
         teamMemberMapper.delete(new LambdaQueryWrapper<TeamMember>().eq(TeamMember::getTeamId, teamId));
         // 删除团队（关联项目不删除，项目独立存在）
         teamMapper.deleteById(teamId);
+    }
+
+    /**
+     * 获取当前用户在团队中的角色
+     */
+    public String getUserRoleInTeam(Long teamId, Long userId) {
+        TeamMember member = teamMemberMapper.selectOne(new LambdaQueryWrapper<TeamMember>()
+                .eq(TeamMember::getTeamId, teamId)
+                .eq(TeamMember::getUserId, userId));
+        if (member == null) return null;
+        return member.getRole();
+    }
+
+    /**
+     * 检查用户是否为团队管理员（包括系统admin）
+     */
+    public boolean isTeamAdmin(Long teamId, Long userId) {
+        // 系统admin
+        User user = userMapper.selectById(userId);
+        if (user != null && "ROLE_ADMIN".equals(user.getRole())) return true;
+
+        // 团队admin
+        String role = getUserRoleInTeam(teamId, userId);
+        return "ROLE_ADMIN".equals(role);
     }
 
     private TeamVO toVO(Team team) {

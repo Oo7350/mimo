@@ -23,6 +23,16 @@
               <el-icon><ChatDotRound /></el-icon> 群聊
             </el-button>
           </el-badge>
+          <el-badge :value="pendingApprovals.length" :hidden="pendingApprovals.length === 0" :max="99" class="td-hero__badge">
+            <el-button 
+              v-if="isTeamAdmin" 
+              type="warning" 
+              round 
+              @click="showApprovalDialog = true"
+            >
+              <el-icon><Bell /></el-icon> 审批
+            </el-button>
+          </el-badge>
           <el-button type="success" plain round @click="showInviteDialog = true">
             <el-icon><Plus /></el-icon> 邀请成员
           </el-button>
@@ -61,7 +71,7 @@
                 {{ m.role === 'ROLE_ADMIN' ? '管理员' : '成员' }}
               </el-tag>
               <el-button
-                v-if="m.role !== 'ROLE_ADMIN'"
+                v-if="isTeamAdmin && m.role !== 'ROLE_ADMIN'"
                 type="danger"
                 size="small"
                 text
@@ -298,22 +308,47 @@
         <el-button type="primary" @click="handleCreateProject">创建</el-button>
       </template>
     </el-dialog>
+
+    <!-- 审批请求 Dialog (仅管理员可见) -->
+    <el-dialog v-model="showApprovalDialog" title="待审批请求" width="600px">
+      <div v-if="pendingApprovals.length === 0" style="text-align: center; padding: 40px; color: var(--text-secondary)">
+        暂无待审批请求
+      </div>
+      <div v-else class="approval-list">
+        <div v-for="item in pendingApprovals" :key="item.id" class="approval-item">
+          <div class="approval-item__header">
+            <el-tag :type="getApprovalTypeColor(item.targetType)" size="small">{{ getApprovalTypeName(item.targetType) }}</el-tag>
+            <span class="approval-item__title">{{ item.title }}</span>
+            <span class="approval-item__time">{{ item.createdAt }}</span>
+          </div>
+          <div class="approval-item__body">
+            <span>申请人：{{ item.requesterUsername || '未知' }}</span>
+            <span v-if="item.description" class="approval-item__desc">{{ item.description }}</span>
+          </div>
+          <div class="approval-item__actions">
+            <el-button size="small" type="success" @click="handleApprove(item)">通过</el-button>
+            <el-button size="small" type="danger" @click="handleReject(item)">拒绝</el-button>
+          </div>
+        </div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, nextTick, onMounted, onUnmounted } from "vue"
 import { useRoute } from "vue-router"
-import { getTeamById, getMembers, inviteMember, removeMember } from "@/api/team"
+import { getTeamById, getMembers, inviteMember, removeMember, getTeamRole } from "@/api/team"
 import { getProjectsByTeam, createProject, deleteProject } from "@/api/project"
 import { searchUsers } from "@/api/user"
 import { sendChatMessage as apiSendChat, getChatHistory, recallMessage } from "@/api/chat"
+import { createApproval, getPendingApprovals, approveRequest, rejectRequest } from "@/api/approval"
 import { useWebSocket } from "@/composables/useWebSocket"
 import { useUserStore } from "@/store/user"
 import { ElMessage, ElMessageBox } from "element-plus"
 import {
   Plus, ArrowLeft, UserFilled, Folder, ArrowRight,
-  ChatDotRound, Promotion, Loading, Delete,
+  ChatDotRound, Promotion, Loading, Delete, Bell,
 } from "@element-plus/icons-vue"
 import { avatarGradient } from "@/utils/color"
 
@@ -331,6 +366,89 @@ const showCreateProject = ref(false)
 const projectForm = reactive({ name: "", key: "", template: "SCRUM" })
 const userSearchResults = ref<any[]>([])
 const searchingUsers = ref(false)
+
+// ========== 权限控制 ==========
+const myTeamRole = ref<string | null>(null)
+const isTeamAdmin = computed(() => {
+  // 系统管理员
+  if (userStore.userInfo?.role === 'ROLE_ADMIN') return true
+  // 团队管理员
+  return myTeamRole.value === 'ROLE_ADMIN'
+})
+
+// ========== 审批请求 ==========
+const pendingApprovals = ref<any[]>([])
+const showApprovalDialog = ref(false)
+
+// 获取待审批列表
+async function fetchPendingApprovals() {
+  if (!isTeamAdmin.value) return
+  try {
+    const res = await getPendingApprovals(teamId)
+    pendingApprovals.value = res.data || []
+  } catch { /* ignore */ }
+}
+
+// 创建审批请求（非管理员操作项目时调用）
+async function requestApproval(targetType: string, title: string, dataJson: any) {
+  try {
+    await createApproval({
+      teamId,
+      targetType,
+      title,
+      description: `用户 ${userStore.username} 申请${title}`,
+      dataJson: JSON.stringify(dataJson),
+    })
+    ElMessage.success('审批请求已提交，等待管理员审核')
+  } catch { /* handled by interceptor */ }
+}
+
+// 审批通过
+async function handleApprove(approval: any) {
+  try {
+    await approveRequest(approval.id)
+    ElMessage.success(`已通过: ${approval.title}`)
+    await fetchPendingApprovals()
+  } catch { /* handled */ }
+}
+
+// 审批拒绝
+async function handleReject(approval: any) {
+  try {
+    const { value: reason } = await ElMessageBox.prompt('请输入拒绝原因', '拒绝审批', {
+      confirmButtonText: '确定拒绝',
+      cancelButtonText: '取消',
+      inputPlaceholder: '可选填',
+    })
+    await rejectRequest(approval.id, reason || '')
+    ElMessage.success(`已拒绝: ${approval.title}`)
+    await fetchPendingApprovals()
+  } catch (e: any) {
+    if (e !== 'cancel') throw e
+  }
+}
+
+// 审批类型名称映射
+function getApprovalTypeName(type: string): string {
+  const map: Record<string, string> = {
+    'PROJECT_CREATE': '创建项目',
+    'PROJECT_UPDATE': '修改项目',
+    'PROJECT_DELETE': '删除项目',
+    'PROJECT_MEMBER_ADD': '添加成员',
+  }
+  return map[type] || type
+}
+
+// 审批类型颜色映射
+function getApprovalTypeColor(type: string): string {
+  const map: Record<string, string> = {
+    'PROJECT_CREATE': 'success',
+    'PROJECT_UPDATE': 'warning',
+    'PROJECT_DELETE': 'danger',
+    'PROJECT_MEMBER_ADD': 'primary',
+  }
+  return map[type] || 'info'
+}
 
 // ========== 聊天 ==========
 interface ChatMsg {
@@ -566,14 +684,16 @@ async function searchUserOptions(query: string) {
 }
 
 async function fetchData() {
-  const [teamRes, membersRes, projectsRes] = await Promise.all([
+  const [teamRes, membersRes, projectsRes, roleRes] = await Promise.all([
     getTeamById(teamId),
     getMembers(teamId),
     getProjectsByTeam(teamId),
+    getTeamRole(teamId).catch(() => ({ data: null })), // 获取用户角色，失败则忽略
   ])
   team.value = teamRes.data
   members.value = membersRes.data || []
   projects.value = projectsRes.data || []
+  myTeamRole.value = roleRes.data // 当前用户在团队中的角色
 }
 
 async function handleInvite() {
@@ -594,6 +714,21 @@ async function handleRemove(userId: number) {
 
 async function handleCreateProject() {
   if (!projectForm.name || !projectForm.key) { ElMessage.warning("请填写项目信息"); return }
+  
+  // 非管理员需要审批
+  if (!isTeamAdmin.value) {
+    await requestApproval('PROJECT_CREATE', `创建项目: ${projectForm.name}`, {
+      name: projectForm.name,
+      key: projectForm.key,
+      template: projectForm.template,
+    })
+    showCreateProject.value = false
+    projectForm.name = ""
+    projectForm.key = ""
+    return
+  }
+  
+  // 管理员直接创建
   await createProject({ ...projectForm, teamId })
   ElMessage.success("项目创建成功")
   showCreateProject.value = false
@@ -609,6 +744,14 @@ async function handleDeleteProject(p: any) {
       cancelButtonText: '取消',
       type: 'warning',
     })
+    
+    // 非管理员需要审批
+    if (!isTeamAdmin.value) {
+      await requestApproval('PROJECT_DELETE', `删除项目: ${p.name}`, { projectId: p.id })
+      return
+    }
+    
+    // 管理员直接删除
     await deleteProject(p.id)
     ElMessage.success('项目已删除')
     await fetchData()
@@ -620,6 +763,7 @@ async function handleDeleteProject(p: any) {
 onMounted(() => {
   fetchData()
   loadChatHistory()
+  fetchPendingApprovals()
 })
 </script>
 
@@ -1284,5 +1428,58 @@ onMounted(() => {
   background: rgba(16,185,129,0.1);
   padding: 0 2px;
   border-radius: 3px;
+}
+
+// ========== 审批列表 ==========
+.approval-list {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.approval-item {
+  padding: 16px;
+  border-bottom: 1px solid var(--border-color-light);
+  
+  &:last-child { border-bottom: none; }
+  
+  &__header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+    
+    .approval-item__title {
+      font-weight: 600;
+      color: var(--text-primary);
+      flex: 1;
+    }
+    
+    .approval-item__time {
+      font-size: 12px;
+      color: var(--text-placeholder);
+      flex-shrink: 0;
+    }
+  }
+  
+  &__body {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+    
+    .approval-item__desc {
+      font-size: 12px;
+      color: var(--text-placeholder);
+      margin-top: 4px;
+    }
+  }
+  
+  &__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
 }
 </style>

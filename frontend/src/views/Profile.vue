@@ -28,8 +28,9 @@
             effect="plain"
             style="margin-left: 4px"
           >
-            {{ profile?.role === 'ROLE_ADMIN' ? '管理员' : '成员' }}
+            {{ profile?.role === 'ROLE_ADMIN' ? '系统管理员' : '普通成员' }}
           </el-tag>
+          <!-- 用户等级铭牌 (L1-L4) -->
           <UserBadge v-if="userLevel" :level="userLevel" size="medium" style="margin-left: 6px" />
         </div>
       </div>
@@ -104,7 +105,7 @@ import { ref, onMounted, reactive, computed } from "vue"
 import { ElMessage } from "element-plus"
 import { Moon, Sunny, Camera } from "@element-plus/icons-vue"
 import { getUserProfile, updateUserProfile, changePassword } from "@/api/user"
-import { getMyLevel } from "@/api/approval"
+import { getMyLevel } from "@/api/user-level"
 import { useAppStore } from "@/store/app"
 import { avatarGradient } from "@/utils/color"
 import PageHeader from "@/components/common/PageHeader.vue"

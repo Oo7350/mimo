@@ -3,6 +3,8 @@ package com.mimo.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mimo.common.BusinessException;
 import com.mimo.common.ResultCode;
+import com.mimo.entity.UserLevel;
+import com.mimo.mapper.UserLevelMapper;
 import com.mimo.dto.LoginRequest;
 import com.mimo.dto.LoginResponse;
 import com.mimo.dto.RegisterRequest;
@@ -25,10 +27,14 @@ public class UserService {
     @Autowired(required = false)
     private StringRedisTemplate redisTemplate;
 
-    public UserService(UserMapper userMapper, PasswordEncoder passwordEncoder, JwtUtil jwtUtil) {
+    private final UserLevelMapper userLevelMapper;
+
+    public UserService(UserMapper userMapper, PasswordEncoder passwordEncoder, JwtUtil jwtUtil,
+                       UserLevelMapper userLevelMapper) {
         this.userMapper = userMapper;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
+        this.userLevelMapper = userLevelMapper;
     }
 
     public LoginResponse login(LoginRequest request) {
@@ -79,5 +85,14 @@ public class UserService {
         user.setEmail(request.getEmail());
         user.setRole("ROLE_MEMBER");
         userMapper.insert(user);
+
+        // 自动创建默认 L1 等级
+        UserLevel level = new UserLevel();
+        level.setUserId(user.getId());
+        level.setLevel(1);
+        level.setLevelName("L1");
+        level.setBadgeColor("#909399");
+        level.setBadgeIcon(null);
+        userLevelMapper.insert(level);
     }
 }

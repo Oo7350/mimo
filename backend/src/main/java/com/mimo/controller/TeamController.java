@@ -56,6 +56,13 @@ public class TeamController {
         return Result.successMessage("移除成功");
     }
 
+    @GetMapping("/{id}/role")
+    public Result<String> getUserRole(@PathVariable Long id, Authentication auth) {
+        Long userId = (Long) auth.getPrincipal();
+        String role = teamService.getUserRoleInTeam(id, userId);
+        return Result.success(role);
+    }
+
     @DeleteMapping("/{teamId}")
     public Result<Void> deleteTeam(@PathVariable Long teamId, Authentication auth) {
         Long userId = (Long) auth.getPrincipal();

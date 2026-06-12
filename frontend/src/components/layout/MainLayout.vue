@@ -128,6 +128,16 @@
               <el-icon><Setting /></el-icon>
               <span>个人信息</span>
             </el-menu-item>
+            <template v-if="userStore.userInfo?.role === 'ROLE_ADMIN'">
+              <el-menu-item index="/admin/levels">
+                <el-icon><Star /></el-icon>
+                <span>等级管理</span>
+              </el-menu-item>
+              <el-menu-item index="/admin/approvals">
+                <el-icon><Checked /></el-icon>
+                <span>审批管理</span>
+              </el-menu-item>
+            </template>
           </el-menu>
 
           <div class="mimo-sidebar__toggle" @click="appStore.toggleSidebar()">
@@ -163,7 +173,7 @@ import { useTour } from '@/composables/useTour'
 import { useNotifications } from '@/composables/useNotifications'
 import { useWebSocket } from '@/composables/useWebSocket'
 import { useCommandPalette } from '@/composables/useCommandPalette'
-import { Moon, Sunny } from '@element-plus/icons-vue'
+import { Moon, Sunny, Star, Checked } from '@element-plus/icons-vue'
 import { formatRelativeTime } from '@/utils/constants'
 
 const route = useRoute()

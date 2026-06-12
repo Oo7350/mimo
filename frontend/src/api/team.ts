@@ -27,3 +27,7 @@ export function removeMember(teamId: number, userId: number) {
 export function deleteTeam(teamId: number) {
   return request.delete(`/teams/${teamId}`);
 }
+
+export function getTeamRole(teamId: number) {
+  return request.get(`/teams/${teamId}/role`);
+}

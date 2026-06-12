@@ -62,7 +62,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
-import { getAllUserLevels, setUserLevel } from '@/api/approval'
+import { getAllUserLevels, setUserLevel } from '@/api/user-level'
 import { ElMessage } from 'element-plus'
 import { avatarGradient } from '@/utils/color'
 

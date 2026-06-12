@@ -36,9 +36,8 @@ public class UserLevelController {
     /**
      * 获取所有用户等级列表(仅admin)
      */
-    @GetMapping
+    @GetMapping("/all")
     public Result<List<UserLevelVO>> listAll(Authentication auth) {
-        Long adminId = (Long) auth.getPrincipal();
         return Result.success(userLevelService.listAll());
     }
 
@@ -46,9 +45,9 @@ public class UserLevelController {
      * Admin设置用户等级
      */
     @PutMapping("/{userId}")
-    public Result<Void> setLevel(@PathVariable Long userId, @RequestParam Integer level, Authentication auth) {
+    public Result<Void> setLevel(@PathVariable Long userId, @RequestBody UserLevelVO body, Authentication auth) {
         Long adminId = (Long) auth.getPrincipal();
-        userLevelService.setLevel(userId, level, adminId);
+        userLevelService.setLevel(userId, body.getLevel(), adminId);
         return Result.successMessage("等级设置成功");
     }
 }
