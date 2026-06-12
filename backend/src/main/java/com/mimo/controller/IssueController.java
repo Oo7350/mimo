@@ -36,8 +36,9 @@ public class IssueController {
     }
 
     @DeleteMapping("/{id}")
-    public Result<Void> delete(@PathVariable Long id) {
-        issueService.delete(id);
+    public Result<Void> delete(@PathVariable Long id, Authentication auth) {
+        Long userId = (Long) auth.getPrincipal();
+        issueService.delete(id, userId);
         return Result.successMessage("删除成功");
     }
 

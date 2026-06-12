@@ -281,7 +281,7 @@ public class IssueService {
     }
 
     @Transactional
-    public void delete(Long issueId) {
+    public void delete(Long issueId, Long operatorId) {
         Issue issue = issueMapper.selectById(issueId);
         if (issue == null) throw new BusinessException(ResultCode.ISSUE_NOT_FOUND);
 
@@ -289,6 +289,8 @@ public class IssueService {
 
         // 记录操作日志
         ActivityLog log = new ActivityLog();
+        log.setUserId(operatorId);
+        log.setUsername(getUsername(operatorId));
         log.setProjectId(projectId);
         log.setTargetType("ISSUE");
         log.setTargetId(issue.getId());
@@ -338,6 +340,12 @@ public class IssueService {
                 webSocketService.sendBoardUpdate(projectId, BoardSyncEvent.deleted(projectId, issueId));
             } catch (Exception ignored) {}
         }
+    }
+
+    private String getUsername(Long userId) {
+        if (userId == null) return "系统";
+        User user = userMapper.selectById(userId);
+        return user != null ? user.getUsername() : "未知用户";
     }
 
     public List<IssueVO> query(QueryRequest request) {
