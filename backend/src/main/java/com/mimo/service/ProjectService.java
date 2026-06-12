@@ -44,12 +44,29 @@ public class ProjectService {
         project.setOwnerId(ownerId);
         projectMapper.insert(project);
 
-        // 创建者加入项目
+        // 创建者加入项目(作为项目管理员)
         ProjectMember pm = new ProjectMember();
         pm.setProjectId(project.getId());
         pm.setUserId(ownerId);
         pm.setRole("ROLE_ADMIN");
         projectMemberMapper.insert(pm);
+
+        // 自动将团队成员加入项目
+        List<TeamMember> teamMembers = teamMemberMapper.selectList(
+                new LambdaQueryWrapper<TeamMember>().eq(TeamMember::getTeamId, request.getTeamId()));
+        for (TeamMember tm : teamMembers) {
+            if (!tm.getUserId().equals(ownerId)) {  // 避免重复插入
+                if (!projectMemberMapper.exists(new LambdaQueryWrapper<ProjectMember>()
+                        .eq(ProjectMember::getProjectId, project.getId())
+                        .eq(ProjectMember::getUserId, tm.getUserId()))) {
+                    ProjectMember tpm = new ProjectMember();
+                    tpm.setProjectId(project.getId());
+                    tpm.setUserId(tm.getUserId());
+                    tpm.setRole(tm.getRole());  // 继承团队角色
+                    projectMemberMapper.insert(tpm);
+                }
+            }
+        }
 
         // 创建默认看板列
         createDefaultColumns(project.getId(), request.getTemplate());
@@ -85,12 +102,22 @@ public class ProjectService {
                 .stream().map(this::toVO).collect(Collectors.toList());
     }
 
+    /**
+     * 获取用户可见的项目列表(所在团队的所有项目)
+     */
     public List<ProjectVO> listByUser(Long userId) {
-        List<Long> projectIds = projectMemberMapper.selectList(
-                new LambdaQueryWrapper<ProjectMember>().eq(ProjectMember::getUserId, userId))
-                .stream().map(ProjectMember::getProjectId).collect(Collectors.toList());
-        if (projectIds.isEmpty()) return List.of();
-        return projectMapper.selectBatchIds(projectIds).stream().map(this::toVO).collect(Collectors.toList());
+        // 1. 查询用户所在的所有团队
+        List<Long> teamIds = teamMemberMapper.selectList(
+                new LambdaQueryWrapper<TeamMember>().eq(TeamMember::getUserId, userId))
+                .stream().map(TeamMember::getTeamId).collect(Collectors.toList());
+
+        if (teamIds.isEmpty()) return List.of();
+
+        // 2. 查询这些团队下的所有项目
+        return projectMapper.selectList(
+                        new LambdaQueryWrapper<Project>()
+                                .in(Project::getTeamId, teamIds))
+                .stream().map(this::toVO).collect(Collectors.toList());
     }
 
     @Transactional

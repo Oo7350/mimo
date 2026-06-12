@@ -30,6 +30,8 @@
           >
             {{ profile?.role === 'ROLE_ADMIN' ? '管理员' : '成员' }}
           </el-tag>
+          <UserBadge v-if="userLevel" :level="userLevel" size="medium" style="margin-left: 6px" />
+        </div>
         </div>
       </div>
       <div class="profile-hero__actions">
@@ -103,12 +105,15 @@ import { ref, onMounted, reactive, computed } from "vue"
 import { ElMessage } from "element-plus"
 import { Moon, Sunny, Camera } from "@element-plus/icons-vue"
 import { getUserProfile, updateUserProfile, changePassword } from "@/api/user"
+import { getMyLevel } from "@/api/approval"
 import { useAppStore } from "@/store/app"
 import { avatarGradient } from "@/utils/color"
 import PageHeader from "@/components/common/PageHeader.vue"
+import UserBadge from "@/components/common/UserBadge.vue"
 
 const appStore = useAppStore()
 const profile = ref<any>(null)
+const userLevel = ref<any>(null)
 const profileLoading = ref(false)
 const passwordLoading = ref(false)
 const avatarInput = ref<HTMLInputElement | null>(null)
@@ -158,6 +163,12 @@ async function fetchProfile() {
   profileForm.username = profile.value?.username || ""
   profileForm.email = profile.value?.email || ""
   avatarPreview.value = profile.value?.avatar || ""
+
+  // 获取用户等级
+  try {
+    const levelRes = await getMyLevel()
+    userLevel.value = levelRes.data
+  } catch { /* ignore */ }
 }
 
 async function handleUpdateProfile() {

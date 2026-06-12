@@ -72,6 +72,11 @@ const routes: RouteRecordRaw[] = [
         path: "profile",
         name: "Profile",
         component: () => import("@/views/Profile.vue"),
+      },
+      {
+        path: "admin/levels",
+        name: "LevelManage",
+        component: () => import("@/views/LevelManage.vue"),
       }
     ],
   },
