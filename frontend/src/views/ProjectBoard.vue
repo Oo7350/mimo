@@ -95,59 +95,106 @@
     </div>
 
     <!-- Kanban View -->
-    <div v-if="currentView === 'kanban'" class="board__columns">
-      <div
-        v-for="(col, idx) in columns"
-        :key="col.id"
-        :class="['board__column', { 'column-drop-target': dragOverColumnId === col.id }]"
-      >
-        <div class="board__column-header" :style="{ borderTopColor: columnColors[idx] }">
-          <div class="board__column-title">
-            <span class="board__column-dot" :style="{ background: columnColors[idx] }" />
-            <span class="board__column-name">{{ col.name }}</span>
-          </div>
-          <span class="board__column-count">{{ filteredIssues(col).length }}</span>
+    <div v-if="currentView === 'kanban'" class="board__kanban">
+      <!-- 故事 & 任务 区域 -->
+      <div class="board__section">
+        <div class="board__section-label">
+          <el-icon><Grid /></el-icon> 故事 & 任务
         </div>
-
-        <draggable
-          :list="col.issues"
-          group="issues"
-          itemKey="id"
-          ghost-class="issue-card-ghost"
-          drag-class="issue-card-dragging"
-          :pull="true"
-          :put="true"
-          @change="(evt: any) => handleDragChange(evt, col.id)"
-          @start="() => dragOverColumnId = col.id"
-          @end="() => dragOverColumnId = null"
-          class="board__column-body"
-        >
-          <template #item="{ element, index }">
-            <div :class="['board__drag-item', { 'is-hidden': !issueMatchesFilter(element) }]">
-              <div v-if="shouldShowLaneHeader(col, element)" class="board__swimlane-header">
-                <div
-                  class="board__swimlane-avatar"
-                  :style="{ background: avatarGradient(laneLabel(element)) }"
-                >
-                  {{ swimlaneMode === 'assignee' ? laneLabel(element).charAt(0) : '📂' }}
-                </div>
-                <span>{{ laneLabel(element) }}</span>
-                <span class="board__swimlane-count">{{ laneIssueCount(col, element) }}</span>
+        <div class="board__columns">
+          <div
+            v-for="(col, idx) in taskColumns"
+            :key="'task-' + col.id"
+            :class="['board__column', { 'column-drop-target': dragOverColumnId === col.id }]"
+          >
+            <div class="board__column-header" :style="{ borderTopColor: columnColors[idx] || columnColors[0] }">
+              <div class="board__column-title">
+                <span class="board__column-dot" :style="{ background: columnColors[idx] || columnColors[0] }" />
+                <span class="board__column-name">{{ col.name }}</span>
               </div>
-              <IssueCard
-                :issue="element"
-                @click="openIssue(element)"
-                @edit="openIssue(element)"
-                @complete="quickComplete"
-                @delete="handleDeleteIssue"
-              />
+              <span class="board__column-count">{{ filteredIssues(col).length }}</span>
             </div>
-          </template>
-        </draggable>
 
-        <div v-if="filteredIssues(col).length === 0" class="board__column-empty">
-          <el-icon :size="28"><Box /></el-icon>
-          <span>暂无任务</span>
+            <draggable
+              :list="col.issues"
+              group="tasks"
+              itemKey="id"
+              ghost-class="issue-card-ghost"
+              drag-class="issue-card-dragging"
+              :pull="true"
+              :put="(evt: any) => !evt?.fromEl?.classList?.contains('bug-column-body')"
+              @change="(evt: any) => handleDragChange(evt, col.id)"
+              @start="() => dragOverColumnId = col.id"
+              @end="() => dragOverColumnId = null"
+              class="board__column-body"
+            >
+              <template #item="{ element, index }">
+                <div :class="['board__drag-item', { 'is-hidden': !issueMatchesFilter(element) }]">
+                  <IssueCard
+                    :issue="element"
+                    @click="openIssue(element)"
+                    @edit="openIssue(element)"
+                    @complete="quickComplete"
+                    @delete="handleDeleteIssue"
+                  />
+                </div>
+              </template>
+            </draggable>
+
+            <div v-if="filteredIssues(col).length === 0" class="board__column-empty">
+              <el-icon :size="28"><Box /></el-icon>
+              <span>暂无任务</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 缺陷区域（独立状态列） -->
+      <div class="board__section board__section--bug">
+        <div class="board__section-label board__section-label--bug">
+          <el-icon><WarningFilled /></el-icon> 缺陷跟踪
+        </div>
+        <div class="board__columns board__columns--compact">
+          <div
+            v-for="bcol in bugColumns"
+            :key="bcol.id"
+            class="board__column board__column--bug bug-column"
+          >
+            <div class="board__column-header" :style="{ borderTopColor: bcol.color }">
+              <span class="board__column-name">{{ bcol.label }}</span>
+              <span class="board__column-count">{{ bcol.issues.length }}</span>
+            </div>
+
+            <draggable
+              :list="bcol.issues"
+              group="bugs"
+              itemKey="id"
+              ghost-class="issue-card-ghost"
+              drag-class="issue-card-dragging"
+              :pull="true"
+              :put="(evt: any) => evt?.fromEl?.classList?.contains('bug-column-body')"
+              @change="(evt: any) => handleBugDragChange(evt, bcol.key)"
+              @start="() => dragOverColumnId = bcol.id"
+              @end="() => dragOverColumnId = null"
+              class="board__column-body bug-column-body"
+            >
+              <template #item="{ element }">
+                <div :class="['board__drag-item', { 'is-hidden': filterType && filterType !== 'BUG' }]">
+                  <IssueCard
+                    :issue="element"
+                    @click="openIssue(element)"
+                    @edit="openIssue(element)"
+                    @complete="quickComplete"
+                    @delete="handleDeleteIssue"
+                  />
+                </div>
+              </template>
+            </draggable>
+
+            <div v-if="bcol.issues.length === 0" class="board__column-empty">
+              <el-icon :size="20"><Box /></el-icon>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -230,7 +277,7 @@ import IssueDetailDialog from "@/components/issue/IssueDetailDialog.vue"
 import IssueCard from "@/components/issue/IssueCard.vue"
 import BugTableView from "@/components/issue/bug/BugTableView.vue"
 import StoryMap from "@/components/issue/story/StoryMap.vue"
-import { Search, Grid, List, Connection, Box, Document } from "@element-plus/icons-vue"
+import { Search, Grid, List, Connection, Box, Document, WarningFilled } from "@element-plus/icons-vue"
 import { useWebSocket } from "@/composables/useWebSocket"
 import { getReports, generateReport } from "@/api/report"
 
@@ -243,7 +290,7 @@ const columns = ref<any[]>([])
 const showCreateIssue = ref(false)
 const showEditIssue = ref(false)
 const editingIssueId = ref<number>(0)
-const dragOverColumnId = ref<number | null>(null)
+const dragOverColumnId = ref<string | number | null>(null)
 const searchKeyword = ref("")
 const filterAssignee = ref("")
 const filterPriority = ref("")
@@ -254,6 +301,40 @@ const currentView = ref<'kanban' | 'buglist' | 'storymap'>('kanban')
 const recentReportCount = ref(0)
 
 const columnColors = ['#6366f1', '#f59e0b', '#10b981']
+
+// 缺陷独立状态列定义（虚拟列，不依赖 DB board_columns）
+const BUG_STATUS_FLOW = [
+  { key: 'NEW', label: '新建', color: '#94a3b8' },
+  { key: 'CONFIRMED', label: '已确认', color: '#3b82f6' },
+  { key: 'IN_PROGRESS', label: '处理中', color: '#f59e0b' },
+  { key: 'RESOLVED', label: '已解决', color: '#8b5cf6' },
+  { key: 'VERIFIED', label: '已验证', color: '#06b6d4' },
+  { key: 'CLOSED', label: '已关闭', color: '#10b981' },
+]
+
+// 从真实列中提取缺陷卡片，按 bugStatus 分组到虚拟列
+const bugColumns = computed(() => {
+  // 收集所有 BUG 类型 issue
+  const allBugs: any[] = []
+  columns.value.forEach((col: any) => {
+    ;(col.issues || []).forEach((i: any) => {
+      if (i.type === 'BUG') allBugs.push(i)
+    })
+  })
+  return BUG_STATUS_FLOW.map(def => ({
+    ...def,
+    id: `bug-${def.key}`,
+    issues: allBugs.filter((i: any) => (i.bugStatus || 'NEW') === def.key),
+  }))
+})
+
+// 故事/任务列（过滤掉 BUG 类型）
+const taskColumns = computed(() =>
+  columns.value.map((col: any) => ({
+    ...col,
+    issues: (col.issues || []).filter((i: any) => i.type !== 'BUG'),
+  }))
+)
 
 const views = [
   { key: 'kanban', label: '看板', icon: Grid },
@@ -458,7 +539,7 @@ async function handleDragChange(evt: any, targetColId: number) {
   }
 }
 
-// BUG 的 bugStatus → 列名映射（反向）
+// BUG 的 bugStatus → 列名映射（反向）— 保留兼容
 function bugStatusToColumn(colName: string): string {
   const lower = (colName || '').toLowerCase()
   if (lower.includes('done') || lower.includes('完成')) return 'CLOSED'
@@ -466,19 +547,42 @@ function bugStatusToColumn(colName: string): string {
   return 'NEW' // 待办列 → NEW/CONFIRMED
 }
 
-async function quickComplete(issue: any) {
+// 缺陷在独立状态列间拖拽（更新 bugStatus）
+async function handleBugDragChange(evt: any, targetBugStatus: string) {
+  if (!evt.added) return
+  const issue = evt.added.element
+  if (!issue?.id || issue.type !== 'BUG') return
+  // 乐观更新
+  issue.bugStatus = targetBugStatus
   try {
-    // 找到"完成"列的 ID，同时更新 status 和 columnId
-    const doneCol = columns.value.find((c: any) => {
-      const n = (c.name || '').toLowerCase()
-      return n.includes('done') || n.includes('完成')
-    })
     await updateIssue({
       id: issue.id,
-      status: 'DONE',
-      columnId: doneCol?.id ?? issue.columnId,
-      ...(issue.type === 'BUG' ? { bugStatus: 'CLOSED' } : {}),
+      bugStatus: targetBugStatus,
+      status: targetBugStatus === 'CLOSED' ? 'DONE' : 'IN_PROGRESS',
     })
+  } catch {
+    ElMessage.error("状态更新失败，正在恢复...")
+    await fetchBoard()
+  }
+}
+
+async function quickComplete(issue: any) {
+  try {
+    if (issue.type === 'BUG') {
+      // 缺陷：标记为已关闭（CLOSED）
+      await updateIssue({ id: issue.id, bugStatus: 'CLOSED', status: 'DONE' })
+    } else {
+      // 故事/任务：找到"完成"列
+      const doneCol = columns.value.find((c: any) => {
+        const n = (c.name || '').toLowerCase()
+        return n.includes('done') || n.includes('完成')
+      })
+      await updateIssue({
+        id: issue.id,
+        status: 'DONE',
+        columnId: doneCol?.id ?? issue.columnId,
+      })
+    }
     ElMessage.success(`${issue.issueKey} 已标记完成`)
     await fetchBoard()
   } catch { /* handled */ }
@@ -843,6 +947,65 @@ onMounted(async () => {
   &__column--drag-over {
     border-color: var(--color-primary) !important;
     box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15), var(--shadow-md) !important;
+  }
+
+  // ===== 看板分区布局（故事/任务 + 缺陷分离）=====
+  &__kanban {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  &__section {
+    &-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 12px;
+      padding-left: 4px;
+
+      &--bug {
+        color: var(--color-danger, #ef4444);
+      }
+    }
+
+    &--bug {
+      background: rgba(239, 68, 68, 0.03);
+      border-radius: var(--border-radius-lg);
+      padding: 16px;
+      border: 1px solid rgba(239, 68, 68, 0.08);
+    }
+  }
+
+  &__columns--compact {
+    gap: 10px;
+
+    .board__column {
+      flex: 0 0 180px;  /* 缺陷列更窄 */
+      max-height: calc(100vh - 360px);
+
+      .board__column-header {
+        padding: 10px 12px 8px;
+        border-top-width: 2px;
+      }
+
+      .board__column-name {
+        font-size: 12px;
+      }
+
+      .board__column-body {
+        padding: 0 8px 8px;
+        min-height: 50px;
+      }
+
+      .board__column-empty {
+        padding: 16px 8px;
+        font-size: 11px;
+      }
+    }
   }
 
   // 筛选隐藏：用 visibility+height:0 保持元素在文档流中，避免破坏 sortablejs 索引计算

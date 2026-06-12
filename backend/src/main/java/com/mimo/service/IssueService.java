@@ -22,6 +22,8 @@ public class IssueService {
 
     private final IssueMapper issueMapper;
     private final IssueLabelMapper issueLabelMapper;
+    private final CommentMapper commentMapper;
+    private final AttachmentMapper attachmentMapper;
     private final BoardColumnMapper boardColumnMapper;
     private final ProjectMapper projectMapper;
     private final UserMapper userMapper;
@@ -291,8 +293,11 @@ public class IssueService {
             log.setDetail("删除了" + typeLabel(issue.getType()) + " " + issue.getIssueKey());
             activityLogMapper.insert(log);
         }
-        issueMapper.deleteById(issueId);
+        // 清理关联数据：评论、附件、标签
+        commentMapper.delete(new LambdaQueryWrapper<com.mimo.entity.Comment>().eq(com.mimo.entity.Comment::getIssueId, issueId));
+        attachmentMapper.delete(new LambdaQueryWrapper<com.mimo.entity.Attachment>().eq(com.mimo.entity.Attachment::getIssueId, issueId));
         issueLabelMapper.delete(new LambdaQueryWrapper<IssueLabel>().eq(IssueLabel::getIssueId, issueId));
+        issueMapper.deleteById(issueId);
 
         if (projectId != null) {
             try {
