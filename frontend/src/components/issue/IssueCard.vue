@@ -12,7 +12,7 @@
     <!-- Hover 快捷操作 -->
     <Transition name="actions-fade">
       <div v-if="hovering" class="issue-card__actions" @click.stop @mousedown.stop>
-        <el-tooltip v-if="issue.status !== 'DONE'" content="标记完成" placement="top">
+        <el-tooltip v-if="!isDone" content="标记完成" placement="top">
           <button class="issue-card__action issue-card__action--done" @click.stop="$emit('complete', issue)">
             <el-icon :size="14"><Check /></el-icon>
           </button>
@@ -22,25 +22,41 @@
             <el-icon :size="14"><EditPen /></el-icon>
           </button>
         </el-tooltip>
+        <el-popconfirm title="确定删除此工作项？" confirm-button-text="确定" cancel-button-text="取消" @confirm="$emit('delete', issue)">
+          <template #reference>
+            <el-tooltip content="删除" placement="top">
+              <button class="issue-card__action issue-card__action--danger">
+                <el-icon :size="14"><Delete /></el-icon>
+              </button>
+            </el-tooltip>
+          </template>
+        </el-popconfirm>
       </div>
     </Transition>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import type { IssueCard } from '@/types'
 import StoryCard from './story/StoryCard.vue'
 import BugCard from './bug/BugCard.vue'
 import TaskCard from './task/TaskCard.vue'
-import { EditPen, Check } from '@element-plus/icons-vue'
+import { EditPen, Check, Delete } from '@element-plus/icons-vue'
 
-defineProps<{ issue: IssueCard }>()
+const props = defineProps<{ issue: IssueCard }>()
 defineEmits<{
   click: [issue: IssueCard]
   edit: [issue: IssueCard]
   complete: [issue: IssueCard]
+  delete: [issue: IssueCard]
 }>()
+
+// BUG 类型用 bugStatus 判断，其他类型用 status 判断
+const isDone = computed(() => {
+  if (props.issue.type === 'BUG') return props.issue.bugStatus === 'CLOSED'
+  return props.issue.status === 'DONE'
+})
 
 const hovering = ref(false)
 </script>
@@ -81,6 +97,10 @@ const hovering = ref(false)
 
   &--done:hover {
     color: var(--color-success);
+  }
+
+  &--danger:hover {
+    color: var(--color-danger, #ef4444);
   }
 }
 

@@ -139,6 +139,7 @@
                 @click="openIssue(element)"
                 @edit="openIssue(element)"
                 @complete="quickComplete"
+                @delete="handleDeleteIssue"
               />
             </div>
           </template>
@@ -221,7 +222,7 @@ import { useRoute } from "vue-router"
 import { useUserStore } from "@/store/user"
 import { getBoard, moveIssue } from "@/api/board"
 import { getProjectById } from "@/api/project"
-import { updateIssue } from "@/api/issue"
+import { updateIssue, deleteIssue } from "@/api/issue"
 import { avatarGradient } from "@/utils/color"
 import draggable from "vuedraggable"
 import { ElMessage } from "element-plus"
@@ -479,6 +480,14 @@ async function quickComplete(issue: any) {
       ...(issue.type === 'BUG' ? { bugStatus: 'CLOSED' } : {}),
     })
     ElMessage.success(`${issue.issueKey} 已标记完成`)
+    await fetchBoard()
+  } catch { /* handled */ }
+}
+
+async function handleDeleteIssue(issue: any) {
+  try {
+    await deleteIssue(issue.id)
+    ElMessage.success(`${issue.issueKey} 已删除`)
     await fetchBoard()
   } catch { /* handled */ }
 }

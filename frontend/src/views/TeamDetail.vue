@@ -1,19 +1,17 @@
 <template>
   <div class="team-detail-page">
-    <!-- 团队详情 Hero -->
-    <div class="td-hero">
-      <div class="td-hero__bg" :style="{ background: avatarGradient(team?.name || 'T') }">
-        <div class="td-hero__overlay" />
-      </div>
-      <div class="td-hero__top-bar">
-        <el-button class="td-hero__back" @click="$router.push('/teams')" text round>
-          <el-icon><ArrowLeft /></el-icon> 返回
-        </el-button>
-      </div>
-      <div class="td-hero__body">
-        <div class="td-hero__avatar" :style="{ background: avatarGradient(team?.name || 'T') }">
-          {{ (team?.name || '?').charAt(0).toUpperCase() }}
+      <!-- 团队详情 Hero -->
+      <div class="td-hero">
+        <div class="td-hero__bg" :style="{ background: avatarGradient(team?.name || 'T') }">
+          <div class="td-hero__overlay" />
         </div>
+        <div class="td-hero__body">
+          <el-button class="td-hero__back" @click="$router.push('/teams')" text round>
+            <el-icon><ArrowLeft /></el-icon> 返回
+          </el-button>
+          <div class="td-hero__avatar" :style="{ background: avatarGradient(team?.name || 'T') }">
+            {{ (team?.name || '?').charAt(0).toUpperCase() }}
+          </div>
         <div class="td-hero__info">
           <h1 class="td-hero__name">{{ team?.name || '加载中...' }}</h1>
           <p class="td-hero__desc">{{ team?.description || '暂无描述' }}</p>
@@ -651,14 +649,13 @@ onMounted(() => {
   }
 
   &__top-bar {
-    position: relative;
-    z-index: 2;
-    padding: 12px 16px 0;
+    display: none; /* 已移除，返回按钮移入 body 内 */
   }
 
   &__back {
     color: rgba(255,255,255,0.8);
     font-weight: 600;
+    align-self: flex-start;
 
     &:hover { color: #fff; }
   }
@@ -667,10 +664,10 @@ onMounted(() => {
     position: relative;
     z-index: 1;
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 16px;
-    padding: 32px 24px 24px 56px;  /* 左侧留出空间避免与返回按钮重叠 */
-    flex-wrap: wrap;
+    padding: 20px 24px 24px;
   }
 
   &__avatar {
