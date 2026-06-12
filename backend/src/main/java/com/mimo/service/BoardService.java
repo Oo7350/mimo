@@ -119,7 +119,7 @@ public class BoardService {
     }
 
     @Transactional
-    public void moveIssue(Long issueId, Long targetColumnId, Integer sortOrder) {
+    public void moveIssue(Long issueId, Long targetColumnId, Integer sortOrder, Long operatorId) {
         Issue issue = issueMapper.selectById(issueId);
         if (issue == null) throw new BusinessException(ResultCode.ISSUE_NOT_FOUND);
 
@@ -154,16 +154,18 @@ public class BoardService {
         }
 
         issueMapper.updateById(issue);
-        logMoveActivity(issue, oldColumnId, targetCol);
+        logMoveActivity(issue, oldColumnId, targetCol, operatorId);
         broadcastMove(issue.getProjectId(), issueId, targetColumnId, sortOrder);
     }
 
-    private void logMoveActivity(Issue issue, Long oldColumnId, BoardColumn targetCol) {
+    private void logMoveActivity(Issue issue, Long oldColumnId, BoardColumn targetCol, Long operatorId) {
         BoardColumn oldCol = oldColumnId != null ? boardColumnMapper.selectById(oldColumnId) : null;
         String detail = "将 " + issue.getIssueKey() + " 从 " +
                 (oldCol != null ? oldCol.getName() : "未知") + " 移动到 " +
                 (targetCol != null ? targetCol.getName() : "未知");
         ActivityLog log = new ActivityLog();
+        log.setUserId(operatorId);
+        log.setUsername(getUsername(operatorId));
         log.setProjectId(issue.getProjectId());
         log.setTargetType("ISSUE");
         log.setTargetId(issue.getId());
@@ -302,5 +304,11 @@ public class BoardService {
         vo.setLabel(label.getLabel());
         vo.setColor(label.getColor());
         return vo;
+    }
+
+    private String getUsername(Long userId) {
+        if (userId == null) return "系统";
+        User user = userMapper.selectById(userId);
+        return user != null ? user.getUsername() : "未知用户";
     }
 }

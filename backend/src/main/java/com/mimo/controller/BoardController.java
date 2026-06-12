@@ -5,6 +5,7 @@ import com.mimo.dto.BoardDTO.*;
 import com.mimo.dto.IssueDTO.MoveRequest;
 import com.mimo.service.BoardService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import javax.validation.Valid;
@@ -45,8 +46,9 @@ public class BoardController {
     }
 
     @PutMapping("/issue/move")
-    public Result<Void> moveIssue(@Valid @RequestBody MoveRequest request) {
-        boardService.moveIssue(request.getIssueId(), request.getTargetColumnId(), request.getSortOrder());
+    public Result<Void> moveIssue(@Valid @RequestBody MoveRequest request, Authentication auth) {
+        Long userId = (Long) auth.getPrincipal();
+        boardService.moveIssue(request.getIssueId(), request.getTargetColumnId(), request.getSortOrder(), userId);
         return Result.successMessage("移动成功");
     }
 }
