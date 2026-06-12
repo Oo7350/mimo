@@ -96,11 +96,20 @@
 
     <!-- Kanban View -->
     <div v-if="currentView === 'kanban'" class="board__kanban">
+      <!-- Tab 切换栏 -->
+      <div class="board__kanban-tabs">
+        <button :class="['board__tab', { 'is-active': kanbanTab === 'tasks' }]" @click="switchKanbanTab('tasks')">
+          <el-icon><Grid /></el-icon> 工作项
+          <span class="board__tab-count">{{ taskTotal }}</span>
+        </button>
+        <button :class="['board__tab', { 'is-active': kanbanTab === 'bugs', 'board__tab--bug': kanbanTab === 'bugs' }]" @click="switchKanbanTab('bugs')">
+          <el-icon><WarningFilled /></el-icon> 缺陷
+          <span class="board__tab-count">{{ bugTotal }}</span>
+        </button>
+      </div>
+
       <!-- 故事 & 任务 区域 -->
-      <div class="board__section">
-        <div class="board__section-label">
-          <el-icon><Grid /></el-icon> 故事 & 任务
-        </div>
+      <div v-show="kanbanTab === 'tasks'" class="board__section">
         <div class="board__columns">
           <div
             v-for="(col, idx) in taskColumns"
@@ -149,12 +158,9 @@
         </div>
       </div>
 
-      <!-- 缺陷区域（独立状态列） -->
-      <div class="board__section board__section--bug">
-        <div class="board__section-label board__section-label--bug">
-          <el-icon><WarningFilled /></el-icon> 缺陷跟踪
-        </div>
-        <div class="board__columns board__columns--compact">
+      <!-- 缺陷区域（独立状态列，独占全宽） -->
+      <div v-show="kanbanTab === 'bugs'" class="board__section board__section--bug-full">
+        <div class="board__columns board__columns--bugs">
           <div
             v-for="bcol in bugColumns"
             :key="bcol.id"
@@ -179,7 +185,7 @@
               class="board__column-body bug-column-body"
             >
               <template #item="{ element }">
-                <div :class="['board__drag-item', { 'is-hidden': filterType && filterType !== 'BUG' }]">
+                <div class="board__drag-item">
                   <IssueCard
                     :issue="element"
                     @click="openIssue(element)"
@@ -336,6 +342,17 @@ const taskColumns = computed(() =>
   }))
 )
 
+// 看板内 Tab 切换
+const kanbanTab = ref<'tasks' | 'bugs'>('tasks')
+const taskTotal = computed(() => taskColumns.value.reduce((s: number, c: any) => s + (c.issues?.length || 0), 0))
+const bugTotal = computed(() => bugColumns.value.reduce((s: number, c: any) => s + (c.issues?.length || 0), 0))
+
+function switchKanbanTab(tab: 'tasks' | 'bugs') {
+  kanbanTab.value = tab
+  // 联动类型筛选
+  filterType.value = tab === 'bugs' ? 'BUG' : ''
+}
+
 const views = [
   { key: 'kanban', label: '看板', icon: Grid },
   { key: 'buglist', label: '缺陷列表', icon: List },
@@ -443,9 +460,9 @@ interface FilterPreset {
 }
 
 const filterPresets = computed<FilterPreset[]>(() => [
-  { name: '全部', apply: () => clearFilters() },
-  { name: '缺陷', apply: () => { clearFilters(); filterType.value = 'BUG' } },
-  { name: '故事', apply: () => { clearFilters(); filterType.value = 'STORY' } },
+  { name: '全部', apply: () => { clearFilters(); kanbanTab.value = 'tasks' } },
+  { name: '缺陷', apply: () => { clearFilters(); filterType.value = 'BUG'; kanbanTab.value = 'bugs' } },
+  { name: '故事', apply: () => { clearFilters(); filterType.value = 'STORY'; kanbanTab.value = 'tasks' } },
   { name: '我的', apply: () => { clearFilters(); filterAssignee.value = userStore.username || '' } },
 ])
 
@@ -949,61 +966,81 @@ onMounted(async () => {
     box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15), var(--shadow-md) !important;
   }
 
-  // ===== 看板分区布局（故事/任务 + 缺陷分离）=====
-  &__kanban {
+  // ===== 看板内 Tab 切换 =====
+  &__kanban-tabs {
     display: flex;
-    flex-direction: column;
-    gap: 24px;
+    gap: 4px;
+    margin-bottom: 16px;
+    padding: 0 2px;
   }
 
-  &__section {
-    &-label {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 14px;
-      font-weight: 700;
+  &__tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 18px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: transparent;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+
+    &:hover {
+      background: var(--bg-card);
       color: var(--text-primary);
-      margin-bottom: 12px;
-      padding-left: 4px;
-
-      &--bug {
-        color: var(--color-danger, #ef4444);
-      }
     }
 
-    &--bug {
-      background: rgba(239, 68, 68, 0.03);
-      border-radius: var(--border-radius-lg);
-      padding: 16px;
-      border: 1px solid rgba(239, 68, 68, 0.08);
+    &.is-active {
+      background: var(--color-primary, #6366f1);
+      color: #fff;
+      border-color: var(--color-primary, #6366f1);
+      box-shadow: 0 2px 8px rgba(99, 102, 241, 0.25);
+    }
+
+    &--bug.is-active {
+      background: var(--color-danger, #ef4444);
+      border-color: var(--color-danger, #ef4444);
+      box-shadow: 0 2px 8px rgba(239, 68, 68, 0.25);
     }
   }
 
-  &__columns--compact {
-    gap: 10px;
+  &__tab-count {
+    font-size: 11px;
+    opacity: 0.75;
+    font-weight: 700;
+  }
 
-    .board__column {
-      flex: 0 0 180px;  /* 缺陷列更窄 */
-      max-height: calc(100vh - 360px);
+  // ===== 缺陷独占全宽 =====
+  &__section--bug-full {
+    .board__columns--bugs {
+      gap: 12px;
 
-      .board__column-header {
-        padding: 10px 12px 8px;
-        border-top-width: 2px;
-      }
+      .board__column {
+        flex: 0 0 calc((100% - 60px) / 6);  /* 6列均分 */
+        min-width: 150px;
+        max-height: calc(100vh - 280px);
 
-      .board__column-name {
-        font-size: 12px;
-      }
+        .board__column-header {
+          padding: 10px 12px 8px;
+          border-top-width: 3px;
+        }
 
-      .board__column-body {
-        padding: 0 8px 8px;
-        min-height: 50px;
-      }
+        .board__column-name {
+          font-size: 13px;
+        }
 
-      .board__column-empty {
-        padding: 16px 8px;
-        font-size: 11px;
+        .board__column-body {
+          padding: 0 8px 8px;
+          min-height: 50px;
+        }
+
+        .board__column-empty {
+          padding: 20px 8px;
+          font-size: 11px;
+        }
       }
     }
   }
