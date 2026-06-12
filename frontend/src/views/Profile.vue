@@ -32,7 +32,6 @@
           </el-tag>
           <UserBadge v-if="userLevel" :level="userLevel" size="medium" style="margin-left: 6px" />
         </div>
-        </div>
       </div>
       <div class="profile-hero__actions">
         <button class="profile-theme-btn" @click="appStore.toggleDarkMode()">

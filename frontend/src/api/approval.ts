@@ -1,4 +1,4 @@
-import request from '@/utils/request'
+import request from './request'
 
 // 审批请求相关
 export function createApproval(data: any) {

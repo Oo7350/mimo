@@ -50,7 +50,7 @@
             placeholder="选择等级"
             size="small"
             style="width: 120px"
-            @change="(val) => handleLevelChange(row.userId, val)"
+            @change="(val: any) => handleLevelChange(row.userId, val)"
           >
             <el-option v-for="l in [1, 2, 3, 4]" :key="l" :label="'L' + l" :value="l" />
           </el-select>

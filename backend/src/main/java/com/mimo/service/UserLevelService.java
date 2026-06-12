@@ -6,6 +6,8 @@ import com.mimo.common.ResultCode;
 import com.mimo.dto.UserLevelVO;
 import com.mimo.entity.User;
 import com.mimo.entity.UserLevel;
+import com.mimo.mapper.UserLevelMapper;
+import com.mimo.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

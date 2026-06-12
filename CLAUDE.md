@@ -6,10 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Mimo is a lightweight Trello-like project management platform for small teams. It supports team collaboration, kanban task tracking, and progress visualization.
 
-- **Version**: v2.6.0 — Kanban Tab Switch, Delete/Move Fix (2026-06-12)
-- **Previous**: v2.5.0 — Chat Recall, Single-Session Login, @Mention (2026-06-11)
+- **Version**: v2.7.0 — Team Admin Permission + Approval System + User Level L1-L4 (2026-06-12)
+- **Previous**: v2.6.0 — Kanban Tab Switch, Delete/Move Fix (2026-06-12)
 - **GitHub**: https://github.com/Oo7350/mimo
-- **API docs**: `接口文档.md` (60+ endpoints, Chinese)
+- **API docs**: `接口文档.md` (70+ endpoints, Chinese)
 - **User manual**: `操作手册.md` (Chinese)
 
 ## Tech Stack
@@ -84,10 +84,10 @@ Single backend + RBAC with two roles: `ROLE_ADMIN` (team/project admin) and `ROL
 |---------|---------|
 | `common/` | `Result<T>` response wrapper, `ResultCode` enum, `BusinessException`, `GlobalExceptionHandler` |
 | `config/` | `SecurityConfig`, `JwtAuthenticationFilter`, `CorsConfig`, `MyBatisPlusConfig`, `WebSocketConfig`, `WebSocketAuthInterceptor` |
-| `controller/` | 13 REST controllers under `/api/*` |
-| `service/` | 13 service classes including `WebSocketService` for real-time push and `ChatService` for team chat |
+| `controller/` | 15 REST controllers under `/api/*` (including ApprovalController, UserLevelController) |
+| `service/` | 15 service classes including `WebSocketService`, `ChatService`, **`ApprovalService`**, **`UserLevelService`** |
 | `mapper/` | MyBatis-Plus `BaseMapper` interfaces (no XML, all queries via `LambdaQueryWrapper`) |
-| `entity/` | 16 entity classes mapped to database tables |
+| `entity/` | 18 entity classes mapped to database tables (including ApprovalRequest, UserLevel) |
 | `dto/` | Request/response DTOs per domain |
 
 ### Frontend Layout
@@ -97,10 +97,10 @@ Single backend + RBAC with two roles: `ROLE_ADMIN` (team/project admin) and `ROL
 | `api/` | `request.ts` (Axios instance + interceptors) + per-domain API modules + `ai.ts` (DeepSeek API) |
 | `store/` | Pinia stores — `user.ts` (auth/role), `app.ts` (sidebar, current project, **dark mode**) |
 | `router/` | Vue Router with navigation guard for auth + redirect |
-| `views/` | 10 page components (Dashboard, ProjectOverview, ProjectBoard, ReportList, etc.) |
+| `views/` | 11 page components (Dashboard, ProjectOverview, ProjectBoard, ReportList, **LevelManage**, etc.) |
 | `components/layout/` | `MainLayout.vue`, `AuthLayout.vue` (split login/register), `BreadcrumbNav.vue` |
 | `components/issue/` | `IssueDetailDialog.vue`, `IssueCard.vue` (hover quick actions), type-specific cards/dialogs |
-| `components/common/` | `StatCard.vue`, `SkeletonLoader.vue`, `PageHeader.vue`, **`CommandPalette.vue`**, `AssigneeAvatar.vue` |
+| `components/common/` | `StatCard.vue`, `SkeletonLoader.vue`, `PageHeader.vue`, **`CommandPalette.vue`**, `AssigneeAvatar.vue`, **`UserBadge.vue`** |
 | `composables/` | `useTour.ts`, `useNotifications.ts`, `useWebSocket.ts`, **`useCommandPalette.ts`** (Ctrl+K) |
 | `types/` | TypeScript interfaces for all domain objects |
 | `utils/` | `constants.ts`, `markdown.ts`, **`color.ts`** (avatar gradient hash) |
@@ -117,7 +117,7 @@ Single backend + RBAC with two roles: `ROLE_ADMIN` (team/project admin) and `ROL
 
 ### Database
 
-16 MySQL tables (InnoDB, utf8mb4): `users`, `teams`, `team_members`, `projects`, `project_members`, `board_columns`, `issues`, `issue_labels`, `attachments`, `sprints`, `burndown_snapshots`, `reports`, `activity_logs`, `comments`, `notifications`, `chat_messages`.
+18 MySQL tables (InnoDB, utf8mb4): `users`, `teams`, `team_members`, `projects`, `project_members`, `board_columns`, `issues`, `issue_labels`, `attachments`, `sprints`, `burndown_snapshots`, `reports`, `activity_logs`, `comments`, `notifications`, `chat_messages`, **`approval_requests`**, **`user_levels`**.
 
 - Schema at `backend/src/main/resources/db/init.sql`
 - Seed data: 3 users (admin/zhangsan/lisi, password `123456`), 1 team, 3 team members
@@ -139,6 +139,9 @@ Single backend + RBAC with two roles: `ROLE_ADMIN` (team/project admin) and `ROL
 - **Chat Recall**: Messages can be recalled within 2 minutes; recalled messages show gray italic text; WS broadcast syncs recall state
 - **Single-Session Login**: Redis-backed token validation — same account login kicks previous session (401 "账号已在其他设备登录")
 - **@Mention**: Type `@` in chat input to trigger member picker; selected username inserted as `@username`; rendered as green highlight in message bubbles
+- **Team Admin Permission (v2.7)**: Two-level permission system — system admin (ROLE_ADMIN) has global control, team admins can invite/remove members and approve requests; non-admins need approval for project operations
+- **Approval Workflow (v2.7)**: Non-admins creating/updating/deleting projects auto-generate approval requests; team admins can approve/reject via API or team chat; approved actions execute automatically
+- **User Level System (v2.7)**: L1-L4 levels managed by system admin only; dynamic badge UI in profile page with progressive visual effects (L4 has rotating glow animation)
 - **403 Fix**: JwtAuthenticationFilter now returns 401 JSON directly for invalid/expired tokens instead of passing through to Spring Security (which caused misleading 403)
 
 ### Frontend deep links
@@ -178,6 +181,42 @@ This file defines allowed Bash commands for Claude Code in this repo — if you 
 - **Board Sync Flow**: Drag → `PUT /api/board/issue/move` → backend updates issue + logs + WebSocket broadcast → all board subscribers receive event → optimistic UI update
 
 ## Version History
+
+### v2.7.0 — Team Admin Permission + Approval System + User Level L1-L4 (2026-06-12)
+
+Major feature release with three new subsystems: team-based permission control, approval workflow, and user level management.
+
+**Feature 1 — Team Project Visibility Fix**:
+- `ProjectService.listByUser()`: Changed from querying user-associated projects (via project_members) to querying all projects from teams the user belongs to
+- Project list now shows all team projects regardless of creator
+- Auto-adds team members as project members when creating new projects
+
+**Feature 2 — Approval System**:
+- New entity: `ApprovalRequest` — tracks approval requests with status (PENDING/APPROVED/REJECTED)
+- New service: `ApprovalService` — handles request creation, approval, rejection logic
+- New controller: `ApprovalController` — REST endpoints for approval workflow
+- New table: `approval_requests` (migration V5)
+- API endpoints: POST /api/approvals, GET /api/approvals/team/{id}/pending, PUT /api/approvals/{id}/approve, PUT /api/approvals/{id}/reject
+- Target types: PROJECT_CREATE, PROJECT_UPDATE, PROJECT_DELETE, PROJECT_MEMBER_ADD
+
+**Feature 3 — User Level System**:
+- New entity: `UserLevel` — stores user level (1-4), badge color, icon
+- New service: `UserLevelService` — CRUD operations for user levels
+- New controller: `UserLevelController` — admin-only endpoints for level management
+- New table: `user_levels` (migration V5) with initial data (admin=L4, others=L1)
+- API endpoints: GET /api/user-levels/my, GET /api/user-levels/list, PUT /api/user-levels/{userId}/level
+
+**Frontend changes**:
+- `LevelManage.vue` — new page at `/admin/levels` for admin to manage user levels
+- `UserBadge.vue` — reusable component showing level badge with progressive styling
+- `Profile.vue` — integrated user badge display in profile hero area
+- `api/approval.ts` — new API module for approval and level operations
+- Router updated with `/admin/levels` route (admin-only)
+
+**Database migration**: `V5__team_admin_approval_user_level.sql`
+- Creates `approval_requests` table (11 columns)
+- Creates `user_levels` table (7 columns)
+- Initializes default user levels for existing users
 
 ### v2.6.0 — Kanban Tab Switch, Delete/Move Fix (2026-06-12)
 
