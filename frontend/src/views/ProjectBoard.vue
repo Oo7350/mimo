@@ -539,7 +539,8 @@ async function handleDragChange(evt: any, targetColId: number) {
     try {
       await moveIssue({ issueId: issue.id, targetColumnId: targetColId, sortOrder: evt.added.newIndex ?? 0 })
     } catch (e: any) {
-      ElMessage.error("移动失败，正在恢复...")
+      const msg = e?.response?.data?.message || e?.message || "移动失败"
+      ElMessage.error(msg)
       await fetchBoard()
     }
   }
@@ -577,8 +578,9 @@ async function handleBugDragChange(evt: any, targetBugStatus: string) {
       bugStatus: targetBugStatus,
       status: targetBugStatus === 'CLOSED' ? 'DONE' : 'IN_PROGRESS',
     })
-  } catch {
-    ElMessage.error("状态更新失败，正在恢复...")
+  } catch (e: any) {
+    const msg = e?.response?.data?.message || e?.message || "状态更新失败"
+    ElMessage.error(msg)
     await fetchBoard()
   }
 }

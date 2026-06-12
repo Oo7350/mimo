@@ -172,7 +172,7 @@ import { getIssueAttachments, uploadAttachment, downloadAttachment, deleteAttach
 import { getCommentsByIssue } from "@/api/comment"
 import { getMembers } from "@/api/team"
 import { queryIssues } from "@/api/issue"
-import { ElMessage } from "element-plus"
+import { ElMessage, ElMessageBox } from "element-plus"
 import { renderMarkdown } from "@/utils/markdown"
 import { polishDescription, analyzePriority } from "@/api/ai"
 import { TYPE_LABEL, BUG_STATUS_LABEL } from "@/utils/constants"
@@ -518,10 +518,21 @@ async function handleSave() {
 }
 
 async function handleDelete() {
-  await deleteIssue(form.id)
-  ElMessage.success("已删除")
-  emit("update:visible", false)
-  emit("updated")
+  try {
+    await ElMessageBox.confirm('确定要删除此任务吗？删除后不可恢复。', '确认删除', {
+      confirmButtonText: '确定删除',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+  } catch { return }
+  try {
+    await deleteIssue(form.id)
+    ElMessage.success("已删除")
+    emit("update:visible", false)
+    emit("updated")
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.message || e?.message || "删除失败")
+  }
 }
 </script>
 
