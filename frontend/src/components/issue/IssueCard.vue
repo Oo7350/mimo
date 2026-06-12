@@ -22,15 +22,6 @@
             <el-icon :size="14"><EditPen /></el-icon>
           </button>
         </el-tooltip>
-        <el-popconfirm title="确定删除此工作项？" confirm-button-text="确定" cancel-button-text="取消" @confirm="$emit('delete', issue)">
-          <template #reference>
-            <el-tooltip content="删除" placement="top">
-              <button class="issue-card__action issue-card__action--danger">
-                <el-icon :size="14"><Delete /></el-icon>
-              </button>
-            </el-tooltip>
-          </template>
-        </el-popconfirm>
       </div>
     </Transition>
   </div>
@@ -42,14 +33,13 @@ import type { IssueCard } from '@/types'
 import StoryCard from './story/StoryCard.vue'
 import BugCard from './bug/BugCard.vue'
 import TaskCard from './task/TaskCard.vue'
-import { EditPen, Check, Delete } from '@element-plus/icons-vue'
+import { EditPen, Check } from '@element-plus/icons-vue'
 
 const props = defineProps<{ issue: IssueCard }>()
 defineEmits<{
   click: [issue: IssueCard]
   edit: [issue: IssueCard]
   complete: [issue: IssueCard]
-  delete: [issue: IssueCard]
 }>()
 
 // BUG 类型用 bugStatus 判断，其他类型用 status 判断
