@@ -17,5 +17,13 @@ export function approveRequest(id: number) {
 }
 
 export function rejectRequest(id: number, reason?: string) {
-  return request.put(`/approvals/${id}/reject`, null, { params: { reason } })
+  return request.put(`/api/approvals/${id}/reject`, null, { params: { reason } })
+}
+
+export function withdrawApproval(id: number) {
+  return request.put(`/api/approvals/${id}/withdraw`)
+}
+
+export function cleanupExpiredApprovals() {
+  return request.post('/api/approvals/cleanup-expired')
 }

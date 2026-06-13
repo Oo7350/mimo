@@ -36,6 +36,15 @@
           <el-button type="success" plain round @click="showInviteDialog = true">
             <el-icon><Plus /></el-icon> 邀请成员
           </el-button>
+          <el-button 
+            v-if="!isTeamOwner" 
+            type="warning" 
+            plain 
+            round 
+            @click="handleLeaveTeam"
+          >
+            退出团队
+          </el-button>
         </div>
       </div>
     </div>
@@ -63,15 +72,40 @@
                 <span class="td-member__email">{{ m.email }}</span>
               </div>
               <el-tag
-                :type="m.role === 'ROLE_ADMIN' ? 'danger' : ''"
+                :type="team?.ownerId === m.userId ? 'warning' : (m.role === 'ROLE_ADMIN' ? 'danger' : '')"
                 size="small"
                 round
                 effect="plain"
               >
-                {{ m.role === 'ROLE_ADMIN' ? '管理员' : '成员' }}
+                {{ team?.ownerId === m.userId ? '群主' : (m.role === 'ROLE_ADMIN' ? '管理员' : '成员') }}
               </el-tag>
+              <!-- 群主专属操作 -->
+              <template v-if="isTeamOwner && m.userId !== userStore.userInfo?.id">
+                <el-button
+                  v-if="team?.ownerId !== m.userId"
+                  type="primary"
+                  size="small"
+                  text
+                  @click="handleTransferOwner(m)"
+                >转让群主</el-button>
+                <el-button
+                  v-if="m.role === 'ROLE_ADMIN'"
+                  type="warning"
+                  size="small"
+                  text
+                  @click="handleUnsetAdmin(m)"
+                >取消管理员</el-button>
+                <el-button
+                  v-else-if="team?.ownerId !== m.userId"
+                  type="success"
+                  size="small"
+                  text
+                  @click="handleSetAdmin(m)"
+                >设为管理员</el-button>
+              </template>
+              <!-- 管理员可移除成员（不能移除自己和管理员） -->
               <el-button
-                v-if="isTeamAdmin && m.role !== 'ROLE_ADMIN'"
+                v-if="isTeamAdmin && m.role !== 'ROLE_ADMIN' && team?.ownerId !== m.userId && m.userId !== userStore.userInfo?.id"
                 type="danger"
                 size="small"
                 text
@@ -298,9 +332,25 @@
         </el-form-item>
         <el-form-item label="模板">
           <el-select v-model="projectForm.template" style="width: 100%">
-            <el-option label="Scrum" value="SCRUM" />
-            <el-option label="Kanban" value="KANBAN" />
+            <el-option label="Scrum (敏捷迭代)" value="SCRUM">
+              <div style="display: flex; justify-content: space-between; align-items: center">
+                <span>Scrum (敏捷迭代)</span>
+                <el-tag size="small" type="primary">Sprint + 故事点</el-tag>
+              </div>
+            </el-option>
+            <el-option label="Kanban (看板)" value="KANBAN">
+              <div style="display: flex; justify-content: space-between; align-items: center">
+                <span>Kanban (看板)</span>
+                <el-tag size="small" type="success">持续流动</el-tag>
+              </div>
+            </el-option>
           </el-select>
+          <div v-if="projectForm.template === 'SCRUM'" style="margin-top: 8px; font-size: 12px; color: var(--text-secondary)">
+            <el-icon><InfoFilled /></el-icon> 支持Sprint迭代管理、故事点估算、燃尽图等敏捷特性
+          </div>
+          <div v-else style="margin-top: 8px; font-size: 12px; color: var(--text-secondary)">
+            <el-icon><InfoFilled /></el-icon> 简洁的看板模式，适合持续交付和运维团队
+          </div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -338,7 +388,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, nextTick, onMounted, onUnmounted } from "vue"
 import { useRoute } from "vue-router"
-import { getTeamById, getMembers, inviteMember, removeMember, getTeamRole } from "@/api/team"
+import { getTeamById, getMembers, inviteMember, removeMember, getTeamRole, leaveTeam, transferOwner, setMemberAdmin, unsetMemberAdmin } from "@/api/team"
 import { getProjectsByTeam, createProject, deleteProject } from "@/api/project"
 import { searchUsers } from "@/api/user"
 import { sendChatMessage as apiSendChat, getChatHistory, recallMessage } from "@/api/chat"
@@ -348,7 +398,7 @@ import { useUserStore } from "@/store/user"
 import { ElMessage, ElMessageBox } from "element-plus"
 import {
   Plus, ArrowLeft, UserFilled, Folder, ArrowRight,
-  ChatDotRound, Promotion, Loading, Delete, Bell,
+  ChatDotRound, Promotion, Loading, Delete, Bell, InfoFilled,
 } from "@element-plus/icons-vue"
 import { avatarGradient } from "@/utils/color"
 
@@ -374,6 +424,11 @@ const isTeamAdmin = computed(() => {
   if (userStore.userInfo?.role === 'ROLE_ADMIN') return true
   // 团队管理员
   return myTeamRole.value === 'ROLE_ADMIN'
+})
+
+// 是否为群主（团队创建者）
+const isTeamOwner = computed(() => {
+  return team.value && team.value.ownerId === userStore.userInfo?.id
 })
 
 // ========== 审批请求 ==========
@@ -448,6 +503,61 @@ function getApprovalTypeColor(type: string): string {
     'PROJECT_MEMBER_ADD': 'primary',
   }
   return map[type] || 'info'
+}
+
+// ========== 团队管理（群主专属功能） ==========
+
+// 退出团队
+async function handleLeaveTeam() {
+  try {
+    await ElMessageBox.confirm('确定要退出该团队吗？退出后需要重新邀请才能加入。', '退出团队', {
+      confirmButtonText: '确定退出',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+    await leaveTeam(teamId)
+    ElMessage.success('已退出团队')
+    // 跳转到团队列表
+    window.location.href = '/teams'
+  } catch (e: any) {
+    if (e !== 'cancel') throw e
+  }
+}
+
+// 转让群主
+async function handleTransferOwner(member: any) {
+  try {
+    const { value: confirmed } = await ElMessageBox.confirm(
+      `确定将群主身份转让给「${member.username}」？转让后你将变为普通管理员。`,
+      '转让群主',
+      { confirmButtonText: '确定转让', cancelButtonText: '取消', type: 'warning' }
+    )
+    if (confirmed) {
+      await transferOwner(teamId, member.userId)
+      ElMessage.success('群主转让成功')
+      await fetchData()
+    }
+  } catch (e: any) {
+    if (e !== 'cancel') throw e
+  }
+}
+
+// 设置管理员
+async function handleSetAdmin(member: any) {
+  try {
+    await setMemberAdmin(teamId, member.userId)
+    ElMessage.success(`已将 ${member.username} 设为管理员`)
+    await fetchData()
+  } catch { /* handled by interceptor */ }
+}
+
+// 取消管理员
+async function handleUnsetAdmin(member: any) {
+  try {
+    await unsetMemberAdmin(teamId, member.userId)
+    ElMessage.success(`已取消 ${member.username} 的管理员权限`)
+    await fetchData()
+  } catch { /* handled by interceptor */ }
 }
 
 // ========== 聊天 ==========

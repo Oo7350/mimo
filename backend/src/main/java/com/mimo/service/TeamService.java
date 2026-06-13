@@ -69,10 +69,8 @@ public class TeamService {
     public void inviteMember(InviteRequest request, Long operatorId) {
         Team team = teamMapper.selectById(request.getTeamId());
         if (team == null) throw new BusinessException(ResultCode.TEAM_NOT_FOUND);
-        // 检查操作者是否为管理员
-        TeamMember opMember = teamMemberMapper.selectOne(new LambdaQueryWrapper<TeamMember>()
-                .eq(TeamMember::getTeamId, request.getTeamId()).eq(TeamMember::getUserId, operatorId));
-        if (opMember == null || !"ROLE_ADMIN".equals(opMember.getRole())) {
+        // 检查操作者是否为管理员（系统admin 或 团队admin）
+        if (!isTeamAdmin(request.getTeamId(), operatorId)) {
             throw new BusinessException(ResultCode.NOT_TEAM_ADMIN);
         }
         if (teamMemberMapper.exists(new LambdaQueryWrapper<TeamMember>()
@@ -107,10 +105,13 @@ public class TeamService {
 
     @Transactional
     public void removeMember(Long teamId, Long userId, Long operatorId) {
-        TeamMember opMember = teamMemberMapper.selectOne(new LambdaQueryWrapper<TeamMember>()
-                .eq(TeamMember::getTeamId, teamId).eq(TeamMember::getUserId, operatorId));
-        if (opMember == null || !"ROLE_ADMIN".equals(opMember.getRole())) {
+        // 检查操作者是否为管理员（系统admin 或 团队admin）
+        if (!isTeamAdmin(teamId, operatorId)) {
             throw new BusinessException(ResultCode.NOT_TEAM_ADMIN);
+        }
+        // 不能移除自己
+        if (userId.equals(operatorId)) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "不能移除自己，请使用退出团队功能");
         }
         teamMemberMapper.delete(new LambdaQueryWrapper<TeamMember>()
                 .eq(TeamMember::getTeamId, teamId).eq(TeamMember::getUserId, userId));
@@ -164,6 +165,88 @@ public class TeamService {
         // 团队admin
         String role = getUserRoleInTeam(teamId, userId);
         return "ROLE_ADMIN".equals(role);
+    }
+
+    /**
+     * 检查用户是否为团队群主
+     */
+    public boolean isTeamOwner(Long teamId, Long userId) {
+        Team team = teamMapper.selectById(teamId);
+        return team != null && team.getOwnerId().equals(userId);
+    }
+
+    /**
+     * 退出团队（非群主可用）
+     */
+    @Transactional
+    public void leaveTeam(Long teamId, Long userId) {
+        // 群主不能退出，只能转让或解散
+        if (isTeamOwner(teamId, userId)) {
+            throw new BusinessException(ResultCode.FORBIDDEN, "群主不能退出团队，请先转让群主或解散团队");
+        }
+        
+        TeamMember member = teamMemberMapper.selectOne(new LambdaQueryWrapper<TeamMember>()
+                .eq(TeamMember::getTeamId, teamId).eq(TeamMember::getUserId, userId));
+        if (member == null) {
+            throw new BusinessException(ResultCode.NOT_FOUND, "您不在该团队中");
+        }
+        
+        teamMemberMapper.deleteById(member.getId());
+    }
+
+    /**
+     * 转让群主（仅当前群主可用）
+     */
+    @Transactional
+    public void transferOwner(Long teamId, Long currentOwnerId, Long newOwnerId) {
+        // 验证当前操作者是群主
+        if (!isTeamOwner(teamId, currentOwnerId)) {
+            throw new BusinessException(ResultCode.FORBIDDEN, "只有群主可以转让群主身份");
+        }
+        
+        // 验证新群主是团队成员
+        TeamMember newOwnerMember = teamMemberMapper.selectOne(new LambdaQueryWrapper<TeamMember>()
+                .eq(TeamMember::getTeamId, teamId).eq(TeamMember::getUserId, newOwnerId));
+        if (newOwnerMember == null) {
+            throw new BusinessException(ResultCode.NOT_FOUND, "新群主必须是团队成员");
+        }
+        
+        // 更新团队的ownerId
+        Team team = teamMapper.selectById(teamId);
+        team.setOwnerId(newOwnerId);
+        teamMapper.updateById(team);
+        
+        // 新群主设为管理员（如果还不是的话）
+        if (!"ROLE_ADMIN".equals(newOwnerMember.getRole())) {
+            newOwnerMember.setRole("ROLE_ADMIN");
+            teamMemberMapper.updateById(newOwnerMember);
+        }
+    }
+
+    /**
+     * 设置成员角色（仅群主可用）
+     */
+    @Transactional
+    public void setMemberRole(Long teamId, Long targetUserId, Long operatorId, String newRole) {
+        // 验证操作者是群主
+        if (!isTeamOwner(teamId, operatorId)) {
+            throw new BusinessException(ResultCode.FORBIDDEN, "只有群主可以设置管理员");
+        }
+        
+        // 不能修改自己的角色
+        if (targetUserId.equals(operatorId)) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "不能修改自己的角色");
+        }
+        
+        // 验证目标成员存在
+        TeamMember member = teamMemberMapper.selectOne(new LambdaQueryWrapper<TeamMember>()
+                .eq(TeamMember::getTeamId, teamId).eq(TeamMember::getUserId, targetUserId));
+        if (member == null) {
+            throw new BusinessException(ResultCode.NOT_FOUND, "该用户不是团队成员");
+        }
+        
+        member.setRole(newRole);
+        teamMemberMapper.updateById(member);
     }
 
     private TeamVO toVO(Team team) {

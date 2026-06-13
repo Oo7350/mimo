@@ -36,7 +36,6 @@ public class TeamController {
     }
 
     @PostMapping("/invite")
-    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public Result<Void> inviteMember(@Valid @RequestBody InviteRequest request, Authentication auth) {
         Long userId = (Long) auth.getPrincipal();
         teamService.inviteMember(request, userId);
@@ -49,7 +48,6 @@ public class TeamController {
     }
 
     @DeleteMapping("/{teamId}/members/{userId}")
-    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public Result<Void> removeMember(@PathVariable Long teamId, @PathVariable Long userId, Authentication auth) {
         Long opId = (Long) auth.getPrincipal();
         teamService.removeMember(teamId, userId, opId);
@@ -61,6 +59,46 @@ public class TeamController {
         Long userId = (Long) auth.getPrincipal();
         String role = teamService.getUserRoleInTeam(id, userId);
         return Result.success(role);
+    }
+
+    /**
+     * 退出团队（非群主可用）
+     */
+    @PostMapping("/{teamId}/leave")
+    public Result<Void> leaveTeam(@PathVariable Long teamId, Authentication auth) {
+        Long userId = (Long) auth.getPrincipal();
+        teamService.leaveTeam(teamId, userId);
+        return Result.successMessage("已退出团队");
+    }
+
+    /**
+     * 转让群主（仅当前群主可用）
+     */
+    @PutMapping("/{teamId}/transfer-owner")
+    public Result<Void> transferOwner(@PathVariable Long teamId, @RequestParam Long newOwnerId, Authentication auth) {
+        Long currentUserId = (Long) auth.getPrincipal();
+        teamService.transferOwner(teamId, currentUserId, newOwnerId);
+        return Result.successMessage("群主转让成功");
+    }
+
+    /**
+     * 指定管理员（仅群主可用）
+     */
+    @PutMapping("/{teamId}/members/{userId}/set-admin")
+    public Result<Void> setAdmin(@PathVariable Long teamId, @PathVariable Long userId, Authentication auth) {
+        Long operatorId = (Long) auth.getPrincipal();
+        teamService.setMemberRole(teamId, userId, operatorId, "ROLE_ADMIN");
+        return Result.successMessage("已设为管理员");
+    }
+
+    /**
+     * 取消管理员身份（仅群主可用）
+     */
+    @PutMapping("/{teamId}/members/{userId}/unset-admin")
+    public Result<Void> unsetAdmin(@PathVariable Long teamId, @PathVariable Long userId, Authentication auth) {
+        Long operatorId = (Long) auth.getPrincipal();
+        teamService.setMemberRole(teamId, userId, operatorId, "ROLE_MEMBER");
+        return Result.successMessage("已取消管理员");
     }
 
     @DeleteMapping("/{teamId}")

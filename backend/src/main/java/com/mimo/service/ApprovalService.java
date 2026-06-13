@@ -11,12 +11,15 @@ import com.mimo.mapper.TeamMemberMapper;
 import com.mimo.mapper.UserMapper;
 import com.mimo.mapper.TeamMapper;
 import com.mimo.mapper.ProjectMapper;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -28,6 +31,8 @@ public class ApprovalService {
     private final UserMapper userMapper;
     private final TeamMapper teamMapper;
     private final ProjectMapper projectMapper;
+    private final ProjectService projectService;
+    private final ObjectMapper objectMapper;
 
     /**
      * 创建审批请求
@@ -99,6 +104,9 @@ public class ApprovalService {
         request.setApproverId(approverId);
         request.setApprovedAt(LocalDateTime.now());
         approvalRequestMapper.updateById(request);
+
+        // 执行实际操作
+        executeApprovedAction(request);
     }
 
     /**
@@ -125,6 +133,51 @@ public class ApprovalService {
     }
 
     /**
+     * 撤回审批请求（仅请求者可操作）
+     */
+    @Transactional
+    public void withdraw(Long requestId, Long requesterId) {
+        ApprovalRequest request = approvalRequestMapper.selectById(requestId);
+        if (request == null) throw new BusinessException(ResultCode.NOT_FOUND, "审批请求不存在");
+        
+        // 验证是请求者本人
+        if (!request.getRequesterId().equals(requesterId)) {
+            throw new BusinessException(ResultCode.FORBIDDEN, "只能撤回自己的审批请求");
+        }
+        
+        if (!"PENDING".equals(request.getStatus())) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "只能撤回待处理的请求");
+        }
+        
+        request.setStatus("WITHDRAWN");
+        request.setRejectReason("用户主动撤回");
+        approvalRequestMapper.updateById(request);
+    }
+
+    /**
+     * 清理超时的审批请求（超过指定天数未处理自动拒绝）
+     */
+    @Transactional
+    public int cleanupExpiredRequests(int expireDays) {
+        LocalDateTime expireTime = LocalDateTime.now().minusDays(expireDays);
+        
+        List<ApprovalRequest> expiredRequests = approvalRequestMapper.selectList(
+                new LambdaQueryWrapper<ApprovalRequest>()
+                        .eq(ApprovalRequest::getStatus, "PENDING")
+                        .lt(ApprovalRequest::getCreatedAt, expireTime));
+        
+        int count = 0;
+        for (ApprovalRequest request : expiredRequests) {
+            request.setStatus("EXPIRED");
+            request.setRejectReason("超时自动拒绝（" + expireDays + "天未处理）");
+            approvalRequestMapper.updateById(request);
+            count++;
+        }
+        
+        return count;
+    }
+
+    /**
      * 检查是否为管理员(系统admin 或 团队admin)
      */
     private boolean isAdmin(Long userId, Long teamId) {
@@ -138,6 +191,48 @@ public class ApprovalService {
                 .eq(TeamMember::getUserId, userId)
                 .eq(TeamMember::getRole, "ROLE_ADMIN"));
         return member != null;
+    }
+
+    /**
+     * 执行审批通过后的实际操作
+     */
+    @SuppressWarnings("unchecked")
+    private void executeApprovedAction(ApprovalRequest request) {
+        try {
+            String targetType = request.getTargetType();
+            String dataJson = request.getDataJson();
+
+            if ("PROJECT_CREATE".equals(targetType) && dataJson != null) {
+                // 创建项目
+                Map<String, Object> projectData = objectMapper.readValue(dataJson, Map.class);
+                com.mimo.dto.ProjectDTO.CreateRequest createReq = new com.mimo.dto.ProjectDTO.CreateRequest();
+                createReq.setName((String) projectData.get("name"));
+                createReq.setKey((String) projectData.get("key"));
+                createReq.setTemplate((String) projectData.getOrDefault("template", "SCRUM"));
+                createReq.setTeamId(request.getTeamId());
+                
+                Project createdProject = projectService.create(createReq);
+                // 更新审批请求的projectId
+                request.setProjectId(createdProject.getId());
+                approvalRequestMapper.updateById(request);
+                
+            } else if ("PROJECT_DELETE".equals(targetType) && dataJson != null) {
+                // 删除项目
+                Map<String, Object> deleteData = objectMapper.readValue(dataJson, Map.class);
+                Number projectIdNum = (Number) deleteData.get("projectId");
+                if (projectIdNum != null) {
+                    projectService.deleteProject(projectIdNum.longValue(), request.getRequesterId());
+                }
+            }
+            // 其他类型暂不处理，可后续扩展
+            
+        } catch (JsonProcessingException e) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "审批数据解析失败: " + e.getMessage());
+        } catch (Exception e) {
+            // 审批已通过，但执行失败 - 记录日志但不回滚审批状态
+            // 实际生产环境应该有补偿机制或重试队列
+            e.printStackTrace();
+        }
     }
 
     private ApprovalRequestVO toVO(ApprovalRequest entity) {

@@ -1,8 +1,12 @@
 package com.mimo.controller;
 
 import com.mimo.common.Result;
+import com.mimo.common.BusinessException;
+import com.mimo.common.ResultCode;
 import com.mimo.dto.ApprovalRequestDTO;
 import com.mimo.dto.ApprovalRequestVO;
+import com.mimo.entity.User;
+import com.mimo.mapper.UserMapper;
 import com.mimo.service.ApprovalService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
@@ -17,6 +21,7 @@ import java.util.List;
 public class ApprovalController {
 
     private final ApprovalService approvalService;
+    private final UserMapper userMapper;
 
     /**
      * 创建审批请求
@@ -63,5 +68,30 @@ public class ApprovalController {
         Long userId = (Long) auth.getPrincipal();
         approvalService.reject(id, userId, reason);
         return Result.successMessage("已拒绝");
+    }
+
+    /**
+     * 撤回审批请求（仅请求者可操作）
+     */
+    @PutMapping("/{id}/withdraw")
+    public Result<Void> withdraw(@PathVariable Long id, Authentication auth) {
+        Long userId = (Long) auth.getPrincipal();
+        approvalService.withdraw(id, userId);
+        return Result.successMessage("已撤回");
+    }
+
+    /**
+     * 清理超时的审批请求（7天未处理自动拒绝）
+     */
+    @PostMapping("/cleanup-expired")
+    public Result<Integer> cleanupExpired(Authentication auth) {
+        Long userId = (Long) auth.getPrincipal();
+        // 仅管理员可执行清理
+        User user = userMapper.selectById(userId);
+        if (user == null || !"ROLE_ADMIN".equals(user.getRole())) {
+            throw new BusinessException(com.mimo.common.ResultCode.FORBIDDEN, "仅管理员可清理超时请求");
+        }
+        int count = approvalService.cleanupExpiredRequests(7); // 7天超时
+        return Result.success(count);
     }
 }

@@ -29,5 +29,21 @@ export function deleteTeam(teamId: number) {
 }
 
 export function getTeamRole(teamId: number) {
-  return request.get(`/teams/${teamId}/role`);
+  return request.get(`/teams/${teamId}/role`)
+}
+
+export function leaveTeam(teamId: number) {
+  return request.post(`/teams/${teamId}/leave`)
+}
+
+export function transferOwner(teamId: number, newOwnerId: number) {
+  return request.put(`/teams/${teamId}/transfer-owner`, null, { params: { newOwnerId } })
+}
+
+export function setMemberAdmin(teamId: number, userId: number) {
+  return request.put(`/teams/${teamId}/members/${userId}/set-admin`)
+}
+
+export function unsetMemberAdmin(teamId: number, userId: number) {
+  return request.put(`/teams/${teamId}/members/${userId}/unset-admin`)
 }

@@ -8,6 +8,7 @@ import com.mimo.entity.User;
 import com.mimo.entity.UserLevel;
 import com.mimo.mapper.UserLevelMapper;
 import com.mimo.mapper.UserMapper;
+import com.mimo.mapper.TeamMemberMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,6 +22,7 @@ public class UserLevelService {
 
     private final UserLevelMapper userLevelMapper;
     private final UserMapper userMapper;
+    private final TeamMemberMapper teamMemberMapper;
 
     /**
      * 获取用户等级
@@ -87,6 +89,11 @@ public class UserLevelService {
             level.setUpdatedBy(adminId);
             userLevelMapper.updateById(level);
         }
+
+        // L3及以上自动升级为团队管理员
+        if (newLevel >= 3) {
+            syncTeamAdminRole(targetUserId);
+        }
     }
 
     private UserLevelVO toVO(UserLevel entity) {
@@ -114,5 +121,24 @@ public class UserLevelService {
         User user = userMapper.selectById(userId);
         if (user != null) vo.setUsername(user.getUsername());
         return vo;
+    }
+
+    /**
+     * 同步用户在所有团队中的管理员角色
+     * L3及以上用户自动成为所有所在团队的管理员
+     */
+    private void syncTeamAdminRole(Long userId) {
+        // 查找用户所在的所有团队
+        List<com.mimo.entity.TeamMember> memberships = teamMemberMapper.selectList(
+                new LambdaQueryWrapper<com.mimo.entity.TeamMember>()
+                        .eq(com.mimo.entity.TeamMember::getUserId, userId));
+        
+        // 将所有非管理员身份升级为管理员
+        for (com.mimo.entity.TeamMember member : memberships) {
+            if (!"ROLE_ADMIN".equals(member.getRole())) {
+                member.setRole("ROLE_ADMIN");
+                teamMemberMapper.updateById(member);
+            }
+        }
     }
 }
