@@ -3,13 +3,13 @@ package com.mimo.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mimo.common.BusinessException;
 import com.mimo.common.ResultCode;
-import com.mimo.entity.UserLevel;
-import com.mimo.mapper.UserLevelMapper;
 import com.mimo.dto.LoginRequest;
 import com.mimo.dto.LoginResponse;
 import com.mimo.dto.RegisterRequest;
 import com.mimo.entity.User;
+import com.mimo.entity.UserLevel;
 import com.mimo.mapper.UserMapper;
+import com.mimo.mapper.UserLevelMapper;
 import com.mimo.util.JwtUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -24,10 +24,9 @@ public class UserService {
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
+    private final UserLevelMapper userLevelMapper;
     @Autowired(required = false)
     private StringRedisTemplate redisTemplate;
-
-    private final UserLevelMapper userLevelMapper;
 
     public UserService(UserMapper userMapper, PasswordEncoder passwordEncoder, JwtUtil jwtUtil,
                        UserLevelMapper userLevelMapper) {
@@ -86,7 +85,7 @@ public class UserService {
         user.setRole("ROLE_MEMBER");
         userMapper.insert(user);
 
-        // 自动创建默认 L1 等级
+        // 自动创建默认 L1 铭牌
         UserLevel level = new UserLevel();
         level.setUserId(user.getId());
         level.setLevel(1);

@@ -82,7 +82,7 @@ const routes: RouteRecordRaw[] = [
         path: "admin/approvals",
         name: "ApprovalList",
         component: () => import("@/views/ApprovalList.vue"),
-      }
+      },
     ],
   },
   {

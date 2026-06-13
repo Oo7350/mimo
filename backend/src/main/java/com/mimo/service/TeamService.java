@@ -34,13 +34,6 @@ public class TeamService {
     private final UserLevelMapper userLevelMapper;
 
     public TeamVO create(CreateRequest request, Long ownerId) {
-        // 检查用户等级：L2以上才能创建团队
-        UserLevel userLevel = userLevelMapper.selectOne(new LambdaQueryWrapper<UserLevel>()
-                .eq(UserLevel::getUserId, ownerId));
-        if (userLevel == null || userLevel.getLevel() < 2) {
-            throw new BusinessException(ResultCode.FORBIDDEN, "L2及以上等级才能创建团队");
-        }
-
         if (teamMapper.exists(new LambdaQueryWrapper<Team>().eq(Team::getName, request.getName()))) {
             throw new BusinessException(ResultCode.TEAM_NAME_EXISTS);
         }
@@ -87,13 +80,7 @@ public class TeamService {
             throw new BusinessException(ResultCode.ALREADY_IN_TEAM);
         }
 
-        // 检查被邀请用户的等级，L3以上自动设为管理员
-        UserLevel inviteeLevel = userLevelMapper.selectOne(new LambdaQueryWrapper<UserLevel>()
-                .eq(UserLevel::getUserId, request.getUserId()));
         String role = request.getRole() != null ? request.getRole() : "ROLE_MEMBER";
-        if (inviteeLevel != null && inviteeLevel.getLevel() >= 3) {
-            role = "ROLE_ADMIN"; // L3及以上自动为管理员
-        }
 
         TeamMember member = new TeamMember();
         member.setTeamId(request.getTeamId());

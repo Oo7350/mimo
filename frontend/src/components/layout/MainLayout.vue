@@ -130,7 +130,7 @@
             </el-menu-item>
             <template v-if="userStore.userInfo?.role === 'ROLE_ADMIN'">
               <el-menu-item index="/admin/levels">
-                <el-icon><Star /></el-icon>
+                <el-icon><Medal /></el-icon>
                 <span>等级管理</span>
               </el-menu-item>
               <el-menu-item index="/admin/approvals">
@@ -173,7 +173,7 @@ import { useTour } from '@/composables/useTour'
 import { useNotifications } from '@/composables/useNotifications'
 import { useWebSocket } from '@/composables/useWebSocket'
 import { useCommandPalette } from '@/composables/useCommandPalette'
-import { Moon, Sunny, Star, Checked } from '@element-plus/icons-vue'
+import { Moon, Sunny, Medal, Checked } from '@element-plus/icons-vue'
 import { formatRelativeTime } from '@/utils/constants'
 
 const route = useRoute()

@@ -95,7 +95,6 @@
 import { ref, reactive, onMounted } from "vue"
 import { useRouter } from "vue-router"
 import { createTeam, getMyTeams, deleteTeam } from "@/api/team"
-import { getMyLevel } from "@/api/user-level"
 import { ElMessage, ElMessageBox } from "element-plus"
 import { Plus, User, ArrowRight, UserFilled, Delete } from "@element-plus/icons-vue"
 import { avatarGradient } from "@/utils/color"
@@ -118,16 +117,6 @@ async function handleCreate() {
     return
   }
   
-  // 检查用户等级：L2以上才能创建团队
-  try {
-    const levelRes = await getMyLevel()
-    const level = levelRes.data?.level || 1
-    if (level < 2) {
-      ElMessage.warning('L2（正式成员）及以上等级才能创建团队，请联系管理员提升等级')
-      return
-    }
-  } catch { /* ignore - 如果获取失败，让后端校验 */ }
-
   creating.value = true
   try {
     await createTeam(createForm)

@@ -30,7 +30,6 @@
           >
             {{ profile?.role === 'ROLE_ADMIN' ? '系统管理员' : '普通成员' }}
           </el-tag>
-          <!-- 用户等级铭牌 (L1-L4) -->
           <UserBadge v-if="userLevel" :level="userLevel" size="medium" style="margin-left: 6px" />
         </div>
       </div>
@@ -163,12 +162,8 @@ async function fetchProfile() {
   profileForm.username = profile.value?.username || ""
   profileForm.email = profile.value?.email || ""
   avatarPreview.value = profile.value?.avatar || ""
-
-  // 获取用户等级
-  try {
-    const levelRes = await getMyLevel()
-    userLevel.value = levelRes.data
-  } catch { /* ignore */ }
+  // 获取铭牌
+  try { const lr = await getMyLevel(); userLevel.value = lr.data } catch { /* */ }
 }
 
 async function handleUpdateProfile() {

@@ -230,64 +230,6 @@
       </div>
     </div>
 
-    <!-- Admin 用户等级管理 (仅系统管理员可见) -->
-    <div v-if="isAdmin" class="dashboard__panel dashboard__panel--full">
-      <div class="panel-header">
-        <div class="panel-header__left">
-          <div class="panel-header__icon" style="background: rgba(230,162,60,0.12); color: #E6A23C">
-            <el-icon><Medal /></el-icon>
-          </div>
-          <span>用户等级管理</span>
-          <el-tag size="small" type="warning" effect="plain" style="margin-left: 8px">L1-L4</el-tag>
-        </div>
-        <div class="level-legend">
-          <span class="legend-item"><span class="legend-dot" style="background: #909399"></span>L1 初级</span>
-          <span class="legend-item"><span class="legend-dot" style="background: #67C23A"></span>L2 正式</span>
-          <span class="legend-item"><span class="legend-dot" style="background: #409EFF"></span>L3 资深</span>
-          <span class="legend-item"><span class="legend-dot" style="background: linear-gradient(135deg, #E6A23C, #F56C6C)"></span>L4 核心</span>
-        </div>
-      </div>
-      <div v-if="userLevels.length === 0" class="panel-body">
-        <SkeletonLoader variant="list-item" :count="3" />
-      </div>
-      <div v-else class="panel-body level-table-wrap">
-        <table class="level-table">
-          <thead>
-            <tr>
-              <th>用户</th>
-              <th>当前等级</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="u in userLevels" :key="u.userId">
-              <td>
-                <div class="user-cell">
-                  <div class="user-avatar" :style="{ background: avatarGradient(u.username || 'U') }">
-                    {{ (u.username || '?').charAt(0).toUpperCase() }}
-                  </div>
-                  <span>{{ u.username }}</span>
-                </div>
-              </td>
-              <td>
-                <UserBadge :level="u" size="small" />
-              </td>
-              <td>
-                <el-select
-                  v-model="selectedLevels[u.userId]"
-                  placeholder="选择等级"
-                  size="small"
-                  style="width: 100px"
-                  @change="(val: any) => handleLevelChange(u.userId, val)"
-                >
-                  <el-option v-for="l in [1, 2, 3, 4]" :key="l" :label="'L' + l" :value="l" />
-                </el-select>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -297,7 +239,6 @@ import { useRouter } from "vue-router"
 import { useUserStore } from "@/store/user"
 import request from "@/api/request"
 import { queryIssues, updateIssue } from "@/api/issue"
-import { getAllUserLevels, setUserLevel, getMyLevel } from "@/api/user-level"
 import { ElMessage } from "element-plus"
 import { PRIORITY_LABEL, PRIORITY_COLOR } from "@/utils/constants"
 import {
@@ -318,41 +259,6 @@ const myTasks = ref<IssueCard[]>([])
 const loading = ref(true)
 const tasksLoading = ref(true)
 
-// ========== Admin 等级管理 ==========
-const isAdmin = computed(() => userStore.userInfo?.role === 'ROLE_ADMIN')
-const userLevels = ref<any[]>([])
-const selectedLevels = ref<Record<number, number>>({})
-const levelLoading = ref(false)
-
-// 获取所有用户等级
-async function fetchUserLevels() {
-  if (!isAdmin.value) return
-  try {
-    const res = await getAllUserLevels()
-    userLevels.value = res.data || []
-    // 初始化选中状态
-    userLevels.value.forEach(u => {
-      selectedLevels.value[u.userId] = u.level
-    })
-  } catch { /* ignore */ }
-}
-
-// 修改用户等级
-async function handleLevelChange(userId: number, newLevel: number) {
-  levelLoading.value = true
-  try {
-    await setUserLevel(userId, newLevel)
-    ElMessage.success(`已更新为 L${newLevel}`)
-    // 刷新列表
-    await fetchUserLevels()
-  } catch { /* handled by interceptor */ }
-  finally { levelLoading.value = false }
-}
-
-// 获取头像颜色
-function getAvatarColor(username: string): string {
-  return avatarGradient(username || 'U').split(')')[0].replace('linear-gradient(', '') || '#6366f1'
-}
 
 const TYPE_ICONS: Record<IssueType, string> = { STORY: '📖', TASK: '✅', BUG: '🐛' }
 const TYPE_COLORS: Record<IssueType, string> = {
@@ -455,7 +361,7 @@ function openTask(task: IssueCard) {
   router.push(`/projects/${task.projectId || 0}/board?issue=${task.id}`)
 }
 
-onMounted(() => { fetchDashboard(); fetchMyTasks(); fetchUserLevels() })
+onMounted(() => { fetchDashboard(); fetchMyTasks() })
 </script>
 
 <style scoped lang="scss">
