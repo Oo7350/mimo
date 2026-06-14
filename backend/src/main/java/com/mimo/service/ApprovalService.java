@@ -5,15 +5,20 @@ import com.mimo.common.BusinessException;
 import com.mimo.common.ResultCode;
 import com.mimo.dto.ApprovalRequestDTO;
 import com.mimo.dto.ApprovalRequestVO;
+import com.mimo.dto.ProjectDTO.ProjectVO;
 import com.mimo.entity.*;
 import com.mimo.mapper.ApprovalRequestMapper;
 import com.mimo.mapper.TeamMemberMapper;
 import com.mimo.mapper.UserMapper;
 import com.mimo.mapper.TeamMapper;
 import com.mimo.mapper.ProjectMapper;
+import com.mimo.mapper.NotificationMapper;
+import com.mimo.entity.Notification;
+import com.mimo.service.NotificationService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,6 +28,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class ApprovalService {
 
@@ -32,6 +38,7 @@ public class ApprovalService {
     private final TeamMapper teamMapper;
     private final ProjectMapper projectMapper;
     private final ProjectService projectService;
+    private final NotificationService notificationService;
     private final ObjectMapper objectMapper;
 
     /**
@@ -59,6 +66,17 @@ public class ApprovalService {
         approvalRequestMapper.insert(request);
 
         return toVO(request);
+    }
+
+    /**
+     * 获取所有待审批列表(仅系统admin)
+     */
+    public List<ApprovalRequestVO> listAllPending() {
+        return approvalRequestMapper.selectList(
+                        new LambdaQueryWrapper<ApprovalRequest>()
+                                .eq(ApprovalRequest::getStatus, "PENDING")
+                                .orderByDesc(ApprovalRequest::getCreatedAt))
+                .stream().map(this::toVO).collect(Collectors.toList());
     }
 
     /**
@@ -105,6 +123,9 @@ public class ApprovalService {
         request.setApprovedAt(LocalDateTime.now());
         approvalRequestMapper.updateById(request);
 
+        // 通知申请人审批已通过
+        sendApprovalNotification(request, "APPROVED", null);
+
         // 执行实际操作
         executeApprovedAction(request);
     }
@@ -130,6 +151,9 @@ public class ApprovalService {
         request.setApprovedAt(LocalDateTime.now());
         request.setRejectReason(reason);
         approvalRequestMapper.updateById(request);
+
+        // 通知申请人审批被拒绝
+        sendApprovalNotification(request, "REJECTED", reason);
     }
 
     /**
@@ -211,7 +235,7 @@ public class ApprovalService {
                 createReq.setTemplate((String) projectData.getOrDefault("template", "SCRUM"));
                 createReq.setTeamId(request.getTeamId());
                 
-                Project createdProject = projectService.create(createReq);
+                ProjectVO createdProject = projectService.create(createReq, request.getRequesterId());
                 // 更新审批请求的projectId
                 request.setProjectId(createdProject.getId());
                 approvalRequestMapper.updateById(request);
@@ -269,5 +293,33 @@ public class ApprovalService {
             if (user != null) vo.setApproverUsername(user.getUsername());
         }
         return vo;
+    }
+
+    /**
+     * 发送审批结果通知给申请人
+     */
+    private void sendApprovalNotification(ApprovalRequest request, String status, String reason) {
+        try {
+            Notification notification = new Notification();
+            notification.setUserId(request.getRequesterId());
+            notification.setType("APPROVAL_" + status);
+
+            boolean approved = "APPROVED".equals(status);
+            notification.setTitle(approved ? "审批已通过" : "审批被拒绝");
+            StringBuilder content = new StringBuilder();
+            content.append("您的审批请求「").append(request.getTitle()).append("」");
+            content.append(approved ? "已被管理员通过" : "被管理员拒绝");
+            if (!approved && reason != null && !reason.isEmpty()) {
+                content.append("，原因：").append(reason);
+            }
+            notification.setContent(content.toString());
+            notification.setRelatedId(request.getId());
+            notification.setRelatedType("APPROVAL_REQUEST");
+            notification.setIsRead(0);
+
+            notificationService.create(notification);
+        } catch (Exception e) {
+            log.warn("发送审批通知失败: {}", e.getMessage());
+        }
     }
 }

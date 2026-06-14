@@ -163,9 +163,10 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/store/user'
 import { useAppStore } from '@/store/app'
-import { ElMessageBox } from 'element-plus'
+import { ElMessageBox, ElNotification } from 'element-plus'
 import { getMyProjects } from '@/api/project'
 import { getIssueById } from '@/api/issue'
+import { getNotifications } from '@/api/notification'
 import type { ProjectVO } from '@/types'
 import BreadcrumbNav from './BreadcrumbNav.vue'
 import CommandPalette from '@/components/common/CommandPalette.vue'
@@ -272,7 +273,33 @@ onMounted(() => {
   checkTourTrigger()
   // Connect WebSocket
   wsConnect()
+  // 检查审批结果通知
+  checkApprovalNotifications()
 })
+
+/** 检查是否有未读的审批通知，有则弹窗提示 */
+async function checkApprovalNotifications() {
+  try {
+    const res = await getNotifications(10)
+    const list = res.data || []
+    const approvalNotifs = list.filter((n: any) =>
+      !n.isRead && n.type?.startsWith('APPROVAL_')
+    )
+    if (approvalNotifs.length > 0) {
+      approvalNotifs.forEach((n: any, idx: number) => {
+        setTimeout(() => {
+          ElNotification({
+            title: n.title,
+            message: n.content,
+            type: n.type === 'APPROVAL_APPROVED' ? 'success' : 'warning',
+            duration: 6000,
+            position: 'top-right',
+          })
+        }, idx * 500) // 错开显示，避免重叠
+      })
+    }
+  } catch { /* ignore */ }
+}
 
 watch(() => route.path, () => checkTourTrigger())
 </script>

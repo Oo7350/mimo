@@ -52,7 +52,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { getPendingApprovals, getMyApprovals, approveRequest, rejectRequest } from '@/api/approval'
+import { getPendingApprovals, getAllPendingApprovals, getMyApprovals, approveRequest, rejectRequest } from '@/api/approval'
 import PageHeader from '@/components/common/PageHeader.vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { formatRelativeTime } from '@/utils/constants'
@@ -75,7 +75,7 @@ function formatTime(s: string) { return formatRelativeTime(s) }
 async function fetchData() {
   loading.value = true
   try {
-    const [p, m] = await Promise.all([getPendingApprovals(0), getMyApprovals()])
+    const [p, m] = await Promise.all([getAllPendingApprovals(), getMyApprovals()])
     pendingList.value = p.data || []
     myList.value = m.data || []
   } catch { /* */ }

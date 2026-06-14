@@ -46,21 +46,24 @@ const badgeStyle = computed(() => {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 3px 10px;
+  padding: 2px 10px;
   border-radius: 10px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.5px;
   white-space: nowrap;
+  line-height: 1.6;
 
   &--small {
-    padding: 2px 8px;
-    font-size: 10px;
+    padding: 1px 7px;
+    font-size: 11px;
+    border-radius: 8px;
   }
 
   &--large {
-    padding: 5px 14px;
-    font-size: 13px;
+    padding: 4px 14px;
+    font-size: 14px;
+    border-radius: 12px;
   }
 
   &__icon {

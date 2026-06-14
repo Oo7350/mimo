@@ -38,12 +38,29 @@ public class UserLevelService {
     }
 
     /**
-     * 获取所有用户等级列表(仅admin可见)
+     * 获取所有用户等级列表(仅admin可见) — 包含所有注册用户，无等级记录的默认L1
      */
     public List<UserLevelVO> listAll() {
-        List<UserLevel> levels = userLevelMapper.selectList(
-                new LambdaQueryWrapper<UserLevel>().orderByAsc(UserLevel::getLevel));
-        return levels.stream().map(this::toVO).collect(Collectors.toList());
+        // 查询所有用户（未软删除）
+        List<User> allUsers = userMapper.selectList(
+                new LambdaQueryWrapper<User>().orderByAsc(User::getId));
+
+        return allUsers.stream().map(user -> {
+            UserLevel level = userLevelMapper.selectOne(new LambdaQueryWrapper<UserLevel>()
+                    .eq(UserLevel::getUserId, user.getId()));
+            if (level != null) {
+                return toVO(level);
+            }
+            // 无等级记录的用户返回默认L1
+            UserLevelVO vo = new UserLevelVO();
+            vo.setUserId(user.getId());
+            vo.setLevel(1);
+            vo.setLevelName("L1");
+            vo.setBadgeColor("#909399");
+            vo.setBadgeIcon(null);
+            vo.setUsername(user.getUsername());
+            return vo;
+        }).collect(Collectors.toList());
     }
 
     /**

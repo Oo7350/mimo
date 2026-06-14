@@ -8,6 +8,10 @@ export function getPendingApprovals(teamId: number) {
   return request.get(`/approvals/team/${teamId}/pending`)
 }
 
+export function getAllPendingApprovals() {
+  return request.get(`/approvals/pending`)
+}
+
 export function getMyApprovals() {
   return request.get('/approvals/my')
 }
@@ -17,13 +21,13 @@ export function approveRequest(id: number) {
 }
 
 export function rejectRequest(id: number, reason?: string) {
-  return request.put(`/api/approvals/${id}/reject`, null, { params: { reason } })
+  return request.put(`/approvals/${id}/reject`, null, { params: { reason } })
 }
 
 export function withdrawApproval(id: number) {
-  return request.put(`/api/approvals/${id}/withdraw`)
+  return request.put(`/approvals/${id}/withdraw`)
 }
 
 export function cleanupExpiredApprovals() {
-  return request.post('/api/approvals/cleanup-expired')
+  return request.post(`/approvals/cleanup-expired`)
 }

@@ -58,12 +58,18 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue"
 import { getMyProjects, deleteProject } from "@/api/project"
+import { createApproval } from "@/api/approval"
 import { avatarGradient } from "@/utils/color"
 import { ElMessage, ElMessageBox } from "element-plus"
 import PageHeader from "@/components/common/PageHeader.vue"
 import { Delete, Grid, DataAnalysis, Document } from "@element-plus/icons-vue"
+import { useUserStore } from "@/store/user"
 
+const userStore = useUserStore()
 const projects = ref<any[]>([])
+
+// 当前用户是否为系统管理员
+const isAdmin = () => userStore.userInfo?.role === 'ROLE_ADMIN'
 
 async function fetchProjects() {
   const res = await getMyProjects()
@@ -77,9 +83,47 @@ async function handleDelete(p: any) {
       cancelButtonText: '取消',
       type: 'warning',
     })
-    await deleteProject(p.id)
-    ElMessage.success('项目已删除')
-    await fetchProjects()
+
+    // 非管理员需要走审批流程
+    if (!isAdmin()) {
+      try {
+        await createApproval({
+          teamId: p.teamId || 0,
+          projectId: p.id,
+          targetType: 'PROJECT_DELETE',
+          title: `删除项目: ${p.name}`,
+          description: `用户 ${userStore.username} 申请删除项目`,
+          dataJson: JSON.stringify({ projectId: p.id }),
+        })
+        ElMessage.success('审批请求已提交，等待管理员审核')
+      } catch (e) {
+        console.error('创建审批请求失败:', e)
+        ElMessage.error('提交审批请求失败，请稍后重试')
+      }
+      return
+    }
+
+    // 管理员直接删除（后端返回403/500时自动降级为审批）
+    try {
+      await deleteProject(p.id)
+      ElMessage.success('项目已删除')
+      await fetchProjects()
+    } catch (e: any) {
+      const status = e?.response?.status
+      if (status === 403 || status >= 500) {
+        await createApproval({
+          teamId: p.teamId || 0,
+          projectId: p.id,
+          targetType: 'PROJECT_DELETE',
+          title: `删除项目: ${p.name}`,
+          description: `用户 ${userStore.username} 申请删除项目`,
+          dataJson: JSON.stringify({ projectId: p.id }),
+        })
+        ElMessage.success('已转为审批请求，等待管理员审核')
+        return
+      }
+      throw e
+    }
   } catch (e: any) {
     if (e !== 'cancel') throw e
   }

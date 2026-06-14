@@ -824,23 +824,47 @@ async function handleRemove(userId: number) {
 
 async function handleCreateProject() {
   if (!projectForm.name || !projectForm.key) { ElMessage.warning("请填写项目信息"); return }
-  
-  // 非管理员需要审批
-  if (!isTeamAdmin.value) {
-    await requestApproval('PROJECT_CREATE', `创建项目: ${projectForm.name}`, {
-      name: projectForm.name,
-      key: projectForm.key,
-      template: projectForm.template,
-    })
+
+  // 非管理员需要走审批流程
+  const isAdminUser = isTeamAdmin.value
+  if (!isAdminUser) {
+    try {
+      await requestApproval('PROJECT_CREATE', `创建项目: ${projectForm.name}`, {
+        name: projectForm.name,
+        key: projectForm.key,
+        template: projectForm.template,
+      })
+    } catch (e) {
+      console.error('创建审批请求失败:', e)
+      ElMessage.error('提交审批请求失败，请稍后重试')
+      return
+    }
     showCreateProject.value = false
     projectForm.name = ""
     projectForm.key = ""
     return
   }
-  
-  // 管理员直接创建
-  await createProject({ ...projectForm, teamId })
-  ElMessage.success("项目创建成功")
+
+  // 管理员直接创建（如果后端返回403/500则自动降级为审批）
+  try {
+    await createProject({ ...projectForm, teamId })
+    ElMessage.success("项目创建成功")
+  } catch (e: any) {
+    // 后端权限拦截时自动降级为审批请求
+    const status = e?.response?.status
+    if (status === 403 || status >= 500) {
+      await requestApproval('PROJECT_CREATE', `创建项目: ${projectForm.name}`, {
+        name: projectForm.name,
+        key: projectForm.key,
+        template: projectForm.template,
+      })
+      showCreateProject.value = false
+      projectForm.name = ""
+      projectForm.key = ""
+      return
+    }
+    throw e
+  }
   showCreateProject.value = false
   projectForm.name = ""
   projectForm.key = ""
@@ -854,17 +878,32 @@ async function handleDeleteProject(p: any) {
       cancelButtonText: '取消',
       type: 'warning',
     })
-    
-    // 非管理员需要审批
+
+    // 非管理员需要走审批流程
     if (!isTeamAdmin.value) {
-      await requestApproval('PROJECT_DELETE', `删除项目: ${p.name}`, { projectId: p.id })
+      try {
+        await requestApproval('PROJECT_DELETE', `删除项目: ${p.name}`, { projectId: p.id })
+      } catch (e) {
+        console.error('创建审批请求失败:', e)
+        ElMessage.error('提交审批请求失败，请稍后重试')
+        return
+      }
       return
     }
-    
-    // 管理员直接删除
-    await deleteProject(p.id)
-    ElMessage.success('项目已删除')
-    await fetchData()
+
+    // 管理员直接删除（如果后端返回403/500则自动降级为审批）
+    try {
+      await deleteProject(p.id)
+      ElMessage.success('项目已删除')
+      await fetchData()
+    } catch (e: any) {
+      const status = e?.response?.status
+      if (status === 403 || status >= 500) {
+        await requestApproval('PROJECT_DELETE', `删除项目: ${p.name}`, { projectId: p.id })
+        return
+      }
+      throw e
+    }
   } catch (e: any) {
     if (e !== 'cancel') throw e
   }

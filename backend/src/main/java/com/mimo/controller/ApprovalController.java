@@ -33,6 +33,30 @@ public class ApprovalController {
     }
 
     /**
+     * 获取所有待审批列表(仅系统admin)
+     */
+    @GetMapping("/pending")
+    public Result<List<ApprovalRequestVO>> listAllPending(Authentication auth) {
+        Object principal = auth.getPrincipal();
+        Long userId = null;
+        if (principal instanceof Number) {
+            userId = ((Number) principal).longValue();
+        }
+        if (userId == null) {
+            throw new BusinessException(ResultCode.UNAUTHORIZED, "未登录或登录状态异常");
+        }
+
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BusinessException(ResultCode.USER_NOT_FOUND);
+        }
+        if (!"ROLE_ADMIN".equals(user.getRole())) {
+            throw new BusinessException(ResultCode.FORBIDDEN, "仅管理员可查看所有待审批请求");
+        }
+        return Result.success(approvalService.listAllPending());
+    }
+
+    /**
      * 获取团队待审批列表
      */
     @GetMapping("/team/{teamId}/pending")
@@ -85,11 +109,17 @@ public class ApprovalController {
      */
     @PostMapping("/cleanup-expired")
     public Result<Integer> cleanupExpired(Authentication auth) {
-        Long userId = (Long) auth.getPrincipal();
-        // 仅管理员可执行清理
+        Object principal = auth.getPrincipal();
+        Long userId = null;
+        if (principal instanceof Number) {
+            userId = ((Number) principal).longValue();
+        }
+        if (userId == null) {
+            throw new BusinessException(ResultCode.UNAUTHORIZED, "未登录或登录状态异常");
+        }
         User user = userMapper.selectById(userId);
         if (user == null || !"ROLE_ADMIN".equals(user.getRole())) {
-            throw new BusinessException(com.mimo.common.ResultCode.FORBIDDEN, "仅管理员可清理超时请求");
+            throw new BusinessException(ResultCode.FORBIDDEN, "仅管理员可清理超时请求");
         }
         int count = approvalService.cleanupExpiredRequests(7); // 7天超时
         return Result.success(count);

@@ -6,8 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Mimo is a lightweight Trello-like project management platform for small teams. It supports team collaboration, kanban task tracking, and progress visualization.
 
-- **Version**: v2.7.0 — Team Admin Permission + Approval System + User Level L1-L4 (2026-06-12)
-- **Previous**: v2.6.0 — Kanban Tab Switch, Delete/Move Fix (2026-06-12)
+- **Version**: v2.7.2 — Approval Notification Feedback + Auto-Degrade Fallback + Full User Level Display (2026-06-14)
+- **Previous**: v2.7.1 — Approval Permission Enforcement + Global Approval List (2026-06-13)
 - **GitHub**: https://github.com/Oo7350/mimo
 - **API docs**: `接口文档.md` (70+ endpoints, Chinese)
 - **User manual**: `操作手册.md` (Chinese)
@@ -140,9 +140,12 @@ Single backend + RBAC with two roles: `ROLE_ADMIN` (team/project admin) and `ROL
 - **Single-Session Login**: Redis-backed token validation — same account login kicks previous session (401 "账号已在其他设备登录")
 - **@Mention**: Type `@` in chat input to trigger member picker; selected username inserted as `@username`; rendered as green highlight in message bubbles
 - **Team Admin Permission (v2.7)**: Two-level permission system — system admin (ROLE_ADMIN) has global control, team admins can invite/remove members and approve requests; non-admins need approval for project operations
-- **Approval Workflow (v2.7)**: Non-admins creating/updating/deleting projects auto-generate approval requests; team admins can approve/reject via API or team chat; approved actions execute automatically
+- **Approval Workflow (v2.7, v2.7.1 hardened)**: Non-admins creating/deleting projects auto-generate approval requests; **backend enforces 403 for direct API calls** (not just frontend UI guard); team admins can approve/reject via API or team chat; approved actions execute automatically; admin global approval list via `GET /api/approvals/pending`
 - **User Level System (v2.7)**: L1-L4 levels managed by system admin only; dynamic badge UI in profile page with progressive visual effects (L4 has rotating glow animation)
 - **403 Fix**: JwtAuthenticationFilter now returns 401 JSON directly for invalid/expired tokens instead of passing through to Spring Security (which caused misleading 403)
+- **Approval Notification (v2.7.2)**: Backend auto-sends notification to requester on approve/reject (`APPROVAL_APPROVED` / `APPROVAL_REJECTED` types); frontend shows ElNotification popup on login + bell icon unread badge
+- **Auto-Degrade Fallback (v2.7.2)**: Frontend catches 403/500 from backend project API calls and auto-degrades to approval request; non-admins never see raw 500 error for project operations
+- **Full User Level Display (v2.7.2)**: `UserLevelService.listAll()` now queries all registered users from `users` table, defaulting to L1 for those without level records — admin sees complete user list
 
 ### Frontend deep links
 
@@ -181,6 +184,72 @@ This file defines allowed Bash commands for Claude Code in this repo — if you 
 - **Board Sync Flow**: Drag → `PUT /api/board/issue/move` → backend updates issue + logs + WebSocket broadcast → all board subscribers receive event → optimistic UI update
 
 ## Version History
+
+### v2.7.2 — Approval Notification Feedback + Auto-Degrade Fallback + Full User Level Display (2026-06-14)
+
+Three bug fixes and one new feature to improve approval workflow UX.
+
+**Fix 1 — Team Detail Project 500 Error (Auto-Degrade)**:
+- Root cause: `TeamDetail.vue` `handleCreateProject()` / `handleDeleteProject()` had no error handling for backend 403/500 responses — non-admins saw raw "服务器错误"
+- Fix: Three-layer defense:
+  - Layer 1: Non-admins directly call `createApproval()` (skip backend API)
+  - Layer 2: Admins call API, but if backend returns **403 or 500**, auto-degrade to approval request
+  - Layer 3: Approval request failure shows friendly message instead of generic 500 toast
+- Same fix applied to `ProjectList.vue` handleDelete()
+
+**Fix 2 — Approval Result Notification**:
+- Backend: `ApprovalService.approve()` / `reject()` now calls `sendApprovalNotification()` to write notification to DB
+- New notification types: `APPROVAL_APPROVED` (green), `APPROVAL_REJECTED` (orange with reason)
+- Frontend: `MainLayout.vue` `checkApprovalNotifications()` on mount → fetches notifications → shows ElNotification popup for unread approval notifs
+- Bell icon badge already works via existing `useNotifications.ts` composable
+
+**Fix 3 — User Level List Missing Users**:
+- Root cause: `UserLevelService.listAll()` only queried `user_levels` table — users without level records were invisible
+- Fix: Now queries all users from `users` table first, then left joins `user_levels`; no-level users default to L1
+
+**Fix 4 — ApprovalController Principal Type Safety**:
+- Root cause: `(Long) auth.getPrincipal()` could fail if principal type changed
+- Fix: Changed to `instanceof Number` check with step-by-step validation (principal → userId → user → role)
+- Split into three distinct exceptions: UNAUTHORIZED(401), USER_NOT_FOUND(1003), FORBIDDEN(403)
+- Same fix applied to `cleanupExpired()` method
+
+**Fix 5 — UserBadge UI Size**:
+- Adjusted badge sizing: medium=12px (was 11px), small=11px (was 10px), large=14px (was 13px)
+- Added `line-height: 1.6` for better vertical alignment
+
+**Files modified (8)**:
+- Backend: `ApprovalService.java` (notification send), `ApprovalController.java` (type safety), `UserLevelService.java` (full user list)
+- Frontend: `TeamDetail.vue` (auto-degrade), `ProjectList.vue` (auto-degrade), `MainLayout.vue` (approval notification popup), `UserBadge.vue` (size fix)
+- Docs: All three docs synchronized
+
+### v2.7.1 — Approval Permission Enforcement + Global Approval List (2026-06-13)
+
+Critical bug fixes to harden the approval system — previously non-admins could bypass approval by calling backend APIs directly.
+
+**Bug 1 — Frontend API Path Errors (reject/withdraw/cleanup)**:
+- `approval.ts`: Fixed 3 API endpoints that had duplicate `/api` prefix (`/api/api/approvals/...` → `/api/approvals/...`)
+- Affected: `rejectRequest`, `withdrawApproval`, `cleanupExpiredApprovals`
+
+**Bug 2 — Admin Approval List Empty**:
+- Root cause: `ApprovalList.vue` was calling `getPendingApprovals(0)` with teamId=0, which never returns results
+- Fix: New backend endpoint `GET /api/approvals/pending` (admin-only, returns all pending approvals across all teams)
+- Frontend: Changed to call `getAllPendingApprovals()` instead
+- Backend: Added `ApprovalService.listAllPending()` + `ApprovalController.listAllPending()`
+
+**Bug 3 — Delete Project Bypassed Approval**:
+- `ProjectController.create()` and `deleteProject()` had no permission check — anyone could create/delete directly
+- Fix: Both endpoints now check `teamService.isTeamAdmin(teamId, userId)` before proceeding
+- Non-admins get 403 Forbidden with message "只有管理员可以创建/删除项目，请通过审批申请"
+
+**Bug 4 — Compilation Error in ApprovalService.java:214**:
+- `projectService.create(createReq)` missing second parameter `requesterId`
+- Type mismatch: return type is `ProjectVO`, not `Project`
+- Fixed both issues
+
+**Files modified (6)**:
+- Backend: `ProjectController.java` (permission checks), `ApprovalService.java` (listAllPending + fix), `ApprovalController.java` (global pending endpoint)
+- Frontend: `approval.ts` (path fix + getAllPendingApprovals), `ApprovalList.vue` (use global API)
+- Docs: All three docs synchronized (接口文档.md, 操作手册.md, CLAUDE.md)
 
 ### v2.7.0 — Team Admin Permission + Approval System + User Level L1-L4 (2026-06-12)
 
