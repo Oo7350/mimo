@@ -116,15 +116,15 @@ public class IssueService {
 
         // Activity log
         User reporter = userMapper.selectById(reporterId);
-        ActivityLog log = new ActivityLog();
-        log.setUserId(reporterId);
-        log.setUsername(reporter != null ? reporter.getUsername() : "");
-        log.setProjectId(issue.getProjectId());
-        log.setTargetType("ISSUE");
-        log.setTargetId(issue.getId());
-        log.setAction("CREATE");
-        log.setDetail("创建了" + typeLabel(issue.getType()) + " " + key + ": " + issue.getTitle());
-        activityLogMapper.insert(log);
+        ActivityLog actLog = new ActivityLog();
+        actLog.setUserId(reporterId);
+        actLog.setUsername(reporter != null ? reporter.getUsername() : "");
+        actLog.setProjectId(issue.getProjectId());
+        actLog.setTargetType("ISSUE");
+        actLog.setTargetId(issue.getId());
+        actLog.setAction("CREATE");
+        actLog.setDetail("创建了" + typeLabel(issue.getType()) + " " + key + ": " + issue.getTitle());
+        activityLogMapper.insert(actLog);
 
         // Save labels
         if (request.getLabels() != null) {
@@ -272,15 +272,15 @@ public class IssueService {
         // Activity log
         if (operatorId != null) {
             User operator = userMapper.selectById(operatorId);
-            ActivityLog log = new ActivityLog();
-            log.setUserId(operatorId);
-            log.setUsername(operator != null ? operator.getUsername() : "");
-            log.setProjectId(issue.getProjectId());
-            log.setTargetType("ISSUE");
-            log.setTargetId(issue.getId());
-            log.setAction("UPDATE");
-            log.setDetail("更新了" + typeLabel(issue.getType()) + " " + issue.getIssueKey());
-            activityLogMapper.insert(log);
+            ActivityLog actLog = new ActivityLog();
+            actLog.setUserId(operatorId);
+            actLog.setUsername(operator != null ? operator.getUsername() : "");
+            actLog.setProjectId(issue.getProjectId());
+            actLog.setTargetType("ISSUE");
+            actLog.setTargetId(issue.getId());
+            actLog.setAction("UPDATE");
+            actLog.setDetail("更新了" + typeLabel(issue.getType()) + " " + issue.getIssueKey());
+            activityLogMapper.insert(actLog);
         }
     }
 
@@ -292,15 +292,15 @@ public class IssueService {
         Long projectId = issue.getProjectId();
 
         // 记录操作日志
-        ActivityLog log = new ActivityLog();
-        log.setUserId(operatorId);
-        log.setUsername(getUsername(operatorId));
-        log.setProjectId(projectId);
-        log.setTargetType("ISSUE");
-        log.setTargetId(issue.getId());
-        log.setAction("DELETE");
-        log.setDetail("删除了" + typeLabel(issue.getType()) + " " + issue.getIssueKey());
-        activityLogMapper.insert(log);
+        ActivityLog actLog = new ActivityLog();
+        actLog.setUserId(operatorId);
+        actLog.setUsername(getUsername(operatorId));
+        actLog.setProjectId(projectId);
+        actLog.setTargetType("ISSUE");
+        actLog.setTargetId(issue.getId());
+        actLog.setAction("DELETE");
+        actLog.setDetail("删除了" + typeLabel(issue.getType()) + " " + issue.getIssueKey());
+        activityLogMapper.insert(actLog);
 
         // 清理关联数据：评论、附件、标签
         try {
