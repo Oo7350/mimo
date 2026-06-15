@@ -8,6 +8,7 @@ import com.mimo.entity.*;
 import com.mimo.mapper.*;
 import com.mimo.entity.ActivityLog;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,6 +18,10 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class ProjectService {
+
+    /** 默认看板列配置: 列名|颜色，逗号分隔 */
+    @Value("${board.default-columns:待办|#909399,进行中|#409EFF,已完成|#67C23A}")
+    private String defaultColumnConfig;
 
     private final ProjectMapper projectMapper;
     private final ProjectMemberMapper projectMemberMapper;
@@ -75,11 +80,10 @@ public class ProjectService {
     }
 
     private void createDefaultColumns(Long projectId, String template) {
-        String[][] defaultCols = {
-                {"待办", "#909399"},
-                {"进行中", "#409EFF"},
-                {"已完成", "#67C23A"}
-        };
+        String[][] defaultCols = java.util.Arrays.stream(defaultColumnConfig.split(","))
+                .map(s -> s.split("\\|"))
+                .filter(arr -> arr.length == 2)
+                .toArray(String[][]::new);
         for (int i = 0; i < defaultCols.length; i++) {
             BoardColumn col = new BoardColumn();
             col.setProjectId(projectId);

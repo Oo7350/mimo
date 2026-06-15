@@ -26,7 +26,7 @@ public class UserController {
 
     @GetMapping("/profile")
     public Result<ProfileVO> profile(Authentication auth) {
-        Long userId = (Long) auth.getPrincipal();
+        Long userId = getLongPrincipal(auth);
         User user = userMapper.selectById(userId);
         if (user == null) throw new BusinessException(ResultCode.USER_NOT_FOUND);
         ProfileVO vo = new ProfileVO();
@@ -41,7 +41,7 @@ public class UserController {
 
     @PutMapping("/profile")
     public Result<Void> updateProfile(@Valid @RequestBody UpdateProfileRequest request, Authentication auth) {
-        Long userId = (Long) auth.getPrincipal();
+        Long userId = getLongPrincipal(auth);
         User user = userMapper.selectById(userId);
         if (user == null) throw new BusinessException(ResultCode.USER_NOT_FOUND);
         if (request.getUsername() != null) {
@@ -68,7 +68,7 @@ public class UserController {
 
     @PutMapping("/password")
     public Result<Void> changePassword(@Valid @RequestBody ChangePasswordRequest request, Authentication auth) {
-        Long userId = (Long) auth.getPrincipal();
+        Long userId = getLongPrincipal(auth);
         User user = userMapper.selectById(userId);
         if (user == null) throw new BusinessException(ResultCode.USER_NOT_FOUND);
         if (!passwordEncoder.matches(request.getOldPassword(), user.getPassword())) {
@@ -98,5 +98,11 @@ public class UserController {
             return vo;
         }).collect(Collectors.toList());
         return Result.success(list);
+    }
+
+    private Long getLongPrincipal(Authentication auth) {
+        Object p = auth.getPrincipal();
+        if (p instanceof Number) return ((Number) p).longValue();
+        throw new BusinessException(ResultCode.UNAUTHORIZED, "未登录或登录状态异常");
     }
 }

@@ -1,6 +1,8 @@
 package com.mimo.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mimo.dto.NotificationDTO.*;
 import com.mimo.entity.Notification;
 import com.mimo.mapper.NotificationMapper;
@@ -24,13 +26,13 @@ public class NotificationService {
     }
 
     public List<NotificationVO> listByUser(Long userId, int limit) {
-        List<Notification> list = notificationMapper.selectList(
+        IPage<Notification> page = notificationMapper.selectPage(
+            new Page<>(1, Math.max(limit, 1)),
             new LambdaQueryWrapper<Notification>()
                 .eq(Notification::getUserId, userId)
                 .orderByDesc(Notification::getCreatedAt)
-                .last("LIMIT " + limit)
         );
-        return list.stream().map(this::toVO).collect(Collectors.toList());
+        return page.getRecords().stream().map(this::toVO).collect(Collectors.toList());
     }
 
     public UnreadCountVO getUnreadCount(Long userId) {

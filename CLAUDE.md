@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Mimo is a lightweight Trello-like project management platform for small teams. It supports team collaboration, kanban task tracking, and progress visualization.
 
-- **Version**: v2.7.2 — Approval Notification Feedback + Auto-Degrade Fallback + Full User Level Display (2026-06-14)
+- **Version**: v2.7.3 — Code Quality Hardening: N+1 Fix, Type Safety, Configurable Params + XSS Protection (2026-06-15)
 - **Previous**: v2.7.1 — Approval Permission Enforcement + Global Approval List (2026-06-13)
 - **GitHub**: https://github.com/Oo7350/mimo
 - **API docs**: `接口文档.md` (70+ endpoints, Chinese)
@@ -184,6 +184,52 @@ This file defines allowed Bash commands for Claude Code in this repo — if you 
 - **Board Sync Flow**: Drag → `PUT /api/board/issue/move` → backend updates issue + logs + WebSocket broadcast → all board subscribers receive event → optimistic UI update
 
 ## Version History
+
+### v2.7.3 — Code Quality Hardening: N+1 Fix, Type Safety, Configurable Params + XSS Protection (2026-06-15)
+
+Comprehensive code quality audit and fix across 16 Controllers, 15 Services, all frontend views/APIs, and database schema.
+
+**P0 — Critical Fixes (5/5)**:
+1. **Exception Swallowing**: 15+ locations in IssueService(9), ApprovalService(2), BoardService(1), CommentService(1), AttachmentService(1), AiController(1) where exceptions were silently caught — added `log.error` at minimum; critical paths now throw or notify frontend
+2. **N+1 Query Storm**: `IssueService.toVO()` made 6 independent DB queries per issue (column/user/labels/parent/children); `TeamService.listMembers()` queried user names one-by-one; same pattern in ApprovalService/ReportService. Fixed with `BatchContext` utility class + `selectBatchIds()` batch preloading — 30 cards = ~180 queries → ~6 queries
+3. **AiController parseSimpleJson() Fragile**: Hand-written JSON parser failed on commas/colons/nesting. Replaced with Jackson `ObjectMapper.readValue()`
+4. **Unsafe (Long) auth.getPrincipal() Cast**: 6 controllers used unsafe cast that would throw ClassCastException if principal type changed. Unified to `getLongPrincipal()` helper with `instanceof Number` check across DashboardController, ProjectController, TeamController(10 places), UserController(3 places)
+5. **init.sql Missing 3 Tables**: `chat_messages`, `approval_requests`, `user_levels` only existed in migration scripts — new deployments running init.sql directly got 500 errors. Synced migrations into init.sql
+
+**P1 — Important Fixes (7/7)**:
+6. **Missing Frontend API Functions**: Added `dashboard.ts` (GET /api/dashboard); sprint.ts gained snapshot/complete-migration/addToSprint; user-level.ts gained getById
+7. **Frontend API Dead Code Audit**: Reviewed 15 "unused" functions — all kept as valid backend endpoints awaiting UI integration
+8. **NotificationService SQL Injection Risk**: `.last("LIMIT " + limit)` replaced with MyBatis-Plus `Page<Notification>` pagination
+9. **Hardcoded Sprint Params**: Default days(14) and quick-create tasks(5) → `@Value("${sprint.default-days:14}")` / `${sprint.quickCreate-tasks:5}`
+10. **Hardcoded Approval Expiry**: 7-day timeout → `@Value("${approval.expire-days:7}")`
+11. **Hardcoded Chat Recall Window**: 2-minute limit → `@Value("${chat.recall-minutes:2}")`
+12. **Comment Deletion No UI Entry**: Added `deleteComment()` API + delete button in CommentSection.vue with confirmation dialog
+
+**P2 — Experience Optimizations (6/6)**:
+13. Online count label corrected ("X 位成员" instead of "X 人在线" — real online tracking needs WS connection counting)
+14. `window.location.href` → `router.push('/teams')` for team leave action
+15. Dashboard quick actions fixed duplicate routes → `/projects/board`, `/projects/sprint`, `/reports`
+16. Kanban column names hardcoded Chinese → `@Value("${board.default-columns:...}")` configurable
+17. XSS protection strengthened: `renderMention()` now escapes HTML before @highlighting; `sanitize()` adds embed/javascript:/data: protocol filtering
+18. Chat recall window already covered by P1-11 config
+
+**New Configurable Parameters** (in `application.yml`):
+```yaml
+sprint:
+  default-days: 14
+  quick-create-tasks: 5
+approval:
+  expire-days: 7
+chat:
+  recall-minutes: 2
+board:
+  default-columns: "待办|#909399,进行中|#409EFF,已完成|#67C23A"
+```
+
+**Files modified (25+)**:
+- Backend: AiController, IssueService, TeamService, ApprovalService, NotificationService, SprintService, ApprovalController, ChatService, ProjectService, init.sql, BatchContext.java (new)
+- Frontend: api/dashboard.ts (new), api/sprint.ts, api/user-level.ts, api/comment.ts, TeamDetail.vue, Dashboard.vue, CommentSection.vue, markdown.ts
+- Docs: All four docs synchronized
 
 ### v2.7.2 — Approval Notification Feedback + Auto-Degrade Fallback + Full User Level Display (2026-06-14)
 

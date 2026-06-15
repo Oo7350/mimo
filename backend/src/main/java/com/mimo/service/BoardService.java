@@ -11,6 +11,7 @@ import com.mimo.dto.IssueDTO.IssueLabelVO;
 import com.mimo.entity.*;
 import com.mimo.mapper.*;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,6 +19,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class BoardService {
 
@@ -178,7 +180,7 @@ public class BoardService {
         try {
             webSocketService.sendBoardUpdate(projectId,
                     BoardSyncEvent.moved(projectId, issueId, targetColumnId, sortOrder));
-        } catch (Exception ignored) { /* WebSocket optional */ }
+        } catch (Exception e) { log.error("WebSocket广播移动事件失败, projectId={}", projectId, e); }
     }
 
     /**

@@ -12,6 +12,7 @@ import com.mimo.mapper.UserMapper;
 import com.mimo.service.NotificationService;
 import com.mimo.service.WebSocketService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -21,6 +22,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class CommentService {
 
@@ -63,7 +65,7 @@ public class CommentService {
                     "relatedId", issue.getId(),
                     "relatedType", "ISSUE"
                 ));
-            } catch (Exception ignored) {}
+            } catch (Exception e) { log.error("WebSocket发送评论通知失败, userId={}", issue.getAssigneeId(), e); }
         }
 
         return toVO(comment);

@@ -1,6 +1,8 @@
 package com.mimo.controller;
 
+import com.mimo.common.BusinessException;
 import com.mimo.common.Result;
+import com.mimo.common.ResultCode;
 import com.mimo.dto.DashboardDTO.DashboardVO;
 import com.mimo.service.DashboardService;
 import lombok.RequiredArgsConstructor;
@@ -18,7 +20,13 @@ public class DashboardController {
 
     @GetMapping
     public Result<DashboardVO> getDashboard(Authentication auth) {
-        Long userId = (Long) auth.getPrincipal();
+        Long userId = getLongPrincipal(auth);
         return Result.success(dashboardService.getDashboard(userId));
+    }
+
+    private Long getLongPrincipal(Authentication auth) {
+        Object p = auth.getPrincipal();
+        if (p instanceof Number) return ((Number) p).longValue();
+        throw new BusinessException(ResultCode.UNAUTHORIZED, "未登录或登录状态异常");
     }
 }

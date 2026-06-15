@@ -23,9 +23,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 @Slf4j
@@ -72,34 +72,57 @@ public class ApprovalService {
      * 获取所有待审批列表(仅系统admin)
      */
     public List<ApprovalRequestVO> listAllPending() {
-        return approvalRequestMapper.selectList(
+        List<ApprovalRequest> requests = approvalRequestMapper.selectList(
                         new LambdaQueryWrapper<ApprovalRequest>()
                                 .eq(ApprovalRequest::getStatus, "PENDING")
-                                .orderByDesc(ApprovalRequest::getCreatedAt))
-                .stream().map(this::toVO).collect(Collectors.toList());
+                                .orderByDesc(ApprovalRequest::getCreatedAt));
+        return toVOList(requests);
     }
 
     /**
      * 获取团队待审批列表(管理员可见)
      */
     public List<ApprovalRequestVO> listPendingByTeam(Long teamId) {
-        return approvalRequestMapper.selectList(
+        List<ApprovalRequest> requests = approvalRequestMapper.selectList(
                         new LambdaQueryWrapper<ApprovalRequest>()
                                 .eq(ApprovalRequest::getTeamId, teamId)
                                 .eq(ApprovalRequest::getStatus, "PENDING")
-                                .orderByDesc(ApprovalRequest::getCreatedAt))
-                .stream().map(this::toVO).collect(Collectors.toList());
+                                .orderByDesc(ApprovalRequest::getCreatedAt));
+        return toVOList(requests);
     }
 
     /**
      * 获取我的审批请求
      */
     public List<ApprovalRequestVO> listMyRequests(Long userId) {
-        return approvalRequestMapper.selectList(
+        List<ApprovalRequest> requests = approvalRequestMapper.selectList(
                         new LambdaQueryWrapper<ApprovalRequest>()
                                 .eq(ApprovalRequest::getRequesterId, userId)
-                                .orderByDesc(ApprovalRequest::getCreatedAt))
-                .stream().map(this::toVO).collect(Collectors.toList());
+                                .orderByDesc(ApprovalRequest::getCreatedAt));
+        return toVOList(requests);
+    }
+
+    /**
+     * 批量转VO，避免N+1查询
+     */
+    private List<ApprovalRequestVO> toVOList(List<ApprovalRequest> requests) {
+        if (requests.isEmpty()) return List.of();
+        // 批量预加载
+        Set<Long> teamIds = requests.stream().map(ApprovalRequest::getTeamId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Set<Long> projectIds = requests.stream().map(ApprovalRequest::getProjectId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Set<Long> requesterIds = requests.stream().map(ApprovalRequest::getRequesterId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Set<Long> approverIds = requests.stream().map(ApprovalRequest::getApproverId).filter(Objects::nonNull).collect(Collectors.toSet());
+
+        Map<Long, Team> teamMap = teamIds.isEmpty() ? Collections.emptyMap() :
+                teamMapper.selectBatchIds(teamIds).stream().collect(Collectors.toMap(Team::getId, t -> t));
+        Map<Long, Project> projectMap = projectIds.isEmpty() ? Collections.emptyMap() :
+                projectMapper.selectBatchIds(projectIds).stream().collect(Collectors.toMap(Project::getId, p -> p));
+
+        Set<Long> allUserIds = new HashSet<>(); allUserIds.addAll(requesterIds); allUserIds.addAll(approverIds);
+        Map<Long, User> userMap = allUserIds.isEmpty() ? Collections.emptyMap() :
+                userMapper.selectBatchIds(allUserIds).stream().collect(Collectors.toMap(User::getId, u -> u));
+
+        return requests.stream().map(r -> toVO(r, teamMap, projectMap, userMap)).collect(Collectors.toList());
     }
 
     /**
@@ -260,6 +283,17 @@ public class ApprovalService {
     }
 
     private ApprovalRequestVO toVO(ApprovalRequest entity) {
+        return toVO(entity,
+                entity.getTeamId() != null ? Map.of(entity.getTeamId(), teamMapper.selectById(entity.getTeamId())) : Collections.emptyMap(),
+                entity.getProjectId() != null ? Map.of(entity.getProjectId(), projectMapper.selectById(entity.getProjectId())) : Collections.emptyMap(),
+                Stream.of(entity.getRequesterId(), entity.getApproverId()).filter(Objects::nonNull)
+                        .collect(Collectors.toList()).isEmpty() ? Collections.emptyMap() :
+                        userMapper.selectBatchIds(Stream.of(entity.getRequesterId(), entity.getApproverId()).filter(Objects::nonNull).collect(Collectors.toList()))
+                                .stream().collect(Collectors.toMap(User::getId, u -> u))
+        );
+    }
+
+    private ApprovalRequestVO toVO(ApprovalRequest entity, Map<Long, Team> teamMap, Map<Long, Project> projectMap, Map<Long, User> userMap) {
         ApprovalRequestVO vo = new ApprovalRequestVO();
         vo.setId(entity.getId());
         vo.setTeamId(entity.getTeamId());
@@ -277,19 +311,19 @@ public class ApprovalService {
 
         // 填充关联名称
         if (entity.getTeamId() != null) {
-            Team team = teamMapper.selectById(entity.getTeamId());
+            Team team = teamMap.get(entity.getTeamId());
             if (team != null) vo.setTeamName(team.getName());
         }
         if (entity.getProjectId() != null) {
-            Project project = projectMapper.selectById(entity.getProjectId());
+            Project project = projectMap.get(entity.getProjectId());
             if (project != null) vo.setProjectName(project.getName());
         }
         if (entity.getRequesterId() != null) {
-            User user = userMapper.selectById(entity.getRequesterId());
+            User user = userMap.get(entity.getRequesterId());
             if (user != null) vo.setRequesterUsername(user.getUsername());
         }
         if (entity.getApproverId() != null) {
-            User user = userMapper.selectById(entity.getApproverId());
+            User user = userMap.get(entity.getApproverId());
             if (user != null) vo.setApproverUsername(user.getUsername());
         }
         return vo;

@@ -270,9 +270,9 @@ const TYPE_COLORS: Record<IssueType, string> = {
 // 快捷操作入口
 const quickActions = [
   { label: '新建任务', icon: 'Plus', route: '/projects', bg: 'linear-gradient(135deg, #6366f1, #818cf8)' },
-  { label: '看板视图', icon: 'Grid', route: '/projects', bg: 'linear-gradient(135deg, #10b981, #34d399)' },
-  { label: 'Sprint', icon: 'DataAnalysis', route: '/projects', bg: 'linear-gradient(135deg, #f59e0b, #fbbf24)' },
-  { label: '报告', icon: 'Document', route: '/projects', bg: 'linear-gradient(135deg, #8b5cf6, #a78bfa)' },
+  { label: '看板视图', icon: 'Grid', route: '/projects/board', bg: 'linear-gradient(135deg, #10b981, #34d399)' },
+  { label: 'Sprint', icon: 'DataAnalysis', route: '/projects/sprint', bg: 'linear-gradient(135deg, #f59e0b, #fbbf24)' },
+  { label: '报告', icon: 'Document', route: '/reports', bg: 'linear-gradient(135deg, #8b5cf6, #a78bfa)' },
   { label: '团队管理', icon: 'UserFilled', route: '/teams', bg: 'linear-gradient(135deg, #06b6d4, #22d3ee)' },
 ]
 

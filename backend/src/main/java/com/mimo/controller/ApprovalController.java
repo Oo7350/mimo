@@ -8,7 +8,9 @@ import com.mimo.dto.ApprovalRequestVO;
 import com.mimo.entity.User;
 import com.mimo.mapper.UserMapper;
 import com.mimo.service.ApprovalService;
+import com.mimo.service.TeamService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,13 +24,14 @@ public class ApprovalController {
 
     private final ApprovalService approvalService;
     private final UserMapper userMapper;
+    private final TeamService teamService;
 
-    /**
-     * 创建审批请求
-     */
+    @Value("${approval.expire-days:7}")
+    private int expireDays;
+
     @PostMapping
     public Result<ApprovalRequestVO> create(@Valid @RequestBody ApprovalRequestDTO dto, Authentication auth) {
-        Long userId = (Long) auth.getPrincipal();
+        Long userId = getLongPrincipal(auth);
         return Result.success(approvalService.create(dto, userId));
     }
 
@@ -37,59 +40,44 @@ public class ApprovalController {
      */
     @GetMapping("/pending")
     public Result<List<ApprovalRequestVO>> listAllPending(Authentication auth) {
-        Object principal = auth.getPrincipal();
-        Long userId = null;
-        if (principal instanceof Number) {
-            userId = ((Number) principal).longValue();
-        }
-        if (userId == null) {
-            throw new BusinessException(ResultCode.UNAUTHORIZED, "未登录或登录状态异常");
-        }
-
-        User user = userMapper.selectById(userId);
-        if (user == null) {
-            throw new BusinessException(ResultCode.USER_NOT_FOUND);
-        }
-        if (!"ROLE_ADMIN".equals(user.getRole())) {
-            throw new BusinessException(ResultCode.FORBIDDEN, "仅管理员可查看所有待审批请求");
-        }
+        assertAdmin(auth);
         return Result.success(approvalService.listAllPending());
     }
 
     /**
-     * 获取团队待审批列表
+     * 获取团队待审批列表(需团队管理员)
      */
     @GetMapping("/team/{teamId}/pending")
     public Result<List<ApprovalRequestVO>> listPending(@PathVariable Long teamId, Authentication auth) {
-        // TODO: 验证操作者是该团队管理员
+        Long userId = getLongPrincipal(auth);
+        if (!teamService.isTeamAdmin(teamId, userId)) {
+            throw new BusinessException(ResultCode.FORBIDDEN, "仅团队管理员可查看待审批请求");
+        }
         return Result.success(approvalService.listPendingByTeam(teamId));
     }
 
-    /**
-     * 获取我的审批请求
-     */
     @GetMapping("/my")
     public Result<List<ApprovalRequestVO>> myRequests(Authentication auth) {
-        Long userId = (Long) auth.getPrincipal();
+        Long userId = getLongPrincipal(auth);
         return Result.success(approvalService.listMyRequests(userId));
     }
 
     /**
-     * 审批通过
+     * 审批通过(需管理员)
      */
     @PutMapping("/{id}/approve")
     public Result<Void> approve(@PathVariable Long id, Authentication auth) {
-        Long userId = (Long) auth.getPrincipal();
+        Long userId = getLongPrincipal(auth);
         approvalService.approve(id, userId);
         return Result.successMessage("审批通过");
     }
 
     /**
-     * 审批拒绝
+     * 审批拒绝(需管理员)
      */
     @PutMapping("/{id}/reject")
     public Result<Void> reject(@PathVariable Long id, @RequestParam(required = false) String reason, Authentication auth) {
-        Long userId = (Long) auth.getPrincipal();
+        Long userId = getLongPrincipal(auth);
         approvalService.reject(id, userId, reason);
         return Result.successMessage("已拒绝");
     }
@@ -99,7 +87,7 @@ public class ApprovalController {
      */
     @PutMapping("/{id}/withdraw")
     public Result<Void> withdraw(@PathVariable Long id, Authentication auth) {
-        Long userId = (Long) auth.getPrincipal();
+        Long userId = getLongPrincipal(auth);
         approvalService.withdraw(id, userId);
         return Result.successMessage("已撤回");
     }
@@ -109,19 +97,26 @@ public class ApprovalController {
      */
     @PostMapping("/cleanup-expired")
     public Result<Integer> cleanupExpired(Authentication auth) {
-        Object principal = auth.getPrincipal();
-        Long userId = null;
-        if (principal instanceof Number) {
-            userId = ((Number) principal).longValue();
-        }
-        if (userId == null) {
-            throw new BusinessException(ResultCode.UNAUTHORIZED, "未登录或登录状态异常");
-        }
-        User user = userMapper.selectById(userId);
-        if (user == null || !"ROLE_ADMIN".equals(user.getRole())) {
-            throw new BusinessException(ResultCode.FORBIDDEN, "仅管理员可清理超时请求");
-        }
-        int count = approvalService.cleanupExpiredRequests(7); // 7天超时
+        assertAdmin(auth);
+        int count = approvalService.cleanupExpiredRequests(expireDays);
         return Result.success(count);
+    }
+
+    // ---- helpers ----
+
+    private Long getLongPrincipal(Authentication auth) {
+        Object p = auth.getPrincipal();
+        if (p instanceof Number) return ((Number) p).longValue();
+        throw new BusinessException(ResultCode.UNAUTHORIZED, "未登录或登录状态异常");
+    }
+
+    private Long assertAdmin(Authentication auth) {
+        Long userId = getLongPrincipal(auth);
+        User user = userMapper.selectById(userId);
+        if (user == null) throw new BusinessException(ResultCode.USER_NOT_FOUND);
+        if (!"ROLE_ADMIN".equals(user.getRole())) {
+            throw new BusinessException(ResultCode.FORBIDDEN, "仅管理员可操作");
+        }
+        return userId;
     }
 }

@@ -26,7 +26,7 @@ public class ProjectController {
 
     @PostMapping
     public Result<ProjectVO> create(@Valid @RequestBody CreateRequest request, Authentication auth) {
-        Long userId = (Long) auth.getPrincipal();
+        Long userId = getLongPrincipal(auth);
         // 非管理员需要走审批流程，后端直接拒绝
         if (!teamService.isTeamAdmin(request.getTeamId(), userId)) {
             throw new BusinessException(ResultCode.FORBIDDEN, "只有管理员可以创建项目，请通过审批申请");
@@ -46,19 +46,27 @@ public class ProjectController {
 
     @GetMapping("/my")
     public Result<List<ProjectVO>> myProjects(Authentication auth) {
-        Long userId = (Long) auth.getPrincipal();
+        Long userId = getLongPrincipal(auth);
         return Result.success(projectService.listByUser(userId));
     }
 
     @PostMapping("/{projectId}/members/{userId}")
-    public Result<Void> addMember(@PathVariable Long projectId, @PathVariable Long userId) {
+    public Result<Void> addMember(@PathVariable Long projectId, @PathVariable Long userId, Authentication auth) {
+        Long opId = getLongPrincipal(auth);
+        Project project = projectMapper.selectById(projectId);
+        if (project == null) {
+            throw new BusinessException(ResultCode.PROJECT_NOT_FOUND);
+        }
+        if (!teamService.isTeamAdmin(project.getTeamId(), opId)) {
+            throw new BusinessException(ResultCode.FORBIDDEN, "仅管理员可添加项目成员");
+        }
         projectService.addMember(projectId, userId);
         return Result.successMessage("添加成功");
     }
 
     @DeleteMapping("/{projectId}")
     public Result<Void> deleteProject(@PathVariable Long projectId, Authentication auth) {
-        Long userId = (Long) auth.getPrincipal();
+        Long userId = getLongPrincipal(auth);
         // 非管理员需要走审批流程，后端直接拒绝
         Project project = projectMapper.selectById(projectId);
         if (project == null) {
@@ -69,5 +77,11 @@ public class ProjectController {
         }
         projectService.deleteProject(projectId, userId);
         return Result.successMessage("项目已删除");
+    }
+
+    private Long getLongPrincipal(Authentication auth) {
+        Object p = auth.getPrincipal();
+        if (p instanceof Number) return ((Number) p).longValue();
+        throw new BusinessException(ResultCode.UNAUTHORIZED, "未登录或登录状态异常");
     }
 }

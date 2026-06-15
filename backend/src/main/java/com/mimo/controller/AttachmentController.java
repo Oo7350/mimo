@@ -1,6 +1,8 @@
 package com.mimo.controller;
 
 import com.mimo.common.Result;
+import com.mimo.common.BusinessException;
+import com.mimo.common.ResultCode;
 import com.mimo.dto.AttachmentDTO.AttachmentVO;
 import com.mimo.entity.Attachment;
 import com.mimo.service.AttachmentService;
@@ -31,7 +33,7 @@ public class AttachmentController {
             @RequestParam Long issueId,
             @RequestParam MultipartFile file,
             Authentication auth) throws IOException {
-        Long userId = (Long) auth.getPrincipal();
+        Long userId = getLongPrincipal(auth);
         return Result.success(attachmentService.upload(issueId, userId, file));
     }
 
@@ -53,8 +55,23 @@ public class AttachmentController {
     }
 
     @DeleteMapping("/{id}")
-    public Result<Void> delete(@PathVariable Long id) {
+    public Result<Void> delete(@PathVariable Long id, Authentication auth) {
+        Long userId = getLongPrincipal(auth);
+        Attachment attachment = attachmentService.getById(id);
+        if (attachment == null) {
+            throw new BusinessException(ResultCode.PROJECT_NOT_FOUND, "附件不存在");
+        }
+        // 仅上传者可删除
+        if (!attachment.getUploaderId().equals(userId)) {
+            throw new BusinessException(ResultCode.FORBIDDEN, "只能删除自己上传的附件");
+        }
         attachmentService.delete(id);
         return Result.successMessage("删除成功");
+    }
+
+    private Long getLongPrincipal(Authentication auth) {
+        Object p = auth.getPrincipal();
+        if (p instanceof Number) return ((Number) p).longValue();
+        throw new BusinessException(ResultCode.UNAUTHORIZED, "未登录或登录状态异常");
     }
 }

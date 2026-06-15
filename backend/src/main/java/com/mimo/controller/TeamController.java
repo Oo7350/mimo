@@ -1,6 +1,8 @@
 package com.mimo.controller;
 
+import com.mimo.common.BusinessException;
 import com.mimo.common.Result;
+import com.mimo.common.ResultCode;
 import com.mimo.dto.TeamDTO.*;
 import com.mimo.service.TeamService;
 import lombok.RequiredArgsConstructor;
@@ -20,7 +22,7 @@ public class TeamController {
 
     @PostMapping
     public Result<TeamVO> create(@Valid @RequestBody CreateRequest request, Authentication auth) {
-        Long userId = (Long) auth.getPrincipal();
+        Long userId = getLongPrincipal(auth);
         return Result.success(teamService.create(request, userId));
     }
 
@@ -31,13 +33,13 @@ public class TeamController {
 
     @GetMapping("/my")
     public Result<List<TeamVO>> myTeams(Authentication auth) {
-        Long userId = (Long) auth.getPrincipal();
+        Long userId = getLongPrincipal(auth);
         return Result.success(teamService.listByUser(userId));
     }
 
     @PostMapping("/invite")
     public Result<Void> inviteMember(@Valid @RequestBody InviteRequest request, Authentication auth) {
-        Long userId = (Long) auth.getPrincipal();
+        Long userId = getLongPrincipal(auth);
         teamService.inviteMember(request, userId);
         return Result.successMessage("邀请成功");
     }
@@ -49,14 +51,14 @@ public class TeamController {
 
     @DeleteMapping("/{teamId}/members/{userId}")
     public Result<Void> removeMember(@PathVariable Long teamId, @PathVariable Long userId, Authentication auth) {
-        Long opId = (Long) auth.getPrincipal();
+        Long opId = getLongPrincipal(auth);
         teamService.removeMember(teamId, userId, opId);
         return Result.successMessage("移除成功");
     }
 
     @GetMapping("/{id}/role")
     public Result<String> getUserRole(@PathVariable Long id, Authentication auth) {
-        Long userId = (Long) auth.getPrincipal();
+        Long userId = getLongPrincipal(auth);
         String role = teamService.getUserRoleInTeam(id, userId);
         return Result.success(role);
     }
@@ -66,7 +68,7 @@ public class TeamController {
      */
     @PostMapping("/{teamId}/leave")
     public Result<Void> leaveTeam(@PathVariable Long teamId, Authentication auth) {
-        Long userId = (Long) auth.getPrincipal();
+        Long userId = getLongPrincipal(auth);
         teamService.leaveTeam(teamId, userId);
         return Result.successMessage("已退出团队");
     }
@@ -76,7 +78,7 @@ public class TeamController {
      */
     @PutMapping("/{teamId}/transfer-owner")
     public Result<Void> transferOwner(@PathVariable Long teamId, @RequestParam Long newOwnerId, Authentication auth) {
-        Long currentUserId = (Long) auth.getPrincipal();
+        Long currentUserId = getLongPrincipal(auth);
         teamService.transferOwner(teamId, currentUserId, newOwnerId);
         return Result.successMessage("群主转让成功");
     }
@@ -86,7 +88,7 @@ public class TeamController {
      */
     @PutMapping("/{teamId}/members/{userId}/set-admin")
     public Result<Void> setAdmin(@PathVariable Long teamId, @PathVariable Long userId, Authentication auth) {
-        Long operatorId = (Long) auth.getPrincipal();
+        Long operatorId = getLongPrincipal(auth);
         teamService.setMemberRole(teamId, userId, operatorId, "ROLE_ADMIN");
         return Result.successMessage("已设为管理员");
     }
@@ -96,15 +98,21 @@ public class TeamController {
      */
     @PutMapping("/{teamId}/members/{userId}/unset-admin")
     public Result<Void> unsetAdmin(@PathVariable Long teamId, @PathVariable Long userId, Authentication auth) {
-        Long operatorId = (Long) auth.getPrincipal();
+        Long operatorId = getLongPrincipal(auth);
         teamService.setMemberRole(teamId, userId, operatorId, "ROLE_MEMBER");
         return Result.successMessage("已取消管理员");
     }
 
     @DeleteMapping("/{teamId}")
     public Result<Void> deleteTeam(@PathVariable Long teamId, Authentication auth) {
-        Long userId = (Long) auth.getPrincipal();
+        Long userId = getLongPrincipal(auth);
         teamService.deleteTeam(teamId, userId);
         return Result.successMessage("团队已删除");
+    }
+
+    private Long getLongPrincipal(Authentication auth) {
+        Object p = auth.getPrincipal();
+        if (p instanceof Number) return ((Number) p).longValue();
+        throw new BusinessException(ResultCode.UNAUTHORIZED, "未登录或登录状态异常");
     }
 }

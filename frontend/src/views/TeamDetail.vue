@@ -163,7 +163,7 @@
           </div>
           <div>
             <h3>团队群聊</h3>
-            <span class="td-chat-header__online">{{ onlineCount }} 人在线</span>
+            <span class="td-chat-header__online">{{ onlineCount }} 位成员</span>
           </div>
         </div>
 
@@ -387,7 +387,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, nextTick, onMounted, onUnmounted } from "vue"
-import { useRoute } from "vue-router"
+import { useRoute, useRouter } from "vue-router"
 import { getTeamById, getMembers, inviteMember, removeMember, getTeamRole, leaveTeam, transferOwner, setMemberAdmin, unsetMemberAdmin } from "@/api/team"
 import { getProjectsByTeam, createProject, deleteProject } from "@/api/project"
 import { searchUsers } from "@/api/user"
@@ -403,6 +403,7 @@ import {
 import { avatarGradient } from "@/utils/color"
 
 const route = useRoute()
+const router = useRouter()
 const teamId = Number(route.params.id)
 
 // ========== 基础数据 ==========
@@ -518,7 +519,7 @@ async function handleLeaveTeam() {
     await leaveTeam(teamId)
     ElMessage.success('已退出团队')
     // 跳转到团队列表
-    window.location.href = '/teams'
+    router.push('/teams')
   } catch (e: any) {
     if (e !== 'cancel') throw e
   }
@@ -777,8 +778,13 @@ function formatTime(dt?: string) {
 // 渲染消息中的 @提及（高亮显示）
 function renderMention(content: string): string {
   if (!content) return ""
-  // 将 @username 替换为高亮 span
-  return content.replace(/@(\S+)/g, '<span class="td-mention-highlight">@$1</span>')
+  // 先转义 HTML 防止 XSS，再做 @mention 高亮
+  const escaped = content
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+  return escaped.replace(/@(\S+)/g, '<span class="td-mention-highlight">@$1</span>')
 }
 
 // ========== 基础操作 ==========

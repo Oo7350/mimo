@@ -1,9 +1,17 @@
 package com.mimo.controller;
 
 import com.mimo.common.Result;
+import com.mimo.common.BusinessException;
+import com.mimo.common.ResultCode;
 import com.mimo.dto.SprintDTO.*;
+import com.mimo.entity.Project;
+import com.mimo.entity.Sprint;
+import com.mimo.mapper.ProjectMapper;
+import com.mimo.mapper.SprintMapper;
 import com.mimo.service.SprintService;
+import com.mimo.service.TeamService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import javax.validation.Valid;
@@ -15,9 +23,14 @@ import java.util.List;
 public class SprintController {
 
     private final SprintService sprintService;
+    private final SprintMapper sprintMapper;
+    private final ProjectMapper projectMapper;
+    private final TeamService teamService;
 
     @PostMapping
-    public Result<SprintVO> create(@Valid @RequestBody CreateRequest request) {
+    public Result<SprintVO> create(@Valid @RequestBody CreateRequest request, Authentication auth) {
+        Long userId = getLongPrincipal(auth);
+        assertTeamMemberByProject(request.getProjectId(), userId);
         return Result.success(sprintService.create(request));
     }
 
@@ -32,13 +45,17 @@ public class SprintController {
     }
 
     @PutMapping("/{id}/start")
-    public Result<Void> start(@PathVariable Long id) {
+    public Result<Void> start(@PathVariable Long id, Authentication auth) {
+        Long userId = getLongPrincipal(auth);
+        assertTeamMemberBySprint(id, userId);
         sprintService.startSprint(id);
         return Result.successMessage("Sprint 已启动");
     }
 
     @PutMapping("/{id}/complete")
-    public Result<Void> complete(@PathVariable Long id) {
+    public Result<Void> complete(@PathVariable Long id, Authentication auth) {
+        Long userId = getLongPrincipal(auth);
+        assertTeamMemberBySprint(id, userId);
         sprintService.completeSprint(id);
         return Result.successMessage("Sprint 已完成");
     }
@@ -49,20 +66,27 @@ public class SprintController {
     }
 
     @PostMapping("/{id}/snapshot")
-    public Result<Void> takeSnapshot(@PathVariable Long id) {
+    public Result<Void> takeSnapshot(@PathVariable Long id, Authentication auth) {
+        Long userId = getLongPrincipal(auth);
+        assertTeamMemberBySprint(id, userId);
         sprintService.generateSnapshot(id);
         return Result.successMessage("快照已生成");
     }
 
     @PostMapping("/quick/{projectId}")
-    public Result<SprintVO> quickStart(@PathVariable Long projectId) {
+    public Result<SprintVO> quickStart(@PathVariable Long projectId, Authentication auth) {
+        Long userId = getLongPrincipal(auth);
+        assertTeamMemberByProject(projectId, userId);
         return Result.success(sprintService.createQuickSprint(projectId));
     }
 
     @PutMapping("/{id}/complete-migration")
     public Result<Void> completeWithMigration(
             @PathVariable Long id,
-            @RequestParam(required = false) Long targetSprintId) {
+            @RequestParam(required = false) Long targetSprintId,
+            Authentication auth) {
+        Long userId = getLongPrincipal(auth);
+        assertTeamMemberBySprint(id, userId);
         sprintService.completeSprintWithMigration(id, targetSprintId);
         return Result.successMessage("Sprint 已完成");
     }
@@ -70,7 +94,10 @@ public class SprintController {
     @PutMapping("/{issueId}/add-to-sprint/{sprintId}")
     public Result<Void> addIssueToSprint(
             @PathVariable Long issueId,
-            @PathVariable Long sprintId) {
+            @PathVariable Long sprintId,
+            Authentication auth) {
+        Long userId = getLongPrincipal(auth);
+        assertTeamMemberBySprint(sprintId, userId);
         sprintService.addIssueToSprint(issueId, sprintId);
         return Result.successMessage("任务已加入 Sprint");
     }
@@ -78,5 +105,27 @@ public class SprintController {
     @GetMapping("/{id}/stats")
     public Result<SprintStatsVO> getStats(@PathVariable Long id) {
         return Result.success(sprintService.getSprintStats(id));
+    }
+
+    // ---- helpers ----
+
+    private Long getLongPrincipal(Authentication auth) {
+        Object p = auth.getPrincipal();
+        if (p instanceof Number) return ((Number) p).longValue();
+        throw new BusinessException(ResultCode.UNAUTHORIZED, "未登录或登录状态异常");
+    }
+
+    private void assertTeamMemberByProject(Long projectId, Long userId) {
+        Project project = projectMapper.selectById(projectId);
+        if (project == null) throw new BusinessException(ResultCode.PROJECT_NOT_FOUND);
+        if (!teamService.isTeamMember(project.getTeamId(), userId)) {
+            throw new BusinessException(ResultCode.FORBIDDEN, "无权操作此项目的Sprint");
+        }
+    }
+
+    private void assertTeamMemberBySprint(Long sprintId, Long userId) {
+        Sprint sprint = sprintMapper.selectById(sprintId);
+        if (sprint == null) throw new BusinessException(ResultCode.PROJECT_NOT_FOUND);
+        assertTeamMemberByProject(sprint.getProjectId(), userId);
     }
 }

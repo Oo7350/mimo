@@ -7,6 +7,7 @@ import com.mimo.mapper.ChatMessageMapper;
 import com.mimo.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.format.DateTimeFormatter;
@@ -19,6 +20,9 @@ import java.util.stream.Collectors;
 public class ChatService {
 
     private final ChatMessageMapper chatMessageMapper;
+
+    @Value("${chat.recall-minutes:2}")
+    private int recallMinutes;
     private final UserMapper userMapper;
     private final WebSocketService webSocketService;
 
@@ -61,7 +65,7 @@ public class ChatService {
     }
 
     /**
-     * 撤回消息：仅发送者可撤回，2分钟内有效
+     * 撤回消息：仅发送者可撤回，配置时间内有效
      */
     public ChatMessageVO recallMessage(Long messageId, Long senderId) {
         ChatMessage msg = chatMessageMapper.selectById(messageId);
@@ -70,8 +74,8 @@ public class ChatService {
             throw new com.mimo.common.BusinessException(com.mimo.common.ResultCode.FORBIDDEN, "只能撤回自己的消息");
         }
         // 2分钟内可撤回
-        if (msg.getCreatedAt() != null && msg.getCreatedAt().plusMinutes(2).isBefore(java.time.LocalDateTime.now())) {
-            throw new com.mimo.common.BusinessException(com.mimo.common.ResultCode.BAD_REQUEST, "超过2分钟，无法撤回");
+        if (msg.getCreatedAt() != null && msg.getCreatedAt().plusMinutes(recallMinutes).isBefore(java.time.LocalDateTime.now())) {
+            throw new com.mimo.common.BusinessException(com.mimo.common.ResultCode.BAD_REQUEST, "超过" + recallMinutes + "分钟，无法撤回");
         }
         // 仅更新 content 和 recalled 字段，避免 updateById 因缺少 DB 列报错
         com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<ChatMessage> uw =

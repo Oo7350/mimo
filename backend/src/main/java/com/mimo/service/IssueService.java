@@ -9,6 +9,7 @@ import com.mimo.dto.IssueDTO.*;
 import com.mimo.entity.*;
 import com.mimo.mapper.*;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,6 +18,7 @@ import java.util.stream.Collectors;
 import com.mimo.dto.BoardSyncEvent;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class IssueService {
 
@@ -59,7 +61,7 @@ public class IssueService {
         int nextNum = 1;
         if (maxKeyIssue != null && maxKeyIssue.getIssueKey() != null) {
             String numStr = maxKeyIssue.getIssueKey().substring(keyPrefix.length());
-            try { nextNum = Integer.parseInt(numStr) + 1; } catch (NumberFormatException ignored) {}
+            try { nextNum = Integer.parseInt(numStr) + 1; } catch (NumberFormatException e) { log.warn("解析issueKey编号失败: {}", maxKeyIssue.getIssueKey()); }
         }
         String key = project.getKey() + "-" + nextNum;
 
@@ -138,7 +140,7 @@ public class IssueService {
         // WebSocket broadcast
         try {
             webSocketService.sendBoardUpdate(project.getId(), BoardSyncEvent.created(project.getId(), getById(issue.getId())));
-        } catch (Exception ignored) { /* WebSocket optional */ }
+        } catch (Exception e) { log.error("WebSocket广播创建事件失败, projectId={}", project.getId(), e); }
 
         return getById(issue.getId());
     }
@@ -146,7 +148,9 @@ public class IssueService {
     public IssueVO getById(Long issueId) {
         Issue issue = issueMapper.selectById(issueId);
         if (issue == null) throw new BusinessException(ResultCode.ISSUE_NOT_FOUND);
-        return toVO(issue);
+        // 批量预加载关联数据
+        BatchContext ctx = buildBatchContext(List.of(issue));
+        return toVO(issue, ctx);
     }
 
     @Transactional
@@ -221,7 +225,7 @@ public class IssueService {
                             "relatedId", issue.getId(),
                             "relatedType", "ISSUE"
                         ));
-                    } catch (Exception ignored) {}
+                    } catch (Exception e) { log.error("WebSocket发送分配通知失败, userId={}", newAssigneeId, e); }
                 }
             }
 
@@ -247,7 +251,7 @@ public class IssueService {
                         "relatedId", issue.getId(),
                         "relatedType", "ISSUE"
                     ));
-                } catch (Exception ignored) {}
+                } catch (Exception e) { log.error("WebSocket发送状态变更通知失败, userId={}", issue.getAssigneeId(), e); }
             }
 
             // BUG status changed
@@ -302,24 +306,24 @@ public class IssueService {
         try {
             commentMapper.delete(new LambdaQueryWrapper<com.mimo.entity.Comment>()
                 .eq(com.mimo.entity.Comment::getIssueId, issueId));
-        } catch (Exception e) { /* 评论清理失败不阻断 */ }
+        } catch (Exception e) { log.error("删除任务{}关联评论失败", issueId, e); }
 
         try {
             attachmentMapper.delete(new LambdaQueryWrapper<com.mimo.entity.Attachment>()
                 .eq(com.mimo.entity.Attachment::getIssueId, issueId));
-        } catch (Exception e) { /* 附件清理失败不阻断 */ }
+        } catch (Exception e) { log.error("删除任务{}关联附件失败", issueId, e); }
 
         try {
             issueLabelMapper.delete(new LambdaQueryWrapper<IssueLabel>()
                 .eq(IssueLabel::getIssueId, issueId));
-        } catch (Exception e) { /* 标签清理失败不阻断 */ }
+        } catch (Exception e) { log.error("删除任务{}关联标签失败", issueId, e); }
 
         // 清理相关通知
         try {
             notificationMapper.delete(new LambdaQueryWrapper<Notification>()
                 .eq(Notification::getRelatedId, issueId)
                 .eq(Notification::getRelatedType, "ISSUE"));
-        } catch (Exception e) { /* 通知清理失败不阻断 */ }
+        } catch (Exception e) { log.error("删除任务{}关联通知失败", issueId, e); }
 
         // 处理子任务：将子任务的 parentId 设为 null
         try {
@@ -329,7 +333,7 @@ public class IssueService {
                 child.setParentId(null);
                 issueMapper.updateById(child);
             }
-        } catch (Exception e) { /* 子任务处理失败不阻断 */ }
+        } catch (Exception e) { log.error("处理任务{}的子任务失败", issueId, e); }
 
         // 最后删除任务本身
         issueMapper.deleteById(issueId);
@@ -338,7 +342,7 @@ public class IssueService {
         if (projectId != null) {
             try {
                 webSocketService.sendBoardUpdate(projectId, BoardSyncEvent.deleted(projectId, issueId));
-            } catch (Exception ignored) {}
+            } catch (Exception e) { log.error("WebSocket广播删除事件失败, projectId={}", projectId, e); }
         }
     }
 
@@ -365,7 +369,9 @@ public class IssueService {
 
         Page<Issue> page = new Page<>(request.getPage(), request.getSize());
         Page<Issue> result = issueMapper.selectPage(page, qw);
-        return result.getRecords().stream().map(this::toVO).collect(Collectors.toList());
+        List<Issue> issues = result.getRecords();
+        BatchContext ctx = buildBatchContext(issues);
+        return issues.stream().map(i -> toVO(i, ctx)).collect(Collectors.toList());
     }
 
     // ---- BUG status management ----
@@ -441,7 +447,79 @@ public class IssueService {
 
     // ---- toVO helper ----
 
-    private IssueVO toVO(Issue issue) {
+    // ---- Batch context for N+1 fix ----
+
+    private static class BatchContext {
+        Map<Long, User> userMap;
+        Map<Long, BoardColumn> columnMap;
+        Map<Long, List<IssueLabelVO>> labelMap;
+        Map<Long, Issue> parentMap;
+        Map<Long, List<Issue>> childrenMap;
+    }
+
+    private BatchContext buildBatchContext(List<Issue> issues) {
+        BatchContext ctx = new BatchContext();
+        if (issues.isEmpty()) {
+            ctx.userMap = Collections.emptyMap();
+            ctx.columnMap = Collections.emptyMap();
+            ctx.labelMap = Collections.emptyMap();
+            ctx.parentMap = Collections.emptyMap();
+            ctx.childrenMap = Collections.emptyMap();
+            return ctx;
+        }
+
+        // 批量加载用户
+        Set<Long> userIds = new HashSet<>();
+        issues.forEach(i -> {
+            if (i.getAssigneeId() != null) userIds.add(i.getAssigneeId());
+            if (i.getReporterId() != null) userIds.add(i.getReporterId());
+        });
+        ctx.userMap = userIds.isEmpty() ? Collections.emptyMap() :
+                userMapper.selectBatchIds(userIds).stream().collect(Collectors.toMap(User::getId, u -> u));
+
+        // 批量加载列
+        Set<Long> columnIds = issues.stream()
+                .map(Issue::getColumnId).filter(Objects::nonNull).collect(Collectors.toSet());
+        ctx.columnMap = columnIds.isEmpty() ? Collections.emptyMap() :
+                boardColumnMapper.selectBatchIds(columnIds).stream().collect(Collectors.toMap(BoardColumn::getId, c -> c));
+
+        // 批量加载标签
+        List<Long> issueIds = issues.stream().map(Issue::getId).collect(Collectors.toList());
+        ctx.labelMap = new HashMap<>();
+        if (!issueIds.isEmpty()) {
+            issueLabelMapper.selectList(new LambdaQueryWrapper<IssueLabel>().in(IssueLabel::getIssueId, issueIds))
+                    .forEach(l -> ctx.labelMap.computeIfAbsent(l.getIssueId(), k -> new ArrayList<>())
+                            .add(toLabelVO(l)));
+        }
+
+        // 批量加载父任务
+        Set<Long> parentIds = issues.stream()
+                .map(Issue::getParentId).filter(Objects::nonNull).collect(Collectors.toSet());
+        ctx.parentMap = parentIds.isEmpty() ? Collections.emptyMap() :
+                issueMapper.selectBatchIds(parentIds).stream().collect(Collectors.toMap(Issue::getId, i -> i));
+
+        // 批量加载子任务 (STORY 类型)
+        List<Issue> storyIssues = issues.stream()
+                .filter(i -> "STORY".equals(i.getType())).collect(Collectors.toList());
+        ctx.childrenMap = new HashMap<>();
+        if (!storyIssues.isEmpty()) {
+            List<Long> storyIds = storyIssues.stream().map(Issue::getId).collect(Collectors.toList());
+            issueMapper.selectList(new LambdaQueryWrapper<Issue>().in(Issue::getParentId, storyIds))
+                    .forEach(child -> ctx.childrenMap.computeIfAbsent(child.getParentId(), k -> new ArrayList<>()).add(child));
+        }
+
+        return ctx;
+    }
+
+    private IssueLabelVO toLabelVO(IssueLabel label) {
+        IssueLabelVO vo = new IssueLabelVO();
+        vo.setId(label.getId());
+        vo.setLabel(label.getLabel());
+        vo.setColor(label.getColor());
+        return vo;
+    }
+
+    private IssueVO toVO(Issue issue, BatchContext ctx) {
         IssueVO vo = new IssueVO();
         vo.setId(issue.getId());
         vo.setIssueKey(issue.getIssueKey());
@@ -474,34 +552,26 @@ public class IssueService {
         vo.setProjectId(issue.getProjectId());
 
         if (issue.getColumnId() != null) {
-            BoardColumn col = boardColumnMapper.selectById(issue.getColumnId());
+            BoardColumn col = ctx.columnMap.get(issue.getColumnId());
             vo.setColumnName(col != null ? col.getName() : "");
         }
         if (issue.getAssigneeId() != null) {
-            User u = userMapper.selectById(issue.getAssigneeId());
+            User u = ctx.userMap.get(issue.getAssigneeId());
             vo.setAssigneeName(u != null ? u.getUsername() : "");
             vo.setAssigneeAvatar(u != null ? u.getAvatar() : null);
             vo.setAssigneeId(issue.getAssigneeId());
         }
         if (issue.getReporterId() != null) {
-            User u = userMapper.selectById(issue.getReporterId());
+            User u = ctx.userMap.get(issue.getReporterId());
             vo.setReporterName(u != null ? u.getUsername() : "");
             vo.setReporterId(issue.getReporterId());
         }
         // Labels
-        List<IssueLabel> labels = issueLabelMapper.selectList(
-                new LambdaQueryWrapper<IssueLabel>().eq(IssueLabel::getIssueId, issue.getId()));
-        vo.setLabels(labels.stream().map(l -> {
-            IssueLabelVO lvo = new IssueLabelVO();
-            lvo.setId(l.getId());
-            lvo.setLabel(l.getLabel());
-            lvo.setColor(l.getColor());
-            return lvo;
-        }).collect(Collectors.toList()));
+        vo.setLabels(ctx.labelMap.getOrDefault(issue.getId(), List.of()));
 
         // Parent info
         if (issue.getParentId() != null) {
-            Issue parent = issueMapper.selectById(issue.getParentId());
+            Issue parent = ctx.parentMap.get(issue.getParentId());
             if (parent != null) {
                 vo.setParentIssueKey(parent.getIssueKey());
                 vo.setParentTitle(parent.getTitle());
@@ -510,10 +580,9 @@ public class IssueService {
 
         // Sub-tasks (for STORY)
         if ("STORY".equals(issue.getType())) {
-            List<Issue> children = issueMapper.selectList(
-                    new LambdaQueryWrapper<Issue>().eq(Issue::getParentId, issue.getId()));
-            if (!children.isEmpty()) {
-                vo.setSubTasks(children.stream().map(this::toVO).collect(Collectors.toList()));
+            List<Issue> children = ctx.childrenMap.get(issue.getId());
+            if (children != null && !children.isEmpty()) {
+                vo.setSubTasks(children.stream().map(c -> toVO(c, ctx)).collect(Collectors.toList()));
             }
         }
 

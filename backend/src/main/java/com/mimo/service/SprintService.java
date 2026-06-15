@@ -7,6 +7,7 @@ import com.mimo.dto.SprintDTO.*;
 import com.mimo.entity.*;
 import com.mimo.mapper.*;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -19,6 +20,12 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class SprintService {
+
+    @Value("${sprint.default-days:14}")
+    private int sprintDefaultDays;
+
+    @Value("${sprint.quick-create-tasks:5}")
+    private int quickCreateTasks;
 
     private final SprintMapper sprintMapper;
     private final IssueMapper issueMapper;
@@ -84,7 +91,7 @@ public class SprintService {
             new LambdaQueryWrapper<Sprint>().eq(Sprint::getProjectId, projectId));
         sprint.setName("Sprint " + (count + 1));
         sprint.setStartDate(LocalDate.now());
-        sprint.setEndDate(LocalDate.now().plusDays(14));
+        sprint.setEndDate(LocalDate.now().plusDays(sprintDefaultDays));
         sprint.setIsActive(1);
         sprint.setStatus("ACTIVE");
         sprintMapper.insert(sprint);
@@ -127,7 +134,7 @@ public class SprintService {
 
             int added = 0;
             for (Issue issue : todoIssues) {
-                if (added >= 5) break;
+                if (added >= quickCreateTasks) break;
                 issue.setSprintId(sprint.getId());
                 issueMapper.updateById(issue);
                 added++;

@@ -90,8 +90,12 @@ public class TeamService {
     public List<MemberVO> listMembers(Long teamId) {
         List<TeamMember> members = teamMemberMapper.selectList(
                 new LambdaQueryWrapper<TeamMember>().eq(TeamMember::getTeamId, teamId));
+        // 批量加载用户
+        List<Long> userIds = members.stream().map(TeamMember::getUserId).collect(Collectors.toList());
+        Map<Long, User> userMap = userIds.isEmpty() ? Collections.emptyMap() :
+                userMapper.selectBatchIds(userIds).stream().collect(Collectors.toMap(User::getId, u -> u));
         return members.stream().map(m -> {
-            User user = userMapper.selectById(m.getUserId());
+            User user = userMap.get(m.getUserId());
             MemberVO vo = new MemberVO();
             vo.setUserId(m.getUserId());
             vo.setUsername(user != null ? user.getUsername() : "");
@@ -165,6 +169,15 @@ public class TeamService {
         // 团队admin
         String role = getUserRoleInTeam(teamId, userId);
         return "ROLE_ADMIN".equals(role);
+    }
+
+    /**
+     * 判断用户是否为团队成员（含管理员）
+     */
+    public boolean isTeamMember(Long teamId, Long userId) {
+        return teamMemberMapper.selectOne(new LambdaQueryWrapper<TeamMember>()
+                .eq(TeamMember::getTeamId, teamId)
+                .eq(TeamMember::getUserId, userId)) != null;
     }
 
     /**

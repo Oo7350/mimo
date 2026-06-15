@@ -16,6 +16,15 @@
           <div class="comment-item__header">
             <strong>{{ c.username }}</strong>
             <span class="comment-item__time">{{ c.createdAt }}</span>
+            <el-button
+              v-if="c.userId === currentUserId"
+              type="danger"
+              link
+              size="small"
+              :loading="deletingId === c.id"
+              @click="handleDelete(c.id)"
+              style="margin-left: auto; padding: 0 4px;"
+            >删除</el-button>
           </div>
           <div class="comment-item__content" v-html="renderMarkdown(c.content)"></div>
         </div>
@@ -45,10 +54,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { createComment } from '@/api/comment'
+import { ref, computed } from 'vue'
+import { createComment, deleteComment } from '@/api/comment'
 import { renderMarkdown } from '@/utils/markdown'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { useUserStore } from '@/stores/user'
 
 const props = defineProps<{
   issueId: number
@@ -58,10 +68,14 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'comment-added': [comment: any]
+  'comment-deleted': [commentId: number]
 }>()
 
+const userStore = useUserStore()
+const currentUserId = computed(() => userStore.userInfo?.id)
 const text = ref('')
 const sending = ref(false)
+const deletingId = ref<number | null>(null)
 
 async function send() {
   if (!text.value.trim()) return
@@ -72,6 +86,19 @@ async function send() {
     text.value = ''
   } catch { /* handled by interceptor */ }
   finally { sending.value = false }
+}
+
+async function handleDelete(commentId: number) {
+  try {
+    await ElMessageBox.confirm('确定删除这条评论？', '确认删除', { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' })
+  } catch { return }
+  deletingId.value = commentId
+  try {
+    await deleteComment(commentId)
+    emit('comment-deleted', commentId)
+    ElMessage.success('已删除')
+  } catch { /* handled by interceptor */ }
+  finally { deletingId.value = null }
 }
 
 function onKeydown(e: KeyboardEvent) {

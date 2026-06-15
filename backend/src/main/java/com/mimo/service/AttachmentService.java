@@ -9,6 +9,7 @@ import com.mimo.entity.User;
 import com.mimo.mapper.AttachmentMapper;
 import com.mimo.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -22,6 +23,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class AttachmentService {
 
@@ -74,7 +76,7 @@ public class AttachmentService {
         if (attachment == null) throw new BusinessException(ResultCode.NOT_FOUND);
         try {
             Files.deleteIfExists(Paths.get(attachment.getFilePath()));
-        } catch (IOException ignored) {}
+        } catch (IOException e) { log.error("删除附件文件失败, path={}", attachment.getFilePath(), e); }
         attachmentMapper.deleteById(id);
     }
 

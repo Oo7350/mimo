@@ -43,6 +43,10 @@ jwt:
   secret: MimoJwtSecretKey2024MustBeAtLeast256BitsLongForHS256Algorithm!!
   expiration: 86400000  # 24 hours in ms
 
+deepseek:
+  api-key: sk-e1b6b4bcca40494e91663036ec113a22
+  base-url: https://api.deepseek.com/chat/completions
+
 knife4j:
   enable: true
   setting:

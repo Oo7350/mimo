@@ -7,3 +7,7 @@ export function createComment(data: { issueId: number; content: string }) {
 export function getCommentsByIssue(issueId: number) {
   return request.get(`/comments/issue/${issueId}`);
 }
+
+export function deleteComment(commentId: number) {
+  return request.delete(`/comments/${commentId}`);
+}

@@ -31,3 +31,15 @@ export function completeSprint(id: number) {
 export function quickStartSprint(projectId: number) {
   return request.post(`/sprints/quick/${projectId}`);
 }
+
+export function takeSnapshot(sprintId: number, data?: { doneIssues?: number; remainingIssues?: number }) {
+  return request.post(`/sprints/${sprintId}/snapshot`, data || {});
+}
+
+export function completeMigration(sprintId: number) {
+  return request.put(`/sprints/${sprintId}/complete-migration`);
+}
+
+export function addToSprint(issueId: number, sprintId: number) {
+  return request.put(`/sprints/${issueId}/add-to-sprint/${sprintId}`);
+}

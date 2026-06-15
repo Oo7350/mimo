@@ -11,3 +11,7 @@ export function getAllUserLevels() {
 export function setUserLevel(userId: number, level: number) {
   return request.put(`/user-levels/${userId}`, { level, levelName: 'L' + level })
 }
+
+export function getUserLevelById(userId: number) {
+  return request.get(`/user-levels/${userId}`)
+}
