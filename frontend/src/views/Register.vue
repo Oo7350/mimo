@@ -242,7 +242,7 @@ async function handleRegister() {
     transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
 
     &.is-filled {
-      box-shadow: 0 0 8px currentColor * 0.35;
+      box-shadow: 0 0 8px rgba(79, 70, 229, 0.35);
       &.is-weak { background: #ef4444; height: 6px; }
       &.is-fair { background: #f59e0b; height: 7px; }
       &.is-good { background: #10b981; height: 7px; }

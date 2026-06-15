@@ -819,7 +819,7 @@ onMounted(async () => {
       color: #fff !important;
       font-weight: 700;
       transform: translateY(-1px) scale(1.02);
-      box-shadow: 0 3px 12px currentColor * 0.35;
+      box-shadow: 0 3px 12px rgba(79, 70, 229, 0.35);
     }
     &--story.is-active { background: var(--type-story); border-color: var(--type-story); }
     &--task.is-active { background: var(--type-task); border-color: var(--type-task); }

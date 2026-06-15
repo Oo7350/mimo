@@ -329,7 +329,7 @@ onMounted(fetchProfile)
 
     &:hover {
       transform: translateY(-2px);
-      box-shadow: 0 6px 20px currentColor * 0.3;
+      box-shadow: 0 6px 20px rgba(79, 70, 229, 0.3);
     }
     &:active { transform: translateY(0) scale(0.97); }
   }
