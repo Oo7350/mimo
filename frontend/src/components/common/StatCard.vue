@@ -80,8 +80,14 @@ watch(() => props.loading, (ld) => {
   transition: transform var(--transition-normal), box-shadow var(--transition-normal);
 
   &:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-md);
+    transform: translateY(-4px) scale(1.01);
+    box-shadow: var(--shadow-lg);
+    border-color: rgba(91,107,246,0.15);
+
+    .stat-card__accent {
+      height: 5px;
+      opacity: 1;
+    }
   }
 
   &__accent {
@@ -91,24 +97,32 @@ watch(() => props.loading, (ld) => {
     width: 100%;
     height: 3px;
     border-radius: var(--border-radius-lg) var(--border-radius-lg) 0 0;
+    transition: all var(--transition-normal);
+    opacity: 0.85;
   }
 
   &__inner {
     display: flex;
     align-items: center;
-    gap: 16px;
-    padding: 20px;
+    gap: 18px;
+    padding: 24px;
   }
 
   &__icon {
-    width: 44px;
-    height: 44px;
-    border-radius: 12px;
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
     display: flex;
     align-items: center;
     justify-content: center;
     color: #fff;
     flex-shrink: 0;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.12);
+    transition: transform var(--transition-normal);
+  }
+
+  &:hover &__icon {
+    transform: scale(1.08) rotate(-2deg);
   }
 
   &__info {
@@ -116,18 +130,20 @@ watch(() => props.loading, (ld) => {
   }
 
   &__value {
-    font-size: 34px;
+    font-size: 36px;
     font-weight: 800;
-    line-height: 1.1;
+    line-height: 1.05;
     font-variant-numeric: tabular-nums;
-    letter-spacing: -1px;
+    letter-spacing: -1.2px;
+    transition: color var(--transition-fast);
   }
 
   &__label {
     font-size: 13px;
     color: var(--text-secondary);
-    margin-top: 4px;
-    font-weight: 500;
+    margin-top: 5px;
+    font-weight: 550;
+    letter-spacing: -0.1px;
   }
 
   &__skeleton {

@@ -107,83 +107,105 @@ const features = [
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 48px;
+    padding: 56px;
     overflow: hidden;
-    background: #0f172a;
+    background: #0a0c14;
   }
 
   &__hero-bg {
     position: absolute;
     inset: 0;
     background:
-      radial-gradient(ellipse 80% 60% at 20% 40%, rgba(99, 102, 241, 0.25) 0%, transparent 60%),
-      radial-gradient(ellipse 60% 50% at 80% 70%, rgba(139, 92, 246, 0.2) 0%, transparent 55%),
-      radial-gradient(ellipse 40% 40% at 50% 0%, rgba(16, 185, 129, 0.08) 0%, transparent 50%);
+      radial-gradient(ellipse 700px 500px at 18% 35%, rgba(91, 107, 246, 0.28) 0%, transparent 65%),
+      radial-gradient(ellipse 550px 420px at 82% 68%, rgba(124, 108, 246, 0.22) 0%, transparent 58%),
+      radial-gradient(ellipse 380px 320px at 52% 5%, rgba(34, 197, 94, 0.06) 0%, transparent 50%),
+      linear-gradient(180deg, rgba(10,12,20,1) 0%, rgba(15,17,28,1) 100%);
+  }
+
+  // Animated mesh glow
+  &__hero-bg::after {
+    content: '';
+    position: absolute;
+    top: 20%;
+    left: 30%;
+    width: 400px;
+    height: 400px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(91,107,246,0.08) 0%, transparent 70%);
+    animation: hero-glow 8s ease-in-out infinite alternate;
+    pointer-events: none;
+  }
+  @keyframes hero-glow {
+    0% { transform: translate(0, 0); }
+    100% { transform: translate(40px, -30px); }
   }
 
   &__hero-content {
     position: relative;
-    max-width: 520px;
+    max-width: 540px;
     z-index: 1;
   }
 
   &__brand {
-    margin-bottom: 36px;
+    margin-bottom: 40px;
   }
 
   &__logo {
     display: flex;
     align-items: center;
-    gap: 12px;
-    margin-bottom: 12px;
+    gap: 14px;
+    margin-bottom: 14px;
 
-    svg { width: 40px; height: 40px; }
+    svg { width: 44px; height: 44px; filter: drop-shadow(0 4px 12px rgba(91,107,246,0.3)); }
 
     span {
-      font-size: 28px;
+      font-size: 30px;
       font-weight: 800;
       color: #fff;
-      letter-spacing: -0.5px;
+      letter-spacing: -0.8px;
     }
   }
 
   &__tagline {
-    color: rgba(255, 255, 255, 0.65);
-    font-size: 15px;
-    line-height: 1.6;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 15.5px;
+    line-height: 1.7;
+    font-weight: 400;
   }
 
   &__preview {
-    margin-bottom: 32px;
+    margin-bottom: 36px;
   }
 
   &__features {
     list-style: none;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 12px;
 
     li {
       display: flex;
       align-items: center;
-      gap: 10px;
-      color: rgba(255, 255, 255, 0.75);
+      gap: 11px;
+      color: rgba(255, 255, 255, 0.7);
       font-size: 14px;
+      font-weight: 400;
 
       .el-icon {
-        color: #10b981;
-        font-size: 16px;
+        color: #22c55e;
+        font-size: 17px;
+        filter: drop-shadow(0 1px 3px rgba(34,197,94,0.4));
       }
     }
   }
 
   &__form-side {
-    width: 480px;
+    width: 500px;
     flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 40px;
+    padding: 48px;
     background: #fff;
   }
 
@@ -195,12 +217,13 @@ const features = [
 
 .preview-board {
   display: flex;
-  gap: 12px;
-  padding: 16px;
+  gap: 14px;
+  padding: 20px;
   background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 16px;
-  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 18px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 
   &__col {
     flex: 1;
@@ -213,10 +236,10 @@ const features = [
     gap: 6px;
     font-size: 11px;
     font-weight: 600;
-    color: rgba(255, 255, 255, 0.6);
-    margin-bottom: 10px;
+    color: rgba(255, 255, 255, 0.55);
+    margin-bottom: 12px;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.8px;
   }
 
   &__dot {
@@ -235,30 +258,30 @@ const features = [
   }
 
   &__card {
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.07);
     border-left: 3px solid;
-    border-radius: 8px;
-    padding: 10px;
-    margin-bottom: 8px;
-    transition: transform 0.2s;
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 10px;
+    transition: transform 0.25s cubic-bezier(0.23, 1, 0.32, 1);
 
-    &:hover { transform: translateY(-2px); }
+    &:hover { transform: translateY(-3px); }
   }
 
   &__card-type {
     font-size: 9px;
     font-weight: 700;
-    color: rgba(255, 255, 255, 0.45);
-    letter-spacing: 0.5px;
-    margin-bottom: 4px;
+    color: rgba(255, 255, 255, 0.4);
+    letter-spacing: 0.8px;
+    margin-bottom: 5px;
   }
 
   &__card-title {
-    font-size: 12px;
+    font-size: 12.5px;
     color: rgba(255, 255, 255, 0.85);
     font-weight: 500;
-    line-height: 1.4;
+    line-height: 1.45;
   }
 }
 
@@ -266,9 +289,9 @@ const features = [
   .auth-page {
     flex-direction: column;
 
-    &__hero { padding: 32px 24px; min-height: auto; }
+    &__hero { padding: 36px 28px; min-height: auto; }
     &__preview { display: none; }
-    &__form-side { width: 100%; padding: 32px 24px; }
+    &__form-side { width: 100%; padding: 36px 28px; }
   }
 }
 </style>
