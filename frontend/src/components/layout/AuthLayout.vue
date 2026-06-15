@@ -3,6 +3,9 @@
     <!-- 左侧品牌区 -->
     <div class="auth-page__hero">
       <div class="auth-page__hero-bg" />
+      <div class="auth-page__hero-orb hero-orb-1" />
+      <div class="auth-page__hero-orb hero-orb-2" />
+      <div class="auth-page__hero-orb hero-orb-3" />
       <div class="auth-page__hero-content">
         <div class="auth-page__brand">
           <div class="auth-page__logo">
@@ -13,8 +16,8 @@
               <rect x="21" y="8" width="5" height="14" rx="2" fill="white" opacity="0.5" />
               <defs>
                 <linearGradient id="logo-grad" x1="0" y1="0" x2="32" y2="32">
-                  <stop stop-color="#6366f1" />
-                  <stop offset="1" stop-color="#8b5cf6" />
+                  <stop stop-color="#4f46e5" />
+                  <stop offset="1" stop-color="#7c3aed" />
                 </linearGradient>
               </defs>
             </svg>
@@ -67,24 +70,24 @@
 const previewColumns = [
   {
     name: '待办',
-    color: '#6366f1',
+    color: '#4f46e5',
     cards: [
-      { type: 'STORY', title: '用户登录优化', color: '#10b981' },
-      { type: 'BUG', title: '修复导出异常', color: '#ef4444' },
+      { type: 'STORY', title: '用户登录优化', color: '#059669' },
+      { type: 'BUG', title: '修复导出异常', color: '#dc2626' },
     ],
   },
   {
     name: '进行中',
-    color: '#f59e0b',
+    color: '#d97706',
     cards: [
-      { type: 'TASK', title: 'API 接口联调', color: '#6366f1' },
+      { type: 'TASK', title: 'API 接口联调', color: '#4f46e5' },
     ],
   },
   {
     name: '已完成',
-    color: '#10b981',
+    color: '#059669',
     cards: [
-      { type: 'TASK', title: '数据库迁移', color: '#6366f1' },
+      { type: 'TASK', title: '数据库迁移', color: '#4f46e5' },
     ],
   },
 ]
@@ -107,106 +110,150 @@ const features = [
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 56px;
+    padding: 60px;
     overflow: hidden;
-    background: #0a0c14;
+    background: #050507;
   }
 
   &__hero-bg {
     position: absolute;
     inset: 0;
     background:
-      radial-gradient(ellipse 700px 500px at 18% 35%, rgba(91, 107, 246, 0.28) 0%, transparent 65%),
-      radial-gradient(ellipse 550px 420px at 82% 68%, rgba(124, 108, 246, 0.22) 0%, transparent 58%),
-      radial-gradient(ellipse 380px 320px at 52% 5%, rgba(34, 197, 94, 0.06) 0%, transparent 50%),
-      linear-gradient(180deg, rgba(10,12,20,1) 0%, rgba(15,17,28,1) 100%);
+      radial-gradient(ellipse 900px 600px at 15% 30%, rgba(79, 70, 229, 0.35) 0%, transparent 60%),
+      radial-gradient(ellipse 700px 500px at 85% 70%, rgba(124, 58, 237, 0.25) 0%, transparent 55%),
+      radial-gradient(ellipse 400px 300px at 50% 5%, rgba(5, 150, 105, 0.08) 0%, transparent 50%);
   }
 
-  // Animated mesh glow
-  &__hero-bg::after {
-    content: '';
+  // Floating orbs — animated
+  &__hero-orb {
     position: absolute;
-    top: 20%;
-    left: 30%;
-    width: 400px;
-    height: 400px;
     border-radius: 50%;
-    background: radial-gradient(circle, rgba(91,107,246,0.08) 0%, transparent 70%);
-    animation: hero-glow 8s ease-in-out infinite alternate;
+    filter: blur(80px);
     pointer-events: none;
   }
-  @keyframes hero-glow {
-    0% { transform: translate(0, 0); }
-    100% { transform: translate(40px, -30px); }
+
+  .hero-orb-1 {
+    width: 500px;
+    height: 500px;
+    top: -15%;
+    left: -10%;
+    background: rgba(79, 70, 229, 0.18);
+    animation: orb-float-1 12s ease-in-out infinite alternate;
+  }
+  .hero-orb-2 {
+    width: 350px;
+    height: 350px;
+    bottom: -10%;
+    right: -5%;
+    background: rgba(124, 58, 237, 0.15);
+    animation: orb-float-2 10s ease-in-out infinite alternate;
+  }
+  .hero-orb-3 {
+    width: 200px;
+    height: 200px;
+    top: 50%;
+    left: 50%;
+    background: rgba(5, 150, 105, 0.08);
+    animation: orb-float-3 8s ease-in-out infinite alternate;
+  }
+
+  @keyframes orb-float-1 {
+    0% { transform: translate(0, 0) scale(1); }
+    100% { transform: translate(60px, 40px) scale(1.15); }
+  }
+  @keyframes orb-float-2 {
+    0% { transform: translate(0, 0) scale(1); }
+    100% { transform: translate(-40px, -30px) scale(1.1); }
+  }
+  @keyframes orb-float-3 {
+    0% { transform: translate(-50%, -50%) scale(1); }
+    100% { transform: translate(calc(-50% + 30px), calc(-50% - 20px)) scale(1.2); }
   }
 
   &__hero-content {
     position: relative;
-    max-width: 540px;
+    max-width: 560px;
     z-index: 1;
   }
 
   &__brand {
-    margin-bottom: 40px;
+    margin-bottom: 44px;
   }
 
   &__logo {
     display: flex;
     align-items: center;
-    gap: 14px;
-    margin-bottom: 14px;
+    gap: 16px;
+    margin-bottom: 18px;
 
-    svg { width: 44px; height: 44px; filter: drop-shadow(0 4px 12px rgba(91,107,246,0.3)); }
+    svg {
+      width: 52px;
+      height: 52px;
+      filter: drop-shadow(0 8px 24px rgba(79, 70, 229, 0.4));
+    }
 
     span {
-      font-size: 30px;
+      font-size: 36px;
       font-weight: 800;
       color: #fff;
-      letter-spacing: -0.8px;
+      letter-spacing: -1.2px;
     }
   }
 
   &__tagline {
-    color: rgba(255, 255, 255, 0.6);
-    font-size: 15.5px;
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 16px;
     line-height: 1.7;
     font-weight: 400;
+    letter-spacing: -0.1px;
   }
 
   &__preview {
-    margin-bottom: 36px;
+    margin-bottom: 40px;
   }
 
   &__features {
     list-style: none;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 14px;
 
     li {
       display: flex;
       align-items: center;
-      gap: 11px;
-      color: rgba(255, 255, 255, 0.7);
-      font-size: 14px;
+      gap: 12px;
+      color: rgba(255, 255, 255, 0.65);
+      font-size: 14.5px;
       font-weight: 400;
 
       .el-icon {
-        color: #22c55e;
-        font-size: 17px;
-        filter: drop-shadow(0 1px 3px rgba(34,197,94,0.4));
+        color: #059669;
+        font-size: 18px;
+        filter: drop-shadow(0 2px 6px rgba(5, 150, 105, 0.5));
       }
     }
   }
 
   &__form-side {
-    width: 500px;
+    width: 520px;
     flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 48px;
+    padding: 52px;
     background: #fff;
+    position: relative;
+  }
+
+  // Subtle gradient accent on form side
+  &__form-side::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 4px;
+    background: var(--gradient-primary);
   }
 
   &__form-wrapper {
@@ -218,12 +265,16 @@ const features = [
 .preview-board {
   display: flex;
   gap: 14px;
-  padding: 20px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 18px;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  padding: 22px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 20px;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.04),
+    0 20px 60px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
 
   &__col {
     flex: 1;
@@ -233,53 +284,58 @@ const features = [
   &__col-header {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 7px;
     font-size: 11px;
     font-weight: 600;
-    color: rgba(255, 255, 255, 0.55);
-    margin-bottom: 12px;
+    color: rgba(255, 255, 255, 0.45);
+    margin-bottom: 14px;
     text-transform: uppercase;
-    letter-spacing: 0.8px;
+    letter-spacing: 1px;
   }
 
   &__dot {
-    width: 6px;
-    height: 6px;
+    width: 7px;
+    height: 7px;
     border-radius: 50%;
     flex-shrink: 0;
+    box-shadow: 0 0 8px currentColor;
   }
 
   &__count {
     margin-left: auto;
-    background: rgba(255, 255, 255, 0.1);
-    padding: 1px 6px;
+    background: rgba(255, 255, 255, 0.08);
+    padding: 2px 7px;
     border-radius: 8px;
     font-size: 10px;
+    font-weight: 600;
   }
 
   &__card {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.07);
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.06);
     border-left: 3px solid;
-    border-radius: 10px;
-    padding: 12px;
+    border-radius: 12px;
+    padding: 14px;
     margin-bottom: 10px;
-    transition: transform 0.25s cubic-bezier(0.23, 1, 0.32, 1);
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease;
 
-    &:hover { transform: translateY(-3px); }
+    &:hover {
+      transform: translateY(-4px) scale(1.02);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    }
   }
 
   &__card-type {
     font-size: 9px;
     font-weight: 700;
-    color: rgba(255, 255, 255, 0.4);
-    letter-spacing: 0.8px;
-    margin-bottom: 5px;
+    color: rgba(255, 255, 255, 0.3);
+    letter-spacing: 1px;
+    margin-bottom: 6px;
   }
 
   &__card-title {
-    font-size: 12.5px;
-    color: rgba(255, 255, 255, 0.85);
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.8);
     font-weight: 500;
     line-height: 1.45;
   }

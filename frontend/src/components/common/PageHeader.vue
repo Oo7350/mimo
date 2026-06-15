@@ -21,22 +21,44 @@ defineProps<{
 .page-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 24px;
-  gap: 16px;
+  align-items: center;
+  margin-bottom: 28px;
+  gap: 20px;
+
+  &__main { flex: 1; }
 
   &__title {
-    font-size: 26px;
+    font-size: 30px;
     font-weight: 800;
     color: var(--text-primary);
-    letter-spacing: -0.5px;
+    letter-spacing: -0.8px;
     line-height: 1.2;
   }
 
   &__subtitle {
-    margin-top: 6px;
-    font-size: 14px;
+    margin-top: 8px;
+    font-size: 14.5px;
     color: var(--text-secondary);
+    line-height: 1.55;
+  }
+
+  &__action {
+    flex-shrink: 0;
+
+    .el-button--primary {
+      border-radius: 12px;
+      padding: 12px 26px;
+      font-weight: 700;
+      font-size: 14px;
+      letter-spacing: -0.1px;
+      transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+
+      &:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 24px rgba(79, 70, 229, 0.4);
+      }
+      &:active { transform: translateY(0) scale(0.97); }
+    }
   }
 }
 </style>

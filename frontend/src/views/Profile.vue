@@ -215,58 +215,123 @@ onMounted(fetchProfile)
     cursor: pointer;
     position: relative;
     overflow: hidden;
+    transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
 
-    img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
+    &:hover {
+      transform: scale(1.05);
+      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.2);
     }
 
-    &:hover .profile-hero__avatar-overlay {
-      opacity: 1;
-    }
+    img { width: 100%; height: 100%; object-fit: cover; }
+    &:hover .profile-hero__avatar-overlay { opacity: 1; }
   }
 
   &__avatar-overlay {
-    position: absolute;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.5);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
+    position: absolute; inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(6px);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 5px;
     color: #fff;
-    font-size: 12px;
-    font-weight: 600;
+    font-size: 12.5px;
+    font-weight: 700;
     opacity: 0;
-    transition: opacity var(--transition-fast);
+    transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
   }
 
-  &__actions {
-    margin-left: auto;
-    flex-shrink: 0;
-  }
+  &__actions { margin-left: auto; flex-shrink: 0; }
 }
 
 .profile-theme-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  background: rgba(255, 255, 255, 0.15);
+  display: flex; align-items: center; gap: 7px;
+  padding: 9px 18px;
+  border-radius: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.12);
   color: #fff;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 650;
   cursor: pointer;
-  transition: background var(--transition-fast);
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
 
-  &:hover { background: rgba(255, 255, 255, 0.25); }
+  &:hover {
+    background: rgba(255, 255, 255, 0.22);
+    transform: translateY(-2px) scale(1.03);
+    box-shadow: 0 4px 14px rgba(255, 255, 255, 0.15);
+  }
+  &:active { transform: translateY(0) scale(0.97); }
 }
 
 .settings-card {
-  margin-bottom: 20px;
+  margin-bottom: 24px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.3s ease;
+
+  &:hover { box-shadow: var(--shadow-md); }
+
+  &__header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 20px 24px;
+    font-size: 16px;
+    font-weight: 750;
+    color: var(--text-primary);
+    letter-spacing: -0.2px;
+    border-bottom: 1px solid var(--border-color-light);
+  }
+
+  &__header-icon {
+    width: 38px; height: 38px;
+    border-radius: 11px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 17px;
+    flex-shrink: 0;
+  }
+
+  &__body { padding: 22px 24px; }
+
+  :deep(.el-form-item__label) {
+    font-weight: 650;
+    font-size: 13px;
+    color: var(--text-primary);
+    letter-spacing: -0.1px;
+    padding-bottom: 8px;
+  }
+
+  :deep(.el-input) {
+    .el-input__wrapper {
+      border-radius: var(--border-radius-sm);
+      box-shadow: 0 0 0 1px var(--border-color);
+      transition: all 0.25s ease;
+      &:hover { box-shadow: 0 0 0 1px rgba(79, 70, 229, 0.3); }
+      &.is-focus {
+        box-shadow:
+          0 0 0 2px rgba(79, 70, 229, 0.25),
+          0 0 20px rgba(79, 70, 229, 0.12);
+        border-color: transparent;
+      }
+    }
+  }
+
+  :deep(.el-button--primary),
+  :deep(.el-button--warning) {
+    margin-top: 10px;
+    border-radius: 12px;
+    padding: 11px 26px;
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: 0.5px;
+    transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px currentColor * 0.3;
+    }
+    &:active { transform: translateY(0) scale(0.97); }
+  }
 }
 </style>

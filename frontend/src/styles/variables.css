@@ -1,140 +1,153 @@
 :root {
-  /* Primary — Apple-style indigo, less saturated */
-  --color-primary: #5b6bf6;
-  --color-primary-light: #7c8af8;
-  --color-primary-lighter: #d8ddf9;
-  --color-primary-dark: #4454e0;
+  /* ═══════════════════════════════════════
+     Mimo Design System — Premium Edition
+     Inspired by Apple / Linear / Vercel
+     ═══════════════════════════════════════ */
 
-  /* Accent */
-  --color-accent: #7c6cf6;
-  --color-accent-light: #9e8ff8;
+  /* Primary — vivid, saturated, confident */
+  --color-primary: #4f46e5;
+  --color-primary-light: #6366f1;
+  --color-primary-lighter: #e0e7ff;
+  --color-primary-dark: #3730a3;
 
-  /* Status — softer, more refined */
-  --color-success: #22c55e;
-  --color-warning: #f59e0b;
-  --color-danger: #f43f3f;
-  --color-info: #5b6bf6;
+  /* Accent — vibrant purple */
+  --color-accent: #7c3aed;
+  --color-accent-light: #a78bfa;
 
-  /* Issue type colors */
-  --type-story: #22c55e;
-  --type-task: #5b6bf6;
-  --type-bug: #f43f3f;
+  /* Status — punchy, high-contrast */
+  --color-success: #059669;
+  --color-warning: #d97706;
+  --color-danger: #dc2626;
+  --color-info: #4f46e5;
+
+  /* Issue type colors — vivid */
+  --type-story: #059669;
+  --type-task: #4f46e5;
+  --type-bug: #dc2626;
 
   /* Priority colors */
-  --priority-highest: #f43f3f;
-  --priority-high: #f59e0b;
-  --priority-medium: #5b6bf6;
-  --priority-low: #22c55e;
+  --priority-highest: #dc2626;
+  --priority-high: #d97706;
+  --priority-medium: #4f46e5;
+  --priority-low: #059669;
   --priority-lowest: #94a3b8;
 
-  /* Backgrounds — cleaner, warmer whites */
-  --bg-page: #f5f6fa;
+  /* ═══ Backgrounds — warm off-white with subtle texture ═══ */
+  --bg-page: #f8f9fc;
   --bg-page-pattern:
-    radial-gradient(ellipse 600px 400px at 15% 10%, rgba(91, 107, 246, 0.05) 0%, transparent 70%),
-    radial-gradient(ellipse 500px 350px at 85% 90%, rgba(124, 108, 246, 0.04) 0%, transparent 70%);
+    radial-gradient(ellipse 800px 600px at 10% 0%, rgba(79, 70, 229, 0.07) 0%, transparent 60%),
+    radial-gradient(ellipse 600px 500px at 90% 100%, rgba(124, 58, 237, 0.05) 0%, transparent 55%);
   --bg-card: #ffffff;
-  --bg-column: #f0f2f7;
-  --bg-hover: #f7f8fc;
-  --bg-sidebar: #111318;
-  --bg-sidebar-hover: #1a1d26;
-  --bg-sidebar-active: rgba(91, 107, 246, 0.16);
+  --bg-column: #f1f3f9;
+  --bg-hover: #eef0f7;
+  --bg-sidebar: #0f0f14;
+  --bg-sidebar-hover: #1a1a24;
+  --bg-sidebar-active: rgba(79, 70, 229, 0.2);
 
-  /* Text — Apple's gray scale hierarchy */
-  --text-primary: #1d1d1f;
-  --text-regular: #515154;
-  --text-secondary: #86868b;
-  --text-placeholder: #c7c7cc;
-  --text-sidebar: #8888a0;
+  /* ═══ Text — high contrast, crisp ═══ */
+  --text-primary: #0f172a;
+  --text-regular: #334155;
+  --text-secondary: #64748b;
+  --text-placeholder: #cbd5e1;
+  --text-sidebar: #6b7280;
   --text-sidebar-active: #ffffff;
 
-  /* Borders — ultra subtle */
-  --border-color: #e5e5ea;
-  --border-color-light: #f2f2f7;
+  /* ═══ Borders — visible but refined ═══ */
+  --border-color: #e2e8f0;
+  --border-color-light: #f1f5f9;
 
-  /* Border radius — Apple's signature softness */
-  --border-radius-sm: 10px;
-  --border-radius-md: 14px;
-  --border-radius-lg: 20px;
-  --border-radius-xl: 24px;
+  /* ═══ Border radius — generous, Apple-like ═══ */
+  --border-radius-sm: 12px;
+  --border-radius-md: 16px;
+  --border-radius-lg: 22px;
+  --border-radius-xl: 28px;
 
-  /* Shadows — layered, natural depth */
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.03), 0 1px 2px rgba(0, 0, 0, 0.02);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.03);
-  --shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.08), 0 2px 6px rgba(0, 0, 0, 0.04);
-  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.05);
-  --shadow-dialog: 0 24px 80px rgba(0, 0, 0, 0.16), 0 4px 12px rgba(0, 0, 0, 0.08);
-  --shadow-card-hover: 0 8px 28px rgba(91, 107, 246, 0.14);
+  /* ═══ Shadows — dramatic, layered ═══ */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.02);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.03);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.12), 0 4px 8px rgba(0, 0, 0, 0.04);
+  --shadow-xl: 0 20px 60px rgba(0, 0, 0, 0.16), 0 8px 16px rgba(0, 0, 0, 0.06);
+  --shadow-dialog: 0 32px 100px rgba(0, 0, 0, 0.22), 0 8px 24px rgba(0, 0, 0, 0.1);
+  --shadow-card-hover: 0 16px 48px rgba(79, 70, 229, 0.18), 0 4px 12px rgba(0, 0, 0, 0.06);
+  --shadow-glow-primary: 0 0 40px rgba(79, 70, 229, 0.15);
+  --shadow-glow-accent: 0 0 40px rgba(124, 58, 237, 0.12);
 
-  /* Gradients — sophisticated, not flashy */
-  --gradient-primary: linear-gradient(135deg, #5b6bf6 0%, #7c8af8 100%);
-  --gradient-header: linear-gradient(135deg, #404ce8 0%, #5b6bf6 50%, #7c8af8 100%);
-  --gradient-hero: linear-gradient(135deg, #5b6bf6 0%, #7c6cf6 100%);
+  /* ═══ Gradients — bold, premium ═══ */
+  --gradient-primary: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+  --gradient-header: linear-gradient(135deg, #312e81 0%, #4f46e5 40%, #7c3aed 100%);
+  --gradient-hero: linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #a855f7 100%);
+  --gradient-card-shine: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0) 50%);
 
   /* Layout */
-  --header-height: 56px;
-  --sidebar-width: 240px;
-  --sidebar-collapsed-width: 64px;
+  --header-height: 60px;
+  --sidebar-width: 250px;
+  --sidebar-collapsed-width: 68px;
 
-  /* Transitions — Apple's spring feel */
-  --transition-fast: 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  --transition-normal: 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  --transition-slow: 0.5s cubic-bezier(0.23, 1, 0.32, 1);
+  /* ═══ Transitions — spring physics ═══ */
+  --transition-fast: 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+  --transition-normal: 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  --transition-slow: 0.5s cubic-bezier(0.22, 1, 0.36, 1);
 
-  /* Typography — SF Pro / Inter */
-  --font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", "Helvetica Neue", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+  /* ═══ Typography — Inter + SF ═══ */
+  --font-family: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", "Fira Code", ui-monospace, Menlo, Consolas, monospace;
 
-  /* Element Plus overrides */
-  --el-color-primary: #5b6bf6;
-  --el-color-primary-light-3: #7c8af8;
-  --el-color-primary-light-5: #aab3fb;
-  --el-color-primary-light-7: #d0d6fc;
-  --el-color-primary-light-8: #e4e8fe;
-  --el-color-primary-light-9: #f3f4fd;
-  --el-color-primary-dark-2: #4454e0;
+  /* ═══ Element Plus overrides ═══ */
+  --el-color-primary: #4f46e5;
+  --el-color-primary-light-3: #6366f1;
+  --el-color-primary-light-5: #818cf8;
+  --el-color-primary-light-7: #c7d2fe;
+  --el-color-primary-light-8: #ddd6fe;
+  --el-color-primary-light-9: #ede9fe;
+  --el-color-primary-dark-2: #3730a3;
 }
 
-/* ---------- Dark theme — Apple dark mode palette ---------- */
+/* ═══════════════════════════════════════
+   Dark theme — Apple dark mode
+   ═══════════════════════════════════════ */
 [data-theme="dark"] {
-  --color-primary: #7c8af8;
-  --color-primary-light: #aab3fb;
-  --color-primary-dark: #5b6bf6;
+  --color-primary: #818cf8;
+  --color-primary-light: #a5b4fc;
+  --color-primary-dark: #6366f1;
 
-  --bg-page: #000000;
+  --bg-page: #030304;
   --bg-page-pattern:
-    radial-gradient(ellipse 600px 400px at 15% 10%, rgba(91, 107, 246, 0.07) 0%, transparent 70%),
-    radial-gradient(ellipse 500px 350px at 85% 90%, rgba(124, 108, 246, 0.05) 0%, transparent 70%);
-  --bg-card: #1c1c1e;
-  --bg-column: #141416;
-  --bg-hover: #2c2c2e;
-  --bg-sidebar: #08080a;
-  --bg-sidebar-hover: #161618;
-  --bg-sidebar-active: rgba(124, 138, 248, 0.18);
+    radial-gradient(ellipse 800px 600px at 10% 0%, rgba(79, 70, 229, 0.1) 0%, transparent 60%),
+    radial-gradient(ellipse 600px 500px at 90% 100%, rgba(124, 58, 237, 0.06) 0%, transparent 55%);
+  --bg-card: #111114;
+  --bg-column: #0a0a0d;
+  --bg-hover: #1a1a1f;
+  --bg-sidebar: #060608;
+  --bg-sidebar-hover: #12121a;
+  --bg-sidebar-active: rgba(129, 140, 248, 0.15);
 
-  --text-primary: #f5f5f7;
-  --text-regular: #d1d1d6;
-  --text-secondary: #86868b;
-  --text-placeholder: #48484a;
-  --text-sidebar: #78788a;
+  --text-primary: #f1f5f9;
+  --text-regular: #cbd5e1;
+  --text-secondary: #64748b;
+  --text-placeholder: #334155;
+  --text-sidebar: #6b7280;
   --text-sidebar-active: #ffffff;
 
-  --border-color: #38383a;
-  --border-color-light: #222225;
+  --border-color: #1e293b;
+  --border-color-light: #0f172a;
 
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.25);
-  --shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.3);
-  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.6), 0 4px 12px rgba(0, 0, 0, 0.35);
-  --shadow-dialog: 0 24px 80px rgba(0, 0, 0, 0.65), 0 4px 12px rgba(0, 0, 0, 0.4);
-  --shadow-card-hover: 0 8px 28px rgba(91, 107, 246, 0.25);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.5), 0 2px 4px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.6), 0 4px 8px rgba(0, 0, 0, 0.4);
+  --shadow-xl: 0 20px 60px rgba(0, 0, 0, 0.7), 0 8px 16px rgba(0, 0, 0, 0.45);
+  --shadow-dialog: 0 32px 100px rgba(0, 0, 0, 0.8), 0 8px 24px rgba(0, 0, 0, 0.5);
+  --shadow-card-hover: 0 16px 48px rgba(129, 140, 248, 0.2), 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-glow-primary: 0 0 60px rgba(129, 140, 248, 0.12);
+  --shadow-glow-accent: 0 0 60px rgba(167, 139, 250, 0.1);
 
-  --gradient-header: linear-gradient(135deg, #2a2e98 0%, #404ce8 50%, #5b6bf6 100%);
-  --gradient-hero: linear-gradient(135deg, #404ce8 0%, #6e56e8 100%);
+  --gradient-header: linear-gradient(135deg, #1e1b4b 0%, #312e81 40%, #4f46e5 100%);
+  --gradient-hero: linear-gradient(135deg, #312e81 0%, #4f46e5 50%, #7c3aed 100%);
 
-  --el-bg-color: #1c1c1e;
-  --el-bg-color-overlay: #2c2c2e;
-  --el-fill-color-blank: #1c1c1e;
-  --el-text-color-primary: #f5f5f7;
-  --el-text-color-regular: #d1d1d6;
-  --el-border-color: #38383a;
-  --el-border-color-light: #222225;
+  --el-bg-color: #111114;
+  --el-bg-color-overlay: #1a1a1f;
+  --el-fill-color-blank: #111114;
+  --el-text-color-primary: #f1f5f9;
+  --el-text-color-regular: #cbd5e1;
+  --el-border-color: #1e293b;
+  --el-border-color-light: #0f172a;
 }

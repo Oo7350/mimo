@@ -305,7 +305,154 @@ watch(() => route.path, () => checkTourTrigger())
 </script>
 
 <style scoped lang="scss">
+/* ═══════════════════════════════════════
+   Header — Frosted Glass
+   ═══════════════════════════════════════ */
+.mimo-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 28px;
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(24px) saturate(1.8);
+  -webkit-backdrop-filter: blur(24px) saturate(1.8);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  z-index: 100;
+  position: sticky;
+  top: 0;
+  transition: background 0.3s ease;
+
+  :deep(.dark) &,
+  .dark & {
+    background: rgba(15, 17, 28, 0.78);
+    border-bottom-color: rgba(255, 255, 255, 0.06);
+  }
+
+  &__left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex: 1;
+  }
+
+  &__logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    transition: opacity 0.2s ease;
+
+    &:hover { opacity: 0.8; }
+  }
+
+  &__logo-icon {
+    width: 32px;
+    height: 32px;
+    filter: drop-shadow(0 2px 6px rgba(79, 70, 229, 0.3));
+  }
+
+  &__logo span {
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: -0.8px;
+    background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  &__center {
+    flex: 0 0 auto;
+  }
+
+  &__right {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    flex: 1;
+    justify-content: flex-end;
+  }
+
+  &__theme-toggle,
+  &__bell {
+    cursor: pointer;
+    color: var(--text-secondary);
+    transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+    padding: 6px;
+    border-radius: 10px;
+
+    &:hover {
+      color: var(--color-primary);
+      background: rgba(79, 70, 229, 0.08);
+      transform: scale(1.1);
+    }
+    &:active { transform: scale(0.95); }
+  }
+
+  &__user {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    padding: 5px 14px 5px 5px;
+    border-radius: 12px;
+    transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text-primary);
+
+    &:hover {
+      background: rgba(79, 70, 229, 0.06);
+    }
+
+    .el-avatar {
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+  }
+}
+
+/* Command trigger */
+.cmd-trigger {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 18px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  color: var(--text-placeholder);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  min-width: 220px;
+
+  &:hover {
+    border-color: rgba(79, 70, 229, 0.3);
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.08);
+    transform: translateY(-1px);
+  }
+
+  kbd {
+    margin-left: auto;
+    background: var(--bg-page);
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    font-family: var(--font-mono);
+    border: 1px solid var(--border-color);
+  }
+}
+
+/* ═══════════════════════════════════════
+   Sidebar — Premium Dark
+   ═══════════════════════════════════════ */
 .mimo-sidebar {
+  background: #0f1117;
+  border-right: 1px solid rgba(255, 255, 255, 0.04);
+  transition: width 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  overflow: hidden;
+
   &__wrapper {
     display: flex;
     flex-direction: column;
@@ -316,19 +463,108 @@ watch(() => route.path, () => checkTourTrigger())
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
-    padding: 8px 0;
+    padding: 12px 8px;
+    border-right: none !important;
+    background: transparent !important;
+
+    :deep(.el-menu-item),
+    :deep(.el-sub-menu__title) {
+      color: rgba(255, 255, 255, 0.55);
+      border-radius: 12px;
+      margin-bottom: 4px;
+      height: 44px;
+      line-height: 44px;
+      font-weight: 550;
+      font-size: 14px;
+      letter-spacing: -0.1px;
+      transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+
+      .el-icon {
+        font-size: 18px;
+        transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+      }
+
+      &:hover {
+        background: rgba(255, 255, 255, 0.06);
+        color: rgba(255, 255, 255, 0.85);
+
+        .el-icon { transform: scale(1.1); }
+      }
+    }
+
+    :deep(.el-menu-item.is-active) {
+      background: rgba(79, 70, 229, 0.2) !important;
+      color: #a5b4fc !important;
+      font-weight: 700;
+      box-shadow: inset 0 0 0 1px rgba(79, 70, 229, 0.3);
+
+      .el-icon { color: #a5b4fc; }
+    }
+
+    :deep(.el-sub-menu .el-menu-item) {
+      padding-left: 52px !important;
+      height: 40px;
+      line-height: 40px;
+      font-size: 13px;
+    }
+  }
+
+  &__toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    color: rgba(255, 255, 255, 0.3);
+    cursor: pointer;
+    transition: all 0.25s ease;
+    border-top: 1px solid rgba(255, 255, 255, 0.04);
+
+    &:hover {
+      color: rgba(255, 255, 255, 0.7);
+      background: rgba(255, 255, 255, 0.04);
+    }
   }
 }
 
+/* ═══════════════════════════════════════
+   Content
+   ═══════════════════════════════════════ */
+.mimo-content {
+  background: var(--bg-page);
+  padding: 28px 32px;
+  min-height: calc(100vh - 56px);
+}
+
+/* ═══════════════════════════════════════
+   Notification Dropdown
+   ═══════════════════════════════════════ */
 .notification-dropdown {
+  position: absolute;
+  top: 52px;
+  right: 60px;
+  width: 380px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-xl);
+  z-index: 200;
+  overflow: hidden;
+  animation: notif-enter 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+
+  @keyframes notif-enter {
+    from { opacity: 0; transform: translateY(-8px) scale(0.97); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
   &__header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 12px 16px 8px;
-    font-weight: 600;
-    font-size: 14px;
+    padding: 16px 20px 12px;
+    font-weight: 700;
+    font-size: 15px;
     border-bottom: 1px solid var(--border-color-light);
+    letter-spacing: -0.2px;
   }
 
   &__list {
@@ -337,7 +573,7 @@ watch(() => route.path, () => checkTourTrigger())
   }
 
   &__empty {
-    padding: 24px 16px;
+    padding: 28px 16px;
     text-align: center;
     color: var(--text-secondary);
     font-size: 14px;
@@ -346,26 +582,27 @@ watch(() => route.path, () => checkTourTrigger())
 
 .notif-item {
   display: flex;
-  padding: 12px 16px;
+  padding: 14px 20px;
   cursor: pointer;
-  transition: background var(--transition-fast);
+  transition: background 0.2s ease;
   border-bottom: 1px solid var(--border-color-light);
-  gap: 10px;
+  gap: 12px;
 
   &:last-child { border-bottom: none; }
   &:hover { background: var(--bg-hover); }
 
   &--unread {
-    background: rgba(79, 110, 246, 0.04);
+    background: rgba(79, 70, 229, 0.04);
   }
 
   &__dot {
-    width: 6px;
-    height: 6px;
+    width: 7px;
+    height: 7px;
     border-radius: 50%;
     background: var(--color-primary);
-    margin-top: 6px;
+    margin-top: 7px;
     flex-shrink: 0;
+    box-shadow: 0 0 6px rgba(79, 70, 229, 0.4);
   }
 
   &__content {
@@ -375,20 +612,37 @@ watch(() => route.path, () => checkTourTrigger())
 
   &__title {
     font-size: 13px;
-    font-weight: 600;
+    font-weight: 700;
     color: var(--text-primary);
+    letter-spacing: -0.1px;
   }
 
   &__text {
     font-size: 12px;
     color: var(--text-secondary);
-    margin-top: 2px;
+    margin-top: 3px;
+    line-height: 1.5;
   }
 
   &__time {
     font-size: 11px;
     color: var(--text-placeholder);
-    margin-top: 4px;
+    margin-top: 5px;
+  }
+}
+
+/* Project switcher */
+.project-switcher {
+  :deep(.el-select) {
+    .el-input__wrapper {
+      border-radius: 10px;
+      box-shadow: 0 0 0 1px var(--border-color);
+      transition: all 0.25s ease;
+
+      &:hover {
+        box-shadow: 0 0 0 1px rgba(79, 70, 229, 0.3);
+      }
+    }
   }
 }
 </style>

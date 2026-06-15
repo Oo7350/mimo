@@ -1,13 +1,16 @@
 <template>
   <div :class="['stat-card', { 'stat-card--loading': loading }]">
     <div v-if="loading" class="stat-card__skeleton">
-      <SkeletonLoader variant="card" height="88px" />
+      <SkeletonLoader variant="card" height="100px" />
     </div>
     <div v-else class="stat-card__content">
       <div class="stat-card__accent" :style="{ background: accentColor }" />
+      <div class="stat-card__shine" />
       <div class="stat-card__inner">
-        <div class="stat-card__icon" :style="{ background: iconBg }">
-          <el-icon :size="20"><component :is="icon" /></el-icon>
+        <div class="stat-card__icon-wrap" :style="{ '--glow': accentColor }">
+          <div class="stat-card__icon" :style="{ background: iconBg }">
+            <el-icon :size="22"><component :is="icon" /></el-icon>
+          </div>
         </div>
         <div class="stat-card__info">
           <div class="stat-card__value" :style="{ color: accentColor }">
@@ -41,13 +44,14 @@ function animateValue(target: number) {
   cancelAnimationFrame(animFrame)
   const start = displayValue.value
   const diff = target - start
-  const duration = 600
+  const duration = 800
   const startTime = performance.now()
 
   function step(now: number) {
     const elapsed = now - startTime
     const progress = Math.min(elapsed / duration, 1)
-    const eased = 1 - Math.pow(1 - progress, 3) // ease-out cubic
+    // Spring-like ease-out
+    const eased = 1 - Math.pow(1 - progress, 4)
     displayValue.value = Math.round(start + diff * eased)
     if (progress < 1) {
       animFrame = requestAnimationFrame(step)
@@ -77,16 +81,25 @@ watch(() => props.loading, (ld) => {
   border: 1px solid var(--border-color);
   position: relative;
   overflow: hidden;
-  transition: transform var(--transition-normal), box-shadow var(--transition-normal);
+  transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
 
   &:hover {
-    transform: translateY(-4px) scale(1.01);
-    box-shadow: var(--shadow-lg);
-    border-color: rgba(91,107,246,0.15);
+    transform: translateY(-6px) scale(1.02);
+    box-shadow: var(--shadow-card-hover);
+    border-color: rgba(79, 70, 229, 0.2);
 
     .stat-card__accent {
-      height: 5px;
+      height: 6px;
       opacity: 1;
+    }
+
+    .stat-card__icon-wrap {
+      transform: scale(1.1) rotate(-5deg);
+    }
+
+    .stat-card__shine {
+      opacity: 1;
+      transform: translateX(100%);
     }
   }
 
@@ -97,32 +110,45 @@ watch(() => props.loading, (ld) => {
     width: 100%;
     height: 3px;
     border-radius: var(--border-radius-lg) var(--border-radius-lg) 0 0;
-    transition: all var(--transition-normal);
-    opacity: 0.85;
+    transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+    opacity: 0.8;
+  }
+
+  // Shine sweep on hover
+  &__shine {
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.06), transparent);
+    transition: transform 0.6s ease, opacity 0.6s ease;
+    opacity: 0;
+    pointer-events: none;
   }
 
   &__inner {
     display: flex;
     align-items: center;
-    gap: 18px;
-    padding: 24px;
+    gap: 20px;
+    padding: 26px;
+  }
+
+  &__icon-wrap {
+    transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+    filter: drop-shadow(0 4px 12px var(--glow, rgba(79, 70, 229, 0.3)));
   }
 
   &__icon {
-    width: 48px;
-    height: 48px;
-    border-radius: 14px;
+    width: 52px;
+    height: 52px;
+    border-radius: 16px;
     display: flex;
     align-items: center;
     justify-content: center;
     color: #fff;
     flex-shrink: 0;
-    box-shadow: 0 3px 10px rgba(0,0,0,0.12);
-    transition: transform var(--transition-normal);
-  }
-
-  &:hover &__icon {
-    transform: scale(1.08) rotate(-2deg);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
   }
 
   &__info {
@@ -130,19 +156,19 @@ watch(() => props.loading, (ld) => {
   }
 
   &__value {
-    font-size: 36px;
+    font-size: 40px;
     font-weight: 800;
-    line-height: 1.05;
+    line-height: 1;
     font-variant-numeric: tabular-nums;
-    letter-spacing: -1.2px;
-    transition: color var(--transition-fast);
+    letter-spacing: -1.5px;
+    transition: color 0.2s ease;
   }
 
   &__label {
     font-size: 13px;
     color: var(--text-secondary);
-    margin-top: 5px;
-    font-weight: 550;
+    margin-top: 6px;
+    font-weight: 600;
     letter-spacing: -0.1px;
   }
 
