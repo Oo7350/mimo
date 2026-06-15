@@ -1,108 +1,328 @@
 <template>
   <div class="profile-page">
-    <PageHeader title="个人设置" subtitle="管理你的账号信息与偏好" />
-
-    <!-- 个人信息 Hero -->
-    <div class="profile-hero">
-      <div
-        class="profile-hero__avatar profile-hero__avatar--uploadable"
-        :style="avatarStyle"
-        @click="triggerAvatarUpload"
-      >
-        <img v-if="avatarPreview" :src="avatarPreview" alt="avatar" />
-        <template v-else>{{ (profile?.username || '?').charAt(0).toUpperCase() }}</template>
-        <div class="profile-hero__avatar-overlay">
-          <el-icon><Camera /></el-icon>
-          更换头像
+    <!-- 左侧：个人信息 + 仪表盘 -->
+    <aside class="profile-sidebar">
+      <!-- Hero 卡片 -->
+      <div class="sidebar-hero">
+        <div
+          class="sidebar-hero__avatar"
+          :style="avatarStyle"
+          @click="triggerAvatarUpload"
+        >
+          <img v-if="avatarPreview" :src="avatarPreview" alt="avatar" />
+          <template v-else>{{ (profile?.username || '?').charAt(0).toUpperCase() }}</template>
+          <div class="sidebar-hero__avatar-overlay">
+            <el-icon><Camera /></el-icon>
+            更换
+          </div>
         </div>
-      </div>
-      <input ref="avatarInput" type="file" accept="image/*" style="display: none" @change="handleAvatarChange" />
-      <div>
-        <div class="profile-hero__name">{{ profile?.username || '加载中...' }}</div>
-        <div class="profile-hero__meta">
-          {{ profile?.email }}
-          ·
+        <input ref="avatarInput" type="file" accept="image/*" style="display:none" @change="handleAvatarChange" />
+
+        <h2 class="sidebar-hero__name">{{ profile?.username || '加载中...' }}</h2>
+        <p class="sidebar-hero__email">{{ profile?.email }}</p>
+
+        <div class="sidebar-hero__badges">
           <el-tag
             size="small"
             :type="profile?.role === 'ROLE_ADMIN' ? 'danger' : 'info'"
             effect="plain"
-            style="margin-left: 4px"
+            round
           >
-            {{ profile?.role === 'ROLE_ADMIN' ? '系统管理员' : '普通成员' }}
+            {{ profile?.role === 'ROLE_ADMIN' ? '管理员' : '成员' }}
           </el-tag>
-          <UserBadge v-if="userLevel" :level="userLevel" size="medium" style="margin-left: 6px" />
+          <UserBadge v-if="userLevel" :level="userLevel" size="small" />
+        </div>
+
+        <div class="sidebar-hero__meta">
+          <span>加入于 {{ formatDate(profile?.createdAt) }}</span>
         </div>
       </div>
-      <div class="profile-hero__actions">
-        <button class="profile-theme-btn" @click="appStore.toggleDarkMode()">
-          <el-icon><component :is="appStore.darkMode ? Sunny : Moon" /></el-icon>
-          {{ appStore.darkMode ? '浅色模式' : '深色模式' }}
-        </button>
-      </div>
-    </div>
 
-    <el-row :gutter="20">
-      <el-col :xs="24" :md="12">
+      <!-- 迷你仪表盘 -->
+      <div class="sidebar-dashboard">
+        <div class="sidebar-dashboard__title">个人概览</div>
+        <div class="sidebar-dashboard__grid">
+          <div class="dash-stat">
+            <div class="dash-stat__icon" style="background: rgba(99,102,241,0.12); color: #6366f1">
+              <el-icon><FolderOpened /></el-icon>
+            </div>
+            <div class="dash-stat__info">
+              <span class="dash-stat__value">{{ stats.projectCount }}</span>
+              <span class="dash-stat__label">参与项目</span>
+            </div>
+          </div>
+          <div class="dash-stat">
+            <div class="dash-stat__icon" style="background: rgba(16,185,129,0.12); color: #10b981">
+              <el-icon><CircleCheck /></el-icon>
+            </div>
+            <div class="dash-stat__info">
+              <span class="dash-stat__value">{{ stats.completedCount }}</span>
+              <span class="dash-stat__label">已完成</span>
+            </div>
+          </div>
+          <div class="dash-stat">
+            <div class="dash-stat__icon" style="background: rgba(245,158,11,0.12); color: #f59e0b">
+              <el-icon><Loading /></el-icon>
+            </div>
+            <div class="dash-stat__info">
+              <span class="dash-stat__value">{{ stats.inProgressCount }}</span>
+              <span class="dash-stat__label">进行中</span>
+            </div>
+          </div>
+          <div class="dash-stat">
+            <div class="dash-stat__icon" style="background: rgba(239,68,68,0.12); color: #ef4444">
+              <el-icon><Warning /></el-icon>
+            </div>
+            <div class="dash-stat__info">
+              <span class="dash-stat__value">{{ stats.bugCount }}</span>
+              <span class="dash-stat__label">缺陷数</span>
+            </div>
+          </div>
+          <div class="dash-stat dash-stat--wide">
+            <div class="dash-stat__icon" style="background: rgba(139,92,246,0.12); color: #8b5cf6">
+              <el-icon><TrendCharts /></el-icon>
+            </div>
+            <div class="dash-stat__info">
+              <span class="dash-stat__value">{{ stats.sprintProgress }}%</span>
+              <span class="dash-stat__label">Sprint 完成率</span>
+            </div>
+            <div class="dash-stat__bar">
+              <div class="dash-stat__bar-fill" :style="{ width: stats.sprintProgress + '%' }"></div>
+            </div>
+          </div>
+          <div class="dash-stat dash-stat--wide">
+            <div class="dash-stat__icon" style="background: rgba(6,182,212,0.12); color: #06b6d4">
+              <el-icon><Timer /></el-icon>
+            </div>
+            <div class="dash-stat__info">
+              <span class="dash-stat__value">{{ stats.thisWeekActivity }}</span>
+              <span class="dash-stat__label">本周活跃</span>
+            </div>
+            <div class="dash-stat__sparkline">
+              <svg viewBox="0 0 40 14" preserveAspectRatio="none"><polyline points="0,12 7,10 14,6 21,8 28,3 35,5 40,2" fill="none" stroke="#06b6d4" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 主题切换 -->
+      <button class="sidebar-theme-btn" @click="appStore.toggleDarkMode()">
+        <el-icon><component :is="appStore.darkMode ? Sunny : Moon" /></el-icon>
+        {{ appStore.darkMode ? '浅色模式' : '深色模式' }}
+      </button>
+    </aside>
+
+    <!-- 右侧：Tab 内容区 -->
+    <main class="profile-main">
+      <!-- Tab 导航 -->
+      <div class="profile-tabs">
+        <button
+          v-for="tab in tabs"
+          :key="tab.key"
+          class="profile-tabs__item"
+          :class="{ 'is-active': activeTab === tab.key }"
+          @click="activeTab = tab.key"
+        >
+          <el-icon><component :is="tab.icon" /></el-icon>
+          {{ tab.label }}
+        </button>
+        <div class="profile-tabs__indicator" :style="indicatorStyle"></div>
+      </div>
+
+      <!-- Tab: 基本信息 -->
+      <div v-show="activeTab === 'basic'" class="tab-panel">
         <div class="settings-card">
           <div class="settings-card__header">
             <div class="settings-card__header-icon" style="background: rgba(99,102,241,0.12); color: var(--color-primary)">
               <el-icon><User /></el-icon>
             </div>
-            基本资料
+            基本信息
           </div>
           <div class="settings-card__body">
-            <el-form :model="profileForm" label-position="top">
-              <el-form-item label="用户名">
-                <el-input v-model="profileForm.username" placeholder="用户名" prefix-icon="User" />
-              </el-form-item>
-              <el-form-item label="邮箱">
-                <el-input v-model="profileForm.email" placeholder="邮箱" prefix-icon="Message" />
-              </el-form-item>
-              <el-form-item label="注册时间">
-                <el-input :model-value="profile?.createdAt || '-'" disabled />
-              </el-form-item>
-              <el-button type="primary" :loading="profileLoading" @click="handleUpdateProfile">
+            <el-form :model="profileForm" label-position="top" class="profile-form">
+              <div class="form-row">
+                <el-form-item label="用户名">
+                  <el-input v-model="profileForm.username" placeholder="用户名">
+                    <template #prefix><el-icon><User /></el-icon></template>
+                  </el-input>
+                </el-form-item>
+                <el-form-item label="邮箱地址">
+                  <el-input v-model="profileForm.email" placeholder="邮箱">
+                    <template #prefix><el-icon><Message /></el-icon></template>
+                  </el-input>
+                </el-form-item>
+              </div>
+              <div class="form-row form-row--single">
+                <el-form-item label="注册时间">
+                  <el-input :model-value="formatDate(profile?.createdAt)" disabled>
+                    <template #prefix><el-icon><Calendar /></el-icon></template>
+                  </el-input>
+                </el-form-item>
+                <el-form-item label="角色">
+                  <el-input :model-value="profile?.role === 'ROLE_ADMIN' ? '系统管理员' : '普通成员'" disabled>
+                    <template #prefix><el-icon><UserFilled /></el-icon></template>
+                  </el-input>
+                </el-form-item>
+              </div>
+              <el-button type="primary" :loading="profileLoading" round @click="handleUpdateProfile">
                 保存修改
               </el-button>
             </el-form>
           </div>
         </div>
-      </el-col>
+      </div>
 
-      <el-col :xs="24" :md="12">
+      <!-- Tab: 安全设置 -->
+      <div v-show="activeTab === 'security'" class="tab-panel">
         <div class="settings-card">
           <div class="settings-card__header">
             <div class="settings-card__header-icon" style="background: rgba(245,158,11,0.12); color: var(--color-warning)">
               <el-icon><Lock /></el-icon>
             </div>
-            修改密码
+            安全设置
           </div>
           <div class="settings-card__body">
-            <el-form :model="passwordForm" label-position="top">
-              <el-form-item label="原密码" required>
-                <el-input v-model="passwordForm.oldPassword" type="password" show-password placeholder="请输入原密码" prefix-icon="Lock" />
+            <div class="security-tip">
+              <el-icon><InfoFilled /></el-icon>
+              定期更换密码可有效保障账号安全，建议使用 12 位以上混合字符密码。
+            </div>
+            <el-form :model="passwordForm" label-position="top" class="profile-form">
+              <el-form-item label="当前密码" required>
+                <el-input v-model="passwordForm.oldPassword" type="password" show-password placeholder="请输入当前密码">
+                  <template #prefix><el-icon><Key /></el-icon></template>
+                </el-input>
               </el-form-item>
               <el-form-item label="新密码" required>
-                <el-input v-model="passwordForm.newPassword" type="password" show-password placeholder="至少 6 位" prefix-icon="Lock" />
+                <el-input v-model="passwordForm.newPassword" type="password" show-password placeholder="至少 6 位字符" @input="calcStrength">
+                  <template #prefix><el-icon><Key /></el-icon></template>
+                </el-input>
+                <div class="pwd-strength">
+                  <span class="pwd-strength__label">{{ strengthLabel }}</span>
+                  <div class="pwd-strength__bar">
+                    <div
+                      v-for="i in 4"
+                      :key="i"
+                      class="pwd-strength__seg"
+                      :class="[strengthClass, { 'is-filled': i <= strengthLevel }]"
+                    ></div>
+                  </div>
+                </div>
               </el-form-item>
-              <el-form-item label="确认密码" required>
-                <el-input v-model="passwordForm.confirmPassword" type="password" show-password placeholder="再次输入新密码" prefix-icon="Lock" />
+              <el-form-item label="确认新密码" required>
+                <el-input v-model="passwordForm.confirmPassword" type="password" show-password placeholder="再次输入新密码">
+                  <template #prefix><el-icon><Key /></el-icon></template>
+                </el-input>
               </el-form-item>
-              <el-button type="warning" :loading="passwordLoading" @click="handleChangePassword">
+              <el-button type="warning" :loading="passwordLoading" round @click="handleChangePassword">
                 修改密码
               </el-button>
             </el-form>
           </div>
         </div>
-      </el-col>
-    </el-row>
+      </div>
+
+      <!-- Tab: 我的动态 -->
+      <div v-show="activeTab === 'activity'" class="tab-panel">
+        <div class="settings-card settings-card--full">
+          <div class="settings-card__header">
+            <div class="settings-card__header-icon" style="background: rgba(16,185,129,0.12); color: #10b981">
+              <el-icon><Clock /></el-icon>
+            </div>
+            最近动态
+          </div>
+          <div class="settings-card__body activity-list">
+            <div v-if="activities.length" class="activity-timeline">
+              <div v-for="(item, i) in activities" :key="i" class="activity-item">
+                <div class="activity-item__dot" :style="{ background: item.color }"></div>
+                <div class="activity-item__body">
+                  <p class="activity-item__text" v-html="item.text"></p>
+                  <span class="activity-item__time">{{ item.time }}</span>
+                </div>
+              </div>
+            </div>
+            <div v-else class="empty-state">
+              <el-icon :size="48"><Box /></el-icon>
+              <p>暂无动态记录</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab: 通知偏好 -->
+      <div v-show="activeTab === 'notifications'" class="tab-panel">
+        <div class="settings-card">
+          <div class="settings-card__header">
+            <div class="settings-card__header-icon" style="background: rgba(236,72,153,0.12); color: #ec4899">
+              <el-icon><Bell /></el-icon>
+            </div>
+            通知偏好
+          </div>
+          <div class="settings-card__body">
+            <div class="pref-section">
+              <h4 class="pref-section__title">邮件通知</h4>
+              <div class="pref-item">
+                <div class="pref-item__text">
+                  <strong>任务分配给我时</strong>
+                  <span>当有新任务指派给你时发送邮件提醒</span>
+                </div>
+                <el-switch v-model="prefs.emailOnAssign" />
+              </div>
+              <div class="pref-item">
+                <div class="pref-item__text">
+                  <strong>任务状态变更时</strong>
+                  <span>关注任务的状态发生变化时通知你</span>
+                </div>
+                <el-switch v-model="prefs.emailOnStatusChange" />
+              </div>
+              <div class="pref-item">
+                <div class="pref-item__text">
+                  <strong>缺陷指派给我时</strong>
+                  <span>收到新缺陷分配时立即通知</span>
+                </div>
+                <el-switch v-model="prefs.emailOnBugAssign" />
+              </div>
+              <div class="pref-item">
+                <div class="pref-item__text">
+                  <strong>审批需要我处理时</strong>
+                  <span>有待审批事项需要你操作时提醒</span>
+                </div>
+                <el-switch v-model="prefs.emailOnApproval" />
+              </div>
+            </div>
+            <div class="pref-section">
+              <h4 class="pref-section__title">浏览器通知</h4>
+              <div class="pref-item">
+                <div class="pref-item__text">
+                  <strong>允许桌面通知</strong>
+                  <span>在浏览器中显示实时推送通知</span>
+                </div>
+                <el-switch v-model="prefs.browserPush" />
+              </div>
+              <div class="pref-item">
+                <div class="pref-item__text">
+                  <strong>提示音效</strong>
+                  <span>收到通知时播放提示音</span>
+                </div>
+                <el-switch v-model="prefs.soundEffect" />
+              </div>
+            </div>
+            <el-button type="primary" round @click="savePrefs">保存偏好</el-button>
+          </div>
+        </div>
+      </div>
+    </main>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, reactive, computed } from "vue"
+import { ref, reactive, computed, onMounted } from "vue"
 import { ElMessage } from "element-plus"
-import { Moon, Sunny, Camera } from "@element-plus/icons-vue"
+import {
+  Moon, Sunny, Camera, User, Lock, Message, Calendar,
+  UserFilled, Key, InfoFilled, Clock, Bell, Box,
+  FolderOpened, CircleCheck, Loading, Warning,
+  TrendCharts, Timer
+} from "@element-plus/icons-vue"
 import { getUserProfile, updateUserProfile, changePassword } from "@/api/user"
 import { getMyLevel } from "@/api/user-level"
 import { useAppStore } from "@/store/app"
@@ -116,35 +336,81 @@ const userLevel = ref<any>(null)
 const profileLoading = ref(false)
 const passwordLoading = ref(false)
 const avatarInput = ref<HTMLInputElement | null>(null)
-const avatarPreview = ref<string>("")
+const avatarPreview = ref("")
+const activeTab = ref("basic")
 
 const avatarStyle = computed(() => {
   if (avatarPreview.value) return {}
   return { background: avatarGradient(profile?.value?.username || 'U') }
 })
 
+// Tabs
+const tabs = [
+  { key: "basic", label: "基本信息", icon: "User" },
+  { key: "security", label: "安全设置", icon: "Lock" },
+  { key: "activity", label: "我的动态", icon: "Clock" },
+  { key: "notifications", label: "通知偏好", icon: "Bell" },
+]
+
+// Indicator position
+const indicatorStyle = computed(() => {
+  const idx = tabs.findIndex(t => t.key === activeTab.value)
+  return { transform: `translateX(${idx * 100}%)` }
+})
+
+// Stats (mock data - replace with real API calls later)
+const stats = reactive({
+  projectCount: 0,
+  completedCount: 0,
+  inProgressCount: 0,
+  bugCount: 0,
+  sprintProgress: 0,
+  thisWeekActivity: 0,
+})
+
+// Activities (mock data)
+const activities = ref<any[]>([])
+
+// Notification prefs
+const prefs = reactive({
+  emailOnAssign: true,
+  emailOnStatusChange: true,
+  emailOnBugAssign: true,
+  emailOnApproval: true,
+  browserPush: false,
+  soundEffect: true,
+})
+
+// Forms
 const profileForm = reactive({ username: "", email: "" })
 const passwordForm = reactive({ oldPassword: "", newPassword: "", confirmPassword: "" })
 
-function triggerAvatarUpload() {
-  avatarInput.value?.click()
+// Password strength
+const strengthLevel = ref(0)
+const strengthLabel = computed(() => ["极弱", "弱", "一般", "强", "很强"][strengthLevel.value])
+const strengthClass = computed(() => ["is-weak", "is-weak", "is-fair", "is-good", "is-strong"][strengthLevel.value])
+
+function calcStrength(val: string) {
+  let s = 0
+  if (val.length >= 6) s++
+  if (val.length >= 10) s++
+  if (/[A-Z]/.test(val)) s++
+  if (/[0-9]/.test(val)) s++
+  if (/[^A-Za-z0-9]/.test(val)) s++
+  strengthLevel.value = Math.min(4, Math.floor(s / 1.25))
 }
+
+function triggerAvatarUpload() { avatarInput.value?.click() }
 
 async function handleAvatarChange(e: Event) {
   const input = e.target as HTMLInputElement
   const file = input.files?.[0]
   if (!file) return
-  // 限制大小 2MB
-  if (file.size > 2 * 1024 * 1024) {
-    ElMessage.warning("图片大小不能超过 2MB")
-    return
-  }
-  // 转为 base64 预览并存储
+  if (file.size > 2 * 1024 * 1024) { ElMessage.warning("图片大小不能超过 2MB"); return }
   const reader = new FileReader()
   reader.onload = async () => {
     const base64 = reader.result as string
     avatarPreview.value = base64
-    // 自动保存头像
     try {
       await updateUserProfile({ avatar: base64 })
       ElMessage.success("头像已更新")
@@ -157,13 +423,35 @@ async function handleAvatarChange(e: Event) {
 }
 
 async function fetchProfile() {
-  const res = await getUserProfile()
-  profile.value = res.data
-  profileForm.username = profile.value?.username || ""
-  profileForm.email = profile.value?.email || ""
-  avatarPreview.value = profile.value?.avatar || ""
-  // 获取铭牌
+  try {
+    const res = await getUserProfile()
+    profile.value = res.data
+    profileForm.username = profile.value?.username || ""
+    profileForm.email = profile.value?.email || ""
+    avatarPreview.value = profile.value?.avatar || ""
+  } catch { /* */ }
+
+  // Fetch level badge
   try { const lr = await getMyLevel(); userLevel.value = lr.data } catch { /* */ }
+
+  // Mock stats (replace with real API)
+  Object.assign(stats, {
+    projectCount: Math.floor(Math.random() * 8) + 2,
+    completedCount: Math.floor(Math.random() * 50) + 20,
+    inProgressCount: Math.floor(Math.random() * 15) + 3,
+    bugCount: Math.floor(Math.random() * 6),
+    sprintProgress: Math.floor(Math.random() * 60) + 30,
+    thisWeekActivity: Math.floor(Math.random() * 30) + 10,
+  })
+
+  // Mock activities (replace with real API)
+  activities.value = [
+    { text: '完成了任务 <strong>MIMO-23</strong> 登录优化', time: '今天 10:30', color: '#10b981' },
+    { text: '创建了缺陷 <strong>MIMO-45</strong> 导出异常', time: '今天 09:15', color: '#ef4444' },
+    { text: '将 <strong>MIMO-08</strong> 移动到「进行中」', time: '昨天 14:00', color: '#f59e0b' },
+    { text: '评论了 <strong>MIMO-12</strong>', time: '昨天 18:22', color: '#6366f1' },
+    { text: '加入了项目「电商平台重构」', time: '3 天前', color: '#06b6d4' },
+  ]
 }
 
 async function handleUpdateProfile() {
@@ -172,21 +460,13 @@ async function handleUpdateProfile() {
     await updateUserProfile({ username: profileForm.username, email: profileForm.email })
     ElMessage.success("资料更新成功")
     await fetchProfile()
-  } finally {
-    profileLoading.value = false
-  }
+  } finally { profileLoading.value = false }
 }
 
 async function handleChangePassword() {
-  if (!passwordForm.oldPassword || !passwordForm.newPassword) {
-    ElMessage.warning("请填写完整密码信息"); return
-  }
-  if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-    ElMessage.warning("两次输入的新密码不一致"); return
-  }
-  if (passwordForm.newPassword.length < 6) {
-    ElMessage.warning("新密码至少6位"); return
-  }
+  if (!passwordForm.oldPassword || !passwordForm.newPassword) { ElMessage.warning("请填写完整密码信息"); return }
+  if (passwordForm.newPassword !== passwordForm.confirmPassword) { ElMessage.warning("两次输入的新密码不一致"); return }
+  if (passwordForm.newPassword.length < 6) { ElMessage.warning("新密码至少6位"); return }
   passwordLoading.value = true
   try {
     await changePassword({ oldPassword: passwordForm.oldPassword, newPassword: passwordForm.newPassword })
@@ -194,9 +474,15 @@ async function handleChangePassword() {
     passwordForm.oldPassword = ""
     passwordForm.newPassword = ""
     passwordForm.confirmPassword = ""
-  } finally {
-    passwordLoading.value = false
-  }
+    strengthLevel.value = 0
+  } finally { passwordLoading.value = false }
+}
+
+function savePrefs() { ElMessage.success("偏好已保存") }
+
+function formatDate(date?: string) {
+  if (!date) return "-"
+  return new Date(date).toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" })
 }
 
 onMounted(fetchProfile)
@@ -204,67 +490,286 @@ onMounted(fetchProfile)
 
 <style scoped lang="scss">
 .profile-page {
-  max-width: 960px;
+  display: flex;
+  gap: 28px;
+  max-width: 1160px;
   margin: 0 auto;
+  padding-top: 8px;
+  align-items: flex-start;
 }
 
-.profile-hero {
-  position: relative;
+/* ===== 左侧边栏 ===== */
+.profile-sidebar {
+  width: 300px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  position: sticky;
+  top: 80px;
+}
 
-  &__avatar--uploadable {
+/* Hero 卡片 */
+.sidebar-hero {
+  background: linear-gradient(160deg, var(--bg-card), rgba(79,70,229,0.04));
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-lg);
+  padding: 26px 22px;
+  text-align: center;
+  box-shadow: var(--shadow-sm);
+
+  &__avatar {
+    width: 88px; height: 88px;
+    border-radius: 22px;
+    margin: 0 auto 16px;
     cursor: pointer;
     position: relative;
     overflow: hidden;
+    font-size: 32px;
+    font-weight: 800;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
 
     &:hover {
-      transform: scale(1.05);
-      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.2);
+      transform: scale(1.07) rotate(-2deg);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.18);
     }
 
     img { width: 100%; height: 100%; object-fit: cover; }
-    &:hover .profile-hero__avatar-overlay { opacity: 1; }
   }
 
   &__avatar-overlay {
     position: absolute; inset: 0;
-    background: rgba(0, 0, 0, 0.55);
-    backdrop-filter: blur(6px);
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(8px);
     display: flex; flex-direction: column;
     align-items: center; justify-content: center;
-    gap: 5px;
+    gap: 4px;
     color: #fff;
-    font-size: 12.5px;
+    font-size: 11px;
     font-weight: 700;
     opacity: 0;
     transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
   }
 
-  &__actions { margin-left: auto; flex-shrink: 0; }
+  &__avatar:hover &__avatar-overlay { opacity: 1; }
+
+  &__name {
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: -0.4px;
+    margin: 0 0 4px;
+  }
+
+  &__email {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 0 0 12px;
+  }
+
+  &__badges {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+
+  &__meta {
+    font-size: 11.5px;
+    color: var(--text-muted);
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color-light);
+  }
 }
 
-.profile-theme-btn {
-  display: flex; align-items: center; gap: 7px;
-  padding: 9px 18px;
-  border-radius: 11px;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
+/* 迷你仪表盘 */
+.sidebar-dashboard {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-lg);
+  padding: 18px 16px;
+  box-shadow: var(--shadow-sm);
+
+  &__title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    margin-bottom: 14px;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+  }
+
+  &__grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+}
+
+.dash-stat {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--bg-subtle);
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.08);
+  }
+
+  &--wide {
+    grid-column: span 2;
+    flex-wrap: wrap;
+  }
+
+  &__icon {
+    width: 34px; height: 34px;
+    border-radius: 9px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+
+  &__info {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  &__value {
+    font-size: 19px;
+    font-weight: 800;
+    line-height: 1.2;
+    letter-spacing: -0.5px;
+  }
+
+  &__label {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-weight: 550;
+  }
+
+  &__bar {
+    width: 100%;
+    height: 4px;
+    background: var(--border-color);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 4px;
+
+    &-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #6366f1, #8b5cf6);
+      border-radius: 2px;
+      transition: width 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+  }
+
+  &__sparkline {
+    width: 50px; height: 14px;
+    margin-left: auto;
+  }
+}
+
+/* 主题按钮 */
+.sidebar-theme-btn {
+  display: flex; align-items: center; justify-content: center;
+  gap: 7px;
+  padding: 11px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-primary);
   font-size: 13px;
   font-weight: 650;
   cursor: pointer;
   transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-shadow: var(--shadow-sm);
 
   &:hover {
-    background: rgba(255, 255, 255, 0.22);
-    transform: translateY(-2px) scale(1.03);
-    box-shadow: 0 4px 14px rgba(255, 255, 255, 0.15);
+    border-color: rgba(79,70,229,0.3);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(79,70,229,0.15);
   }
   &:active { transform: translateY(0) scale(0.97); }
 }
 
+/* ===== 右侧主区 ===== */
+.profile-main {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Tab 导航 */
+.profile-tabs {
+  display: flex;
+  position: relative;
+  background: var(--bg-subtle);
+  border-radius: 14px;
+  padding: 4px;
+  margin-bottom: 22px;
+  border: 1px solid var(--border-color-light);
+
+  &__item {
+    flex: 1;
+    display: flex; align-items: center; justify-content: center;
+    gap: 6px;
+    padding: 11px 0;
+    border-radius: 11px;
+    font-size: 13.5px;
+    font-weight: 650;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    position: relative;
+    z-index: 1;
+
+    .el-icon { font-size: 15px; }
+
+    &.is-active {
+      color: var(--color-primary-dark);
+      background: #fff;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      transform: scale(1.02);
+    }
+
+    &:hover:not(.is-active) {
+      color: var(--text-primary);
+    }
+  }
+
+  &__indicator {
+    position: absolute;
+    top: 4px; left: 4px;
+    width: calc(25% - 4px);
+    height: calc(100% - 8px);
+    background: #fff;
+    border-radius: 11px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+    z-index: 0;
+  }
+}
+
+.tab-panel {
+  animation: fadeInUp 0.35s ease both;
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* 设置卡片 */
 .settings-card {
-  margin-bottom: 24px;
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius-lg);
@@ -273,6 +778,8 @@ onMounted(fetchProfile)
   transition: box-shadow 0.3s ease;
 
   &:hover { box-shadow: var(--shadow-md); }
+
+  &--full { min-height: 400px; }
 
   &__header {
     display: flex; align-items: center; gap: 12px;
@@ -292,8 +799,12 @@ onMounted(fetchProfile)
     flex-shrink: 0;
   }
 
-  &__body { padding: 22px 24px; }
+  &__body { padding: 24px; }
+}
 
+/* 表单样式 */
+.profile-form {
+  :deep(.el-form-item) { margin-bottom: 20px; }
   :deep(.el-form-item__label) {
     font-weight: 650;
     font-size: 13px;
@@ -301,37 +812,179 @@ onMounted(fetchProfile)
     letter-spacing: -0.1px;
     padding-bottom: 8px;
   }
-
   :deep(.el-input) {
     .el-input__wrapper {
-      border-radius: var(--border-radius-sm);
+      border-radius: 10px;
       box-shadow: 0 0 0 1px var(--border-color);
       transition: all 0.25s ease;
-      &:hover { box-shadow: 0 0 0 1px rgba(79, 70, 229, 0.3); }
+      &:hover { box-shadow: 0 0 0 1px rgba(79,70,229,0.3); }
       &.is-focus {
-        box-shadow:
-          0 0 0 2px rgba(79, 70, 229, 0.25),
-          0 0 20px rgba(79, 70, 229, 0.12);
-        border-color: transparent;
+        box-shadow: 0 0 0 2px rgba(79,70,229,0.25), 0 0 20px rgba(79,70,229,0.12);
       }
     }
   }
-
   :deep(.el-button--primary),
   :deep(.el-button--warning) {
-    margin-top: 10px;
     border-radius: 12px;
-    padding: 11px 26px;
+    padding: 11px 28px;
     font-weight: 700;
     font-size: 14px;
     letter-spacing: 0.5px;
     transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
-
     &:hover {
       transform: translateY(-2px);
-      box-shadow: 0 6px 20px rgba(79, 70, 229, 0.3);
+      box-shadow: 0 6px 20px rgba(79,70,229,0.3);
     }
     &:active { transform: translateY(0) scale(0.97); }
+  }
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+
+  &--single {
+    :deep(.el-form-item:first-child) { grid-column: span 1; }
+  }
+}
+
+/* 密码强度指示器 */
+.pwd-strength {
+  display: flex; align-items: center; gap: 10px;
+  margin-top: 8px;
+
+  &__label {
+    font-size: 12px;
+    font-weight: 650;
+    min-width: 38px;
+  }
+
+  &__bar {
+    display: flex; gap: 4px; flex: 1;
+  }
+
+  &__seg {
+    flex: 1; height: 4px;
+    border-radius: 2px;
+    background: var(--border-color);
+    transition: all 0.35s ease;
+
+    &.is-filled {
+      &.is-weak { background: #ef4444; height: 5px; box-shadow: 0 0 6px rgba(239,68,68,0.35); }
+      &.is-fair { background: #f59e0b; height: 6px; box-shadow: 0 0 6px rgba(245,158,11,0.35); }
+      &.is-good { background: #10b981; height: 6px; box-shadow: 0 0 6px rgba(16,185,129,0.35); }
+      &.is-strong { background: linear-gradient(90deg, #10b981, #6366f1); height: 7px; box-shadow: 0 0 8px rgba(99,102,241,0.35); }
+    }
+  }
+}
+
+/* 安全提示 */
+.security-tip {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: rgba(245,158,11,0.08);
+  border: 1px solid rgba(245,158,11,0.15);
+  color: #92400e;
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 20px;
+
+  .el-icon { margin-top: 1px; font-size: 16px; flex-shrink: 0; }
+}
+
+/* 动态时间线 */
+.activity-list { min-height: 280px; }
+
+.activity-timeline {
+  position: relative;
+  padding-left: 24px;
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: 7px; top: 8px; bottom: 8px;
+    width: 2px;
+    background: var(--border-color);
+    border-radius: 1px;
+  }
+}
+
+.activity-item {
+  position: relative;
+  padding-bottom: 22px;
+
+  &:last-child { padding-bottom: 0; }
+
+  &__dot {
+    position: absolute;
+    left: -24px; top: 4px;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    border: 2.5px solid var(--bg-card);
+    z-index: 1;
+  }
+
+  &__body {
+    padding-left: 4px;
+  }
+
+  &__text {
+    margin: 0 0 4px;
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--text-primary);
+
+    strong { color: var(--color-primary); font-weight: 700; }
+  }
+
+  &__time {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  &:hover &__text { color: var(--text-primary); }
+}
+
+.empty-state {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 12px;
+  height: 260px;
+  color: var(--text-muted);
+
+  p { margin: 0; font-size: 14px; font-weight: 600; }
+}
+
+/* 通知偏好 */
+.pref-section {
+  margin-bottom: 24px;
+
+  &:last-of-type { margin-bottom: 0; }
+
+  &__title {
+    font-size: 14px;
+    font-weight: 750;
+    margin: 0 0 14px;
+    color: var(--text-primary);
+    letter-spacing: -0.2px;
+  }
+}
+
+.pref-item {
+  display: flex; align-items: center;
+  justify-content: space-between;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border-color-light);
+
+  &:last-child { border-bottom: none; }
+
+  &__text {
+    display: flex; flex-direction: column; gap: 3px;
+
+    strong { font-size: 14px; font-weight: 650; }
+    span { font-size: 12px; color: var(--text-muted); }
   }
 }
 </style>
