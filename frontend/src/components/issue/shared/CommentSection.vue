@@ -58,7 +58,7 @@ import { ref, computed } from 'vue'
 import { createComment, deleteComment } from '@/api/comment'
 import { renderMarkdown } from '@/utils/markdown'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { useUserStore } from '@/stores/user'
+import { useUserStore } from '@/store/user'
 
 const props = defineProps<{
   issueId: number
