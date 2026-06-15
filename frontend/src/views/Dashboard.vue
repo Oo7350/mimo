@@ -542,7 +542,7 @@ onMounted(() => { fetchDashboard(); fetchMyTasks() })
     color: #fff;
     font-size: 16px;
     transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.08);
   }
 
   &__sprint-banner {
