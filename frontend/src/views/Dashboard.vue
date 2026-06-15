@@ -522,7 +522,7 @@ onMounted(() => { fetchDashboard(); fetchMyTasks() })
 
     &:hover {
       transform: translateY(-4px) scale(1.03);
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
       background: var(--bg-hover);
       .dashboard__qa-icon { transform: scale(1.15) rotate(-5deg); }
     }
@@ -542,7 +542,7 @@ onMounted(() => { fetchDashboard(); fetchMyTasks() })
     color: #fff;
     font-size: 16px;
     transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
   }
 
   &__sprint-banner {
