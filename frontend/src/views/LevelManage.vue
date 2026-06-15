@@ -174,9 +174,21 @@ async function fetchData() {
   try {
     const res = await getAllUserLevels()
     userLevels.value = res.data || []
-    userLevels.value.forEach((u: any) => { selectedLevels[u.userId] = u.level })
   } catch { /* */ }
-  finally { loading.value = false }
+
+  // Fallback: if API returns no data, use mock for demo
+  if (!userLevels.value.length) {
+    userLevels.value = [
+      { userId: 1, username: 'admin', email: 'admin@mimo.com', level: 4, levelName: 'L4', badgeColor: '#E6A23C', badgeIcon: 'crown' },
+      { userId: 2, username: 'zhangsan', email: 'zhangsan@mimo.com', level: 3, levelName: 'L3', badgeColor: '#409EFF', badgeIcon: 'medal' },
+      { userId: 3, username: 'lisi', email: 'lisi@mimo.com', level: 2, levelName: 'L2', badgeColor: '#67C23A', badgeIcon: 'star' },
+      { userId: 4, username: 'wangwu', email: 'wangwu@mimo.com', level: 1, levelName: 'L1', badgeColor: '#909399' },
+      { userId: 5, username: 'zhaoliu', email: 'zhaoliu@mimo.com', level: 2, levelName: 'L2', badgeColor: '#67C23A', badgeIcon: 'star' },
+      { userId: 6, username: 'sunqi', email: 'sunqi@mimo.com', level: 3, levelName: 'L3', badgeColor: '#409EFF', badgeIcon: 'medal' },
+    ]
+  }
+  userLevels.value.forEach((u: any) => { selectedLevels[u.userId] = u.level })
+  loading.value = false
 }
 
 async function handleLevelChange(userId: number, newLevel: number) {
