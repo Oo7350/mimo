@@ -127,12 +127,8 @@ const lastMessage = computed(() => {
   return last.content.length > 30 ? last.content.slice(0, 30) + '...' : last.content
 })
 
-function computed() {
-  // This is a hack to use computed as a function-like variable
-}
-
 // 初始化时获取Provider名称
-getAiUsage().then((u) => { providerName.value = u.providerName }).catch(() => {})
+getAiUsage().then((u) => { providerName.value = u.provider }).catch(() => {})
 
 function scrollToBottom() {
   nextTick(() => {
@@ -160,7 +156,6 @@ async function handleSend() {
 
   abortController = chatStream(
     text,
-    '你是Mimo项目管理AI助手。基于项目上下文回答用户问题，使用中文输出。保持回答简洁实用。',
     (chunk) => {
       fullContent += chunk
       // 实时更新最后一条AI消息
@@ -171,6 +166,7 @@ async function handleSend() {
       }
       scrollToBottom()
     },
+    '你是Mimo项目管理AI助手。基于项目上下文回答用户问题，使用中文输出。保持回答简洁实用。',
     () => {
       streaming.value = false
       const msg = messages.value[aiIndex]

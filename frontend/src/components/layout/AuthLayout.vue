@@ -1,11 +1,9 @@
 <template>
   <div class="auth-page">
-    <!-- 左侧品牌区 -->
+    <!-- 左侧品牌区 - 粒子动画 -->
     <div class="auth-page__hero">
-      <div class="auth-page__hero-bg" />
-      <div class="auth-page__hero-orb hero-orb-1" />
-      <div class="auth-page__hero-orb hero-orb-2" />
-      <div class="auth-page__hero-orb hero-orb-3" />
+      <div class="glass-bg" />
+      <canvas ref="particleCanvasRef" class="particle-canvas" />
       <div class="auth-page__hero-content">
         <div class="auth-page__brand">
           <div class="auth-page__logo">
@@ -25,29 +23,6 @@
           </div>
           <p class="auth-page__tagline">轻量级敏捷项目管理，让小团队协作更高效</p>
         </div>
-
-        <!-- 模拟看板预览 -->
-        <div class="auth-page__preview">
-          <div class="preview-board">
-            <div v-for="col in previewColumns" :key="col.name" class="preview-board__col">
-              <div class="preview-board__col-header">
-                <span class="preview-board__dot" :style="{ background: col.color }" />
-                {{ col.name }}
-                <span class="preview-board__count">{{ col.cards.length }}</span>
-              </div>
-              <div
-                v-for="(card, i) in col.cards"
-                :key="i"
-                class="preview-board__card"
-                :style="{ borderLeftColor: card.color }"
-              >
-                <div class="preview-board__card-type">{{ card.type }}</div>
-                <div class="preview-board__card-title">{{ card.title }}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
         <ul class="auth-page__features">
           <li v-for="f in features" :key="f">
             <el-icon><CircleCheck /></el-icon>
@@ -67,36 +42,189 @@
 </template>
 
 <script setup lang="ts">
-const previewColumns = [
-  {
-    name: '待办',
-    color: '#4f46e5',
-    cards: [
-      { type: 'STORY', title: '用户登录优化', color: '#059669' },
-      { type: 'BUG', title: '修复导出异常', color: '#dc2626' },
-    ],
-  },
-  {
-    name: '进行中',
-    color: '#d97706',
-    cards: [
-      { type: 'TASK', title: 'API 接口联调', color: '#4f46e5' },
-    ],
-  },
-  {
-    name: '已完成',
-    color: '#059669',
-    cards: [
-      { type: 'TASK', title: '数据库迁移', color: '#4f46e5' },
-    ],
-  },
-]
+import { ref, onMounted, onBeforeUnmount } from 'vue'
+
+const particleCanvasRef = ref<HTMLCanvasElement | null>(null)
 
 const features = [
   'Story / Task / Bug 差异化管理',
   '看板拖拽 · 实时协作同步',
   'Sprint 燃尽图 · 日报周报',
 ]
+
+// ---- Particle Animation (from init.html) ----
+let animFrameId = 0
+
+onMounted(() => {
+  const canvas = particleCanvasRef.value
+  if (!canvas) return
+  const ctx = canvas.getContext('2d')!
+  const container = canvas.parentElement!
+
+  let width = canvas.width = container.clientWidth
+  let height = canvas.height = container.clientHeight
+
+  const mouse = { x: null as number | null, y: null as number | null, radius: 120 }
+
+  // 高饱和度实色，消除雾蒙蒙感
+  const colors = [
+    '#FF69B4', // 亮粉色
+    '#00BFFF', // 深天蓝
+    '#FFD700', // 金黄色
+  ]
+
+  function getTextCoordinates() {
+    const text = 'MIMO'
+    const fontSize = Math.min(120, width * 0.22)
+    ctx.font = `bold ${fontSize}px Arial`
+    ctx.fillStyle = '#000'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(text, width / 2, height / 2)
+    const data = ctx.getImageData(0, 0, width, height).data
+    ctx.clearRect(0, 0, width, height)
+    const coords: { x: number; y: number }[] = []
+    const gap = 5
+    for (let y = 0; y < height; y += gap) {
+      for (let x = 0; x < width; x += gap) {
+        const index = (y * width + x) * 4
+        if (data[index + 3] > 128) coords.push({ x, y })
+      }
+    }
+    return coords
+  }
+
+  class Particle {
+    baseX: number; baseY: number
+    x: number; y: number
+    size: number; color: string
+    vx = 0; vy = 0
+    offsetX: number; offsetY: number // 固定偏移，防止融合
+    waveOffset: number
+    scatterX: number; scatterY: number
+
+    constructor(targetX: number, targetY: number) {
+      this.x = Math.random() * width
+      this.y = Math.random() * height
+      this.size = Math.random() * 2.5 + 1.5
+      this.color = colors[Math.floor(Math.random() * colors.length)]
+      this.baseX = targetX
+      this.baseY = targetY
+      this.offsetX = (Math.random() - 0.5) * 4
+      this.offsetY = (Math.random() - 0.5) * 4
+      this.waveOffset = Math.random() * Math.PI * 2
+      this.scatterX = Math.random() * width
+      this.scatterY = Math.random() * height
+    }
+
+    update(state: string, time: number) {
+      if (mouse.x != null && mouse.y != null) {
+        const dx = this.x - mouse.x
+        const dy = this.y - mouse.y
+        const dist = Math.sqrt(dx * dx + dy * dy)
+        if (dist < mouse.radius) {
+          const force = (mouse.radius - dist) / mouse.radius
+          const angle = Math.atan2(dy, dx)
+          this.vx += Math.cos(angle) * force * 2
+          this.vy += Math.sin(angle) * force * 2
+        }
+      }
+
+      if (state === 'gathering') {
+        // 正弦波浪效果
+        const waveAmplitude = 3
+        const waveFrequency = 0.02
+        const wave = Math.sin((this.baseX * waveFrequency) + time * 0.003 + this.waveOffset) * waveAmplitude
+
+        const tx = this.baseX + this.offsetX
+        const ty = this.baseY + this.offsetY + wave
+
+        this.vx += (tx - this.x) * 0.04
+        this.vy += (ty - this.y) * 0.04
+        this.vx *= 0.90
+        this.vy *= 0.90
+      } else {
+        const dx = this.scatterX - this.x
+        const dy = this.scatterY - this.y
+        const dist = Math.sqrt(dx * dx + dy * dy)
+        if (dist > 50) {
+          this.vx += dx * 0.01
+          this.vy += dy * 0.01
+        } else {
+          this.vx += (Math.random() - 0.5) * 1.0
+          this.vy += (Math.random() - 0.5) * 1.0
+        }
+        this.vx *= 0.95
+        this.vy *= 0.95
+      }
+      this.x += this.vx
+      this.y += this.vy
+      if (this.x < 0 || this.x > width) this.vx *= -1
+      if (this.y < 0 || this.y > height) this.vy *= -1
+    }
+
+    draw() {
+      ctx.fillStyle = this.color
+      ctx.beginPath()
+      ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  }
+
+  let particles: Particle[] = []
+  let state = 'chaos'
+  let lastTime = 0
+  const interval = 5000
+
+  function init() {
+    particles = []
+    const coords = getTextCoordinates()
+    coords.forEach(c => particles.push(new Particle(c.x, c.y)))
+  }
+
+  function animate(timestamp: number) {
+    ctx.clearRect(0, 0, width, height)
+    if (timestamp - lastTime > interval) {
+      lastTime = timestamp
+      state = state === 'chaos' ? 'gathering' : 'chaos'
+      if (state === 'chaos') {
+        particles.forEach(p => {
+          p.scatterX = Math.random() * width
+          p.scatterY = Math.random() * height
+          const angle = Math.random() * Math.PI * 2
+          p.vx = Math.cos(angle) * 10
+          p.vy = Math.sin(angle) * 10
+        })
+      }
+    }
+    particles.forEach(p => { p.update(state, timestamp); p.draw() })
+    animFrameId = requestAnimationFrame(animate)
+  }
+
+  function onResize() {
+    width = canvas.width = container.clientWidth
+    height = canvas.height = container.clientHeight
+    init()
+  }
+
+  init()
+  animate(0)
+
+  window.addEventListener('resize', onResize)
+  ;(container as HTMLElement).addEventListener('mousemove', (e: MouseEvent) => {
+    mouse.x = e.offsetX
+    mouse.y = e.offsetY
+  })
+  ;(container as HTMLElement).addEventListener('mouseout', () => {
+    mouse.x = null
+    mouse.y = null
+  })
+
+  onBeforeUnmount(() => {
+    cancelAnimationFrame(animFrameId)
+    window.removeEventListener('resize', onResize)
+  })
+})
 </script>
 
 <style scoped lang="scss">
@@ -112,68 +240,30 @@ const features = [
     justify-content: center;
     padding: 60px;
     overflow: hidden;
-    background: #050507;
+    background: #ffffff;
   }
 
-  &__hero-bg {
+  .glass-bg {
     position: absolute;
     inset: 0;
-    background:
-      radial-gradient(ellipse 900px 600px at 15% 30%, rgba(79, 70, 229, 0.35) 0%, transparent 60%),
-      radial-gradient(ellipse 700px 500px at 85% 70%, rgba(124, 58, 237, 0.25) 0%, transparent 55%),
-      radial-gradient(ellipse 400px 300px at 50% 5%, rgba(5, 150, 105, 0.08) 0%, transparent 50%);
+    background: rgba(255, 255, 255, 0.6);
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
+    z-index: 0;
   }
 
-  // Floating orbs — animated
-  &__hero-orb {
+  .particle-canvas {
     position: absolute;
-    border-radius: 50%;
-    filter: blur(80px);
-    pointer-events: none;
-  }
-
-  .hero-orb-1 {
-    width: 500px;
-    height: 500px;
-    top: -15%;
-    left: -10%;
-    background: rgba(79, 70, 229, 0.18);
-    animation: orb-float-1 12s ease-in-out infinite alternate;
-  }
-  .hero-orb-2 {
-    width: 350px;
-    height: 350px;
-    bottom: -10%;
-    right: -5%;
-    background: rgba(124, 58, 237, 0.15);
-    animation: orb-float-2 10s ease-in-out infinite alternate;
-  }
-  .hero-orb-3 {
-    width: 200px;
-    height: 200px;
-    top: 50%;
-    left: 50%;
-    background: rgba(5, 150, 105, 0.08);
-    animation: orb-float-3 8s ease-in-out infinite alternate;
-  }
-
-  @keyframes orb-float-1 {
-    0% { transform: translate(0, 0) scale(1); }
-    100% { transform: translate(60px, 40px) scale(1.15); }
-  }
-  @keyframes orb-float-2 {
-    0% { transform: translate(0, 0) scale(1); }
-    100% { transform: translate(-40px, -30px) scale(1.1); }
-  }
-  @keyframes orb-float-3 {
-    0% { transform: translate(-50%, -50%) scale(1); }
-    100% { transform: translate(calc(-50% + 30px), calc(-50% - 20px)) scale(1.2); }
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
   }
 
   &__hero-content {
     position: relative;
     max-width: 560px;
-    z-index: 1;
+    z-index: 2;
   }
 
   &__brand {
@@ -195,21 +285,17 @@ const features = [
     span {
       font-size: 36px;
       font-weight: 800;
-      color: #fff;
+      color: #1a1a2e;
       letter-spacing: -1.2px;
     }
   }
 
   &__tagline {
-    color: rgba(255, 255, 255, 0.55);
+    color: #555;
     font-size: 16px;
     line-height: 1.7;
     font-weight: 400;
     letter-spacing: -0.1px;
-  }
-
-  &__preview {
-    margin-bottom: 40px;
   }
 
   &__features {
@@ -222,7 +308,7 @@ const features = [
       display: flex;
       align-items: center;
       gap: 12px;
-      color: rgba(255, 255, 255, 0.65);
+      color: #666;
       font-size: 14.5px;
       font-weight: 400;
 
@@ -262,91 +348,11 @@ const features = [
   }
 }
 
-.preview-board {
-  display: flex;
-  gap: 14px;
-  padding: 22px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 20px;
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.04),
-    0 20px 60px rgba(0, 0, 0, 0.3),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
-
-  &__col {
-    flex: 1;
-    min-width: 0;
-  }
-
-  &__col-header {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    font-size: 11px;
-    font-weight: 600;
-    color: rgba(255, 255, 255, 0.45);
-    margin-bottom: 14px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-  }
-
-  &__dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    flex-shrink: 0;
-    box-shadow: 0 0 8px currentColor;
-  }
-
-  &__count {
-    margin-left: auto;
-    background: rgba(255, 255, 255, 0.08);
-    padding: 2px 7px;
-    border-radius: 8px;
-    font-size: 10px;
-    font-weight: 600;
-  }
-
-  &__card {
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    border-left: 3px solid;
-    border-radius: 12px;
-    padding: 14px;
-    margin-bottom: 10px;
-    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease;
-
-    &:hover {
-      transform: translateY(-4px) scale(1.02);
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-    }
-  }
-
-  &__card-type {
-    font-size: 9px;
-    font-weight: 700;
-    color: rgba(255, 255, 255, 0.3);
-    letter-spacing: 1px;
-    margin-bottom: 6px;
-  }
-
-  &__card-title {
-    font-size: 13px;
-    color: rgba(255, 255, 255, 0.8);
-    font-weight: 500;
-    line-height: 1.45;
-  }
-}
-
 @media (max-width: 900px) {
   .auth-page {
     flex-direction: column;
 
     &__hero { padding: 36px 28px; min-height: auto; }
-    &__preview { display: none; }
     &__form-side { width: 100%; padding: 36px 28px; }
   }
 }

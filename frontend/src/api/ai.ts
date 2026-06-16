@@ -75,8 +75,8 @@ export async function estimateStoryPoints(params: {
 /** SSE 流式对话 */
 export function chatStream(
   message: string,
-  systemPrompt?: string,
   onChunk: (text: string) => void,
+  systemPrompt?: string,
   onDone?: () => void,
   onError?: (err: Error) => void
 ): AbortController {
