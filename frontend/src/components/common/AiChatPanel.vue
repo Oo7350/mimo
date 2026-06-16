@@ -97,7 +97,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, watch } from 'vue'
+import { ref, computed, nextTick, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   ChatDotRound, Minus, Close, DocumentCopy, Refresh, Promotion

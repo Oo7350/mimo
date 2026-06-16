@@ -202,6 +202,7 @@ onMounted(() => {
   }
 
   function onResize() {
+    if (!canvas) return
     width = canvas.width = container.clientWidth
     height = canvas.height = container.clientHeight
     init()
