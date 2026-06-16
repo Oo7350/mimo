@@ -16,7 +16,7 @@
         @click="$router.push(`/projects/${p.id}/board`)"
       >
         <div class="list-card__header">
-          <div class="list-card__avatar" :style="{ background: avatarGradient(p.name) }">
+          <div class="list-card__avatar" :style="{ background: avatarGradient(p.name, 'project') }">
             {{ p.name.charAt(0).toUpperCase() }}
           </div>
           <div class="list-card__title">{{ p.name }}</div>
@@ -157,7 +157,7 @@ onMounted(fetchProjects)
   border-radius: var(--border-radius-lg);
   padding: 24px;
   cursor: pointer;
-  transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: border-color 0.15s;
   position: relative;
   overflow: hidden;
 
@@ -167,22 +167,15 @@ onMounted(fetchProjects)
     position: absolute;
     top: 0; left: 0; right: 0;
     height: 3px;
-    background: linear-gradient(90deg, #4f46e5, #7c3aed);
     opacity: 0;
-    transition: opacity 0.35s ease;
+    transition: opacity 0.25s ease;
   }
 
   &:hover {
-    transform: translateY(-6px) scale(1.01);
-    box-shadow: var(--shadow-card-hover);
-    border-color: rgba(79, 70, 229, 0.18);
+    border-color: rgba(0,0,0,0.12);
 
     &::before { opacity: 1; }
-
-    .list-card__avatar { transform: scale(1.08) rotate(-3deg); }
   }
-
-  &:active { transform: translateY(-2px) scale(0.99); }
 
   &__header {
     display: flex;
@@ -198,12 +191,11 @@ onMounted(fetchProjects)
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #fff;
     font-weight: 800;
     font-size: 20px;
     flex-shrink: 0;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
-    transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+    background: #3370ff;
+    color: #fff;
   }
 
   &__title {
@@ -234,12 +226,9 @@ onMounted(fetchProjects)
       border-radius: 9px;
       font-weight: 600;
       font-size: 12.5px;
-      transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+      transition: opacity 0.15s;
 
-      &:hover {
-        transform: translateY(-2px) scale(1.03);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-      }
+      &:hover { opacity: 0.85; }
     }
   }
 }

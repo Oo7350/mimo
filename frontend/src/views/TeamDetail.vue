@@ -2,14 +2,14 @@
   <div class="team-detail-page">
       <!-- 团队详情 Hero -->
       <div class="td-hero">
-        <div class="td-hero__bg" :style="{ background: avatarGradient(team?.name || 'T') }">
+        <div class="td-hero__bg" :style="{ background: avatarGradient(team?.name || 'T', 'team') }">
           <div class="td-hero__overlay" />
         </div>
         <div class="td-hero__body">
           <el-button class="td-hero__back" @click="$router.push('/teams')" text round>
             <el-icon><ArrowLeft /></el-icon> 返回
           </el-button>
-          <div class="td-hero__avatar" :style="{ background: avatarGradient(team?.name || 'T') }">
+          <div class="td-hero__avatar" :style="{ background: avatarGradient(team?.name || 'T', 'team') }">
             {{ (team?.name || '?').charAt(0).toUpperCase() }}
           </div>
         <div class="td-hero__info">
@@ -64,7 +64,7 @@
           </div>
           <div class="td-member-list">
             <div v-for="m in members" :key="m.userId" class="td-member">
-              <div class="td-member__avatar" :style="{ background: avatarGradient(m.username) }">
+              <div class="td-member__avatar" :style="{ background: avatarGradient(m.username, 'user') }">
                 {{ m.username.charAt(0).toUpperCase() }}
               </div>
               <div class="td-member__info">
@@ -183,7 +183,7 @@
             <div class="td-msg" :class="{ 'td-msg--mine': msg.isMine, 'td-msg--recalled': msg.recalled }">
               <div
                 class="td-msg__avatar"
-                :style="{ background: msg.isMine ? undefined : avatarGradient(msg.senderName) }"
+                :style="{ background: msg.isMine ? undefined : avatarGradient(msg.senderName, 'user') }"
               >
                 {{ msg.senderName.charAt(0).toUpperCase() }}
               </div>
@@ -258,7 +258,7 @@
                 :class="{ 'td-mention-item--active': i === mentionActiveIndex }"
                 @click="selectMention(m)"
               >
-                <div class="td-mention-item__avatar" :style="{ background: avatarGradient(m.username) }">
+                <div class="td-mention-item__avatar" :style="{ background: avatarGradient(m.username, 'user') }">
                   {{ m.username.charAt(0).toUpperCase() }}
                 </div>
                 <span>{{ m.username }}</span>
@@ -299,7 +299,7 @@
               :value="u.id"
             >
               <div style="display: flex; align-items: center; gap: 8px">
-                <div class="td-search-avatar" :style="{ background: avatarGradient(u.username) }">
+                <div class="td-search-avatar" :style="{ background: avatarGradient(u.username, 'user') }">
                   {{ u.username.charAt(0).toUpperCase() }}
                 </div>
                 <span>{{ u.username }}</span>

@@ -187,14 +187,12 @@ async function handleRegister() {
         border-radius: var(--border-radius-md);
         padding: 4px 16px;
         box-shadow: 0 0 0 1px var(--border-color);
-        transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+        transition: border-color 0.15s;
 
-        &:hover { box-shadow: 0 0 0 1px rgba(79, 70, 229, 0.3); }
+        &:hover { border-color: var(--text-muted); }
         &.is-focus {
-          box-shadow:
-            0 0 0 2px rgba(79, 70, 229, 0.25),
-            0 0 20px rgba(79, 70, 229, 0.12);
-          border-color: transparent;
+          border-color: var(--text-primary);
+          box-shadow: none;
         }
       }
       .el-input__inner { height: 44px; font-size: 14.5px; }
@@ -207,17 +205,14 @@ async function handleRegister() {
     font-size: 16px;
     font-weight: 700;
     border-radius: var(--border-radius-md);
-    background: linear-gradient(135deg, #4f46e5, #7c3aed);
+    background: var(--text-primary);
     border: none;
     letter-spacing: 2px;
-    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-    position: relative; overflow: hidden;
+    color: #fff;
+    transition: opacity 0.15s;
 
-    &:hover {
-      transform: translateY(-2px) scale(1.01);
-      box-shadow: 0 8px 28px rgba(79, 70, 229, 0.4), inset 0 1px 0 rgba(255,255,255,0.15);
-    }
-    &:active { transform: translateY(0) scale(0.98); }
+    &:hover { opacity: 0.85; }
+    &:active { transform: scale(0.97); }
   }
 
   // ===== 密码强度 — Premium =====
@@ -239,14 +234,13 @@ async function handleRegister() {
     height: 5px;
     background: var(--border-color);
     border-radius: 3px;
-    transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+    transition: all 0.25s ease;
 
     &.is-filled {
-      box-shadow: 0 0 8px rgba(79, 70, 229, 0.35);
       &.is-weak { background: #ef4444; height: 6px; }
       &.is-fair { background: #f59e0b; height: 7px; }
       &.is-good { background: #10b981; height: 7px; }
-      &.is-strong { background: linear-gradient(90deg, #10b981, #4f46e5); height: 7px; }
+      &.is-strong { background: #10b981; height: 7px; }
     }
   }
 

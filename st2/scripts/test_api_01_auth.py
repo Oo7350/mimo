@@ -6,9 +6,18 @@ from tools.read_data import read_json
 from tools.logger import GetLog
 
 
+"""
+调用完整流程：
+mimo_api_client是最底层，定义了各种方法，方法需要传递各种参数。
+每个接口有自己的接口类，接口类需要传入client对象，client对象可以调用mimo_api_client的方法。
+MimoAPI，它封装了所有模块的接口。
+conftest通过调用mimo_api_client的方法，返回api_client对象。（不同的测试类用同一个api_client对象）
+在测试类中，使用conftest返回的api_client对象，调用MimoAPI的方法，可以用同一个帐号测试不同的接口。
+"""
+
+
 class TestAuthAPI:
     """认证模块：登录 + 注册"""
-
     @classmethod
     def setup_class(cls):
         cls.logger = GetLog.get_log()
@@ -38,9 +47,14 @@ class TestAuthAPI:
 
     def test_login_returns_user_info(self, api_client):
         """登录成功时返回用户信息"""
-        api = MimoAPI(api_client)
+        api = MimoAPI(api_client) #使用传入的api_client创建的api对象 #这个 api 对象可以调用所有模块的接口。
+        """
+        如果没有api对象，只能调用单个模块的接口，无法调用其他模块的接口。
+        auth = AuthAPI(api_client)
+        user = UserAPI(api_client)
+        project = ProjectAPI(api_client)
+        """
         resp = api.auth.login({"username": "admin", "password": "123456"})
-
         assert resp.status_code == 200
         data = resp.json()["data"]
         assert "token" in data

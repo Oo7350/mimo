@@ -35,7 +35,7 @@
           <el-table-column label="用户" min-width="200">
             <template #default="{ row }">
               <div class="user-cell">
-                <div class="user-cell__avatar" :style="{ background: avatarGradient(row.username || 'U') }">
+                <div class="user-cell__avatar" :style="{ background: avatarGradient(row.username || 'U', 'user') }">
                   {{ (row.username || '?').charAt(0).toUpperCase() }}
                 </div>
                 <div class="user-cell__info">
@@ -225,8 +225,7 @@ onMounted(fetchData)
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius-lg);
   padding: 22px 18px;
-  box-shadow: var(--shadow-sm);
-  transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: border-color 0.15s;
   position: relative;
   overflow: hidden;
 
@@ -236,12 +235,11 @@ onMounted(fetchData)
     top: 0; left: 0; right: 0;
     height: 3px;
     opacity: 0;
-    transition: opacity 0.35s ease;
+    transition: opacity 0.25s ease;
   }
 
   &:hover {
-    transform: translateY(-4px);
-    box-shadow: var(--shadow-lg);
+    border-color: rgba(0,0,0,0.12);
 
     &::before { opacity: 1; }
   }
@@ -329,16 +327,13 @@ onMounted(fetchData)
     margin-left: auto;
     white-space: nowrap;
   }
-}
-
 /* ===== 用户区域 ===== */
 .user-section {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius-lg);
   overflow: hidden;
-  box-shadow: var(--shadow-sm);
-
+}
   &__header {
     display: flex;
     align-items: center;
@@ -379,6 +374,7 @@ onMounted(fetchData)
     font-weight: 700;
     color: #fff;
     flex-shrink: 0;
+    background: #f7b955;
   }
 
   &__info {
@@ -418,7 +414,7 @@ onMounted(fetchData)
 :deep(.level-table) {
   --el-table-border-color: var(--border-color-light);
   --el-table-header-bg-color: transparent;
-  --el-table-row-hover-bg-color: rgba(79, 70, 229, 0.03);
+  --el-table-row-hover-bg-color: var(--bg-subtle);
 
   .el-table__header th {
     font-size: 13px;

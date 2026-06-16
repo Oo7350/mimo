@@ -6,7 +6,7 @@
         <el-button @click="$router.push('/')" text class="overview__back">
           <el-icon><ArrowLeft /></el-icon>
         </el-button>
-        <div class="overview__project-avatar" :style="{ background: avatarGradient(projectName) }">
+        <div class="overview__project-avatar" :style="{ background: avatarGradient(projectName, 'project') }">
           {{ projectName.charAt(0).toUpperCase() }}
         </div>
         <div>
@@ -90,7 +90,7 @@
                 <div ref="memberChartRef" class="ov-card__chart ov-card__chart--sm"></div>
                 <div class="ov-member-list">
                   <div v-for="m in memberData" :key="m.name" class="ov-member-row">
-                    <div class="ov-member-row__avatar" :style="{ background: avatarGradient(m.name) }">
+                    <div class="ov-member-row__avatar" :style="{ background: avatarGradient(m.name, 'user') }">
                       {{ m.name.charAt(0) }}
                     </div>
                     <span class="ov-member-row__name">{{ m.name }}</span>
@@ -156,7 +156,7 @@
               <div v-if="recentActivities.length === 0" class="ov-card__empty">暂无动态</div>
               <div v-else class="ov-activity-list">
                 <div v-for="a in recentActivities" :key="a.id" class="ov-activity-item">
-                  <div class="ov-activity-item__avatar" :style="{ background: avatarGradient(a.username) }">
+                  <div class="ov-activity-item__avatar" :style="{ background: avatarGradient(a.username, 'user') }">
                     {{ a.username.charAt(0).toUpperCase() }}
                   </div>
                   <div class="ov-activity-item__content">

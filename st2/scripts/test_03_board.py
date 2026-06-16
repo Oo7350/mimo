@@ -1,3 +1,18 @@
+"""
+UI 自动化测试流程（5层调用链）：
+
+1. Playwright         - 底层浏览器自动化工具，管理 Browser/Context/Page
+2. BasePage           - 页面基类，封装通用操作（click/fill/get_text等）
+3. Page Object        - 页面对象类（LoginPage/DashboardPage等），继承BasePage，定义定位器和业务方法
+4. conftest fixtures  - 提供 page/logged_in_page fixture（独立 Context，隔离 Cookie）
+5. 测试类             - 注入 page，创建 Page Object，调用业务方法
+
+调用示例：
+conftest.page → LoginPage(page) → login_page.login(username, password)
+    ↓                ↓                        ↓
+独立浏览器页面    页面对象(含定位器)      打开页面→输入→点击→断言
+(Context隔离)       继承BasePage          自动等待元素可见
+"""
 """Mimo 项目看板测试 —— Playwright 版
 覆盖: 看板视图切换 / 三种类型创建 / 类型筛选 / 缺陷列表 / 故事地图
 """

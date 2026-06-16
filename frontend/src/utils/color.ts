@@ -1,13 +1,11 @@
-const PALETTE = [
-  ['#6366f1', '#818cf8'],
-  ['#8b5cf6', '#a78bfa'],
-  ['#06b6d4', '#22d3ee'],
-  ['#10b981', '#34d399'],
-  ['#f59e0b', '#fbbf24'],
-  ['#ef4444', '#f87171'],
-  ['#ec4899', '#f472b6'],
-  ['#3b82f6', '#60a5fa'],
-]
+// 飞书同款三色系
+const TYPE_COLORS = {
+  project: '#3370ff',   // 飞书蓝 — 项目
+  team:    '#00b96b',   // 飞书绿 — 团队
+  user:    '#f7b955',   // 飞书橙 — 人员
+} as const
+
+export type AvatarType = keyof typeof TYPE_COLORS
 
 export function hashString(str: string): number {
   let hash = 0
@@ -17,9 +15,9 @@ export function hashString(str: string): number {
   return Math.abs(hash)
 }
 
-export function avatarGradient(name: string): string {
-  const [from, to] = PALETTE[hashString(name) % PALETTE.length]
-  return `linear-gradient(135deg, ${from}, ${to})`
+export function avatarGradient(name: string, type?: AvatarType): string {
+  if (type) return TYPE_COLORS[type]
+  return '#475569'
 }
 
 export function avatarColor(name: string): string {

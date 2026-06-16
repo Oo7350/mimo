@@ -1,3 +1,11 @@
+"""
+调用完整流程：
+mimo_api_client是最底层，定义了各种方法，方法需要传递各种参数。
+每个接口有自己的接口类，接口类需要传入client对象，client对象可以调用mimo_api_client的方法。
+MimoAPI，它封装了所有模块的接口。
+conftest通过调用mimo_api_client的方法，返回api_client对象。（不同的测试类用同一个api_client对象）
+在测试类中，使用conftest返回的api_client对象，调用MimoAPI的方法，可以用同一个帐号测试不同的接口。
+"""
 """Mimo 仪表盘模块 API 测试"""
 import pytest
 import allure

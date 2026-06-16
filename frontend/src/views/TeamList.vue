@@ -29,8 +29,8 @@
         <div class="team-card__accent" />
         <div class="team-card__body">
           <div class="team-card__top">
-            <div class="team-card__avatar-ring" :style="{ borderColor: avatarGradient(team.name).split(')')[0] + ')' }">
-              <div class="team-card__avatar" :style="{ background: avatarGradient(team.name) }">
+            <div class="team-card__avatar-ring" :style="{ borderColor: avatarGradient(team.name, 'team') }">
+              <div class="team-card__avatar" :style="{ background: avatarGradient(team.name, 'team') }">
                 {{ team.name.charAt(0).toUpperCase() }}
               </div>
             </div>

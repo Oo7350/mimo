@@ -377,14 +377,14 @@ watch(() => route.path, () => checkTourTrigger())
   &__bell {
     cursor: pointer;
     color: var(--text-secondary);
-    transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+    transition: opacity 0.15s;
     padding: 6px;
     border-radius: 10px;
 
     &:hover {
-      color: var(--color-primary);
-      background: rgba(79, 70, 229, 0.08);
-      transform: scale(1.1);
+      color: var(--text-primary);
+      background: var(--bg-hover);
+      opacity: 0.85;
     }
     &:active { transform: scale(0.95); }
   }
@@ -396,18 +396,12 @@ watch(() => route.path, () => checkTourTrigger())
     cursor: pointer;
     padding: 5px 14px 5px 5px;
     border-radius: 12px;
-    transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+    transition: background 0.15s;
     font-weight: 600;
     font-size: 14px;
     color: var(--text-primary);
 
-    &:hover {
-      background: rgba(79, 70, 229, 0.06);
-    }
-
-    .el-avatar {
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    }
+    &:hover { background: var(--bg-hover); }
   }
 }
 
@@ -423,14 +417,10 @@ watch(() => route.path, () => checkTourTrigger())
   color: var(--text-placeholder);
   font-size: 13px;
   cursor: pointer;
-  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: border-color 0.15s;
   min-width: 220px;
 
-  &:hover {
-    border-color: rgba(79, 70, 229, 0.3);
-    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.08);
-    transform: translateY(-1px);
-  }
+  &:hover { border-color: var(--text-muted); }
 
   kbd {
     margin-left: auto;
@@ -450,7 +440,7 @@ watch(() => route.path, () => checkTourTrigger())
 .mimo-sidebar {
   background: #0f1117;
   border-right: 1px solid rgba(255, 255, 255, 0.04);
-  transition: width 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: width 0.25s ease;
   overflow: hidden;
 
   &__wrapper {
@@ -477,11 +467,11 @@ watch(() => route.path, () => checkTourTrigger())
       font-weight: 550;
       font-size: 14px;
       letter-spacing: -0.1px;
-      transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+      transition: background 0.15s;
 
       .el-icon {
         font-size: 18px;
-        transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+        transition: transform 0.2s ease;
       }
 
       &:hover {
@@ -493,12 +483,11 @@ watch(() => route.path, () => checkTourTrigger())
     }
 
     :deep(.el-menu-item.is-active) {
-      background: rgba(79, 70, 229, 0.2) !important;
-      color: #a5b4fc !important;
+      background: rgba(255, 255, 255, 0.1) !important;
+      color: #fff !important;
       font-weight: 700;
-      box-shadow: inset 0 0 0 1px rgba(79, 70, 229, 0.3);
 
-      .el-icon { color: #a5b4fc; }
+      .el-icon { color: #fff; }
     }
 
     :deep(.el-sub-menu .el-menu-item) {
@@ -546,14 +535,13 @@ watch(() => route.path, () => checkTourTrigger())
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius-lg);
-  box-shadow: var(--shadow-xl);
   z-index: 200;
   overflow: hidden;
-  animation: notif-enter 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: notif-enter 0.25s ease;
 
   @keyframes notif-enter {
-    from { opacity: 0; transform: translateY(-8px) scale(0.97); }
-    to { opacity: 1; transform: translateY(0) scale(1); }
+    from { opacity: 0; transform: translateY(-6px); }
+    to { opacity: 1; transform: translateY(0); }
   }
 
   &__header {
@@ -592,7 +580,7 @@ watch(() => route.path, () => checkTourTrigger())
   &:hover { background: var(--bg-hover); }
 
   &--unread {
-    background: rgba(79, 70, 229, 0.04);
+    background: var(--bg-subtle);
   }
 
   &__dot {
@@ -602,7 +590,6 @@ watch(() => route.path, () => checkTourTrigger())
     background: var(--color-primary);
     margin-top: 7px;
     flex-shrink: 0;
-    box-shadow: 0 0 6px rgba(79, 70, 229, 0.4);
   }
 
   &__content {
@@ -637,10 +624,10 @@ watch(() => route.path, () => checkTourTrigger())
     .el-input__wrapper {
       border-radius: 10px;
       box-shadow: 0 0 0 1px var(--border-color);
-      transition: all 0.25s ease;
+      transition: border-color 0.15s;
 
       &:hover {
-        box-shadow: 0 0 0 1px rgba(79, 70, 229, 0.3);
+        border-color: var(--text-muted);
       }
     }
   }
