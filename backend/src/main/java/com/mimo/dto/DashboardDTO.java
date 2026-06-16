@@ -17,6 +17,8 @@ public class DashboardDTO {
         private int totalIssues;
         private int inProgressIssues;
         private int doneIssues;
+        private int bugCount;
+        private int thisWeekActivity;
         private List<SprintInfo> activeSprints;
         private List<ProjectInfo> myProjects;
         private List<ActivityInfo> recentActivities;

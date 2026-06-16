@@ -325,6 +325,7 @@ import {
 } from "@element-plus/icons-vue"
 import { getUserProfile, updateUserProfile, changePassword } from "@/api/user"
 import { getMyLevel } from "@/api/user-level"
+import request from "@/api/request"
 import { useAppStore } from "@/store/app"
 import { avatarGradient } from "@/utils/color"
 import PageHeader from "@/components/common/PageHeader.vue"
@@ -434,24 +435,34 @@ async function fetchProfile() {
   // Fetch level badge
   try { const lr = await getMyLevel(); userLevel.value = lr.data } catch { /* */ }
 
-  // Mock stats (replace with real API)
-  Object.assign(stats, {
-    projectCount: Math.floor(Math.random() * 8) + 2,
-    completedCount: Math.floor(Math.random() * 50) + 20,
-    inProgressCount: Math.floor(Math.random() * 15) + 3,
-    bugCount: Math.floor(Math.random() * 6),
-    sprintProgress: Math.floor(Math.random() * 60) + 30,
-    thisWeekActivity: Math.floor(Math.random() * 30) + 10,
-  })
-
-  // Mock activities (replace with real API)
-  activities.value = [
-    { text: '完成了任务 <strong>MIMO-23</strong> 登录优化', time: '今天 10:30', color: '#10b981' },
-    { text: '创建了缺陷 <strong>MIMO-45</strong> 导出异常', time: '今天 09:15', color: '#ef4444' },
-    { text: '将 <strong>MIMO-08</strong> 移动到「进行中」', time: '昨天 14:00', color: '#f59e0b' },
-    { text: '评论了 <strong>MIMO-12</strong>', time: '昨天 18:22', color: '#6366f1' },
-    { text: '加入了项目「电商平台重构」', time: '3 天前', color: '#06b6d4' },
-  ]
+  // 从 /dashboard 获取真实统计数据
+  try {
+    const res = await request.get("/dashboard")
+    const d = res.data
+    Object.assign(stats, {
+      projectCount: d.myProjects?.length || 0,
+      completedCount: d.doneIssues || 0,
+      inProgressCount: d.inProgressIssues || 0,
+      bugCount: d.bugCount || 0,
+      sprintProgress: d.activeSprints?.length
+        ? Math.round((d.activeSprints.reduce((s: number, a: any) => s + (a.completedIssues || 0), 0) /
+            d.activeSprints.reduce((s: number, a: any) => s + (a.totalIssues || 1), 0)) * 100)
+        : 0,
+      thisWeekActivity: d.thisWeekActivity || 0,
+    })
+    // 真实动态
+    activities.value = (d.recentActivities || []).slice(0, 5).map((a: any) => {
+      const colorMap: Record<string, string> = {
+        CREATE: '#10b981', UPDATE: '#f59e0b', MOVE: '#6366f1',
+        DELETE: '#ef4444', COMMENT: '#06b6d4', ASSIGN: '#8b5cf6',
+      }
+      return {
+        text: `${a.action === 'CREATE' ? '创建了' : a.action === 'UPDATE' ? '更新了' : a.action === 'MOVE' ? '移动了' : a.action === 'DELETE' ? '删除了' : a.action === 'COMMENT' ? '评论了' : a.action === 'ASSIGN' ? '指派了' : a.action} <strong>${a.detail || ''}</strong>`,
+        time: formatRelativeTime(a.createdAt),
+        color: colorMap[a.action] || '#6366f1',
+      }
+    })
+  } catch { /* 保持默认值 0 */ }
 }
 
 async function handleUpdateProfile() {
@@ -483,6 +494,21 @@ function savePrefs() { ElMessage.success("偏好已保存") }
 function formatDate(date?: string) {
   if (!date) return "-"
   return new Date(date).toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" })
+}
+
+function formatRelativeTime(dateStr?: string): string {
+  if (!dateStr) return ""
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diff = now.getTime() - date.getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return "刚刚"
+  if (mins < 60) return `${mins} 分钟前`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours} 小时前`
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `${days} 天前`
+  return formatDate(dateStr)
 }
 
 onMounted(fetchProfile)

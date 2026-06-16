@@ -40,6 +40,23 @@ public class DashboardService {
         int doneIssues = issueMapper.selectCount(
                 issueQw.clone().eq(Issue::getStatus, "DONE")).intValue();
 
+        // BUG 缺陷数
+        int bugCount = 0;
+        if (!projectIds.isEmpty()) {
+            bugCount = issueMapper.selectCount(
+                    issueQw.clone().eq(Issue::getType, "BUG")).intValue();
+        }
+
+        // 本周活跃（周一到今天的动态数）
+        int thisWeekActivity = 0;
+        if (!projectIds.isEmpty()) {
+            LocalDate monday = LocalDate.now().with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
+            thisWeekActivity = activityLogMapper.selectCount(
+                    new LambdaQueryWrapper<ActivityLog>()
+                            .in(ActivityLog::getProjectId, projectIds)
+                            .ge(ActivityLog::getCreatedAt, monday.atStartOfDay())).intValue();
+        }
+
         // 活跃 Sprint — 批量优化：避免循环内逐条查询
         List<SprintInfo> activeSprints = List.of();
         if (!projectIds.isEmpty()) {
@@ -122,6 +139,8 @@ public class DashboardService {
                 .totalIssues(totalIssues)
                 .inProgressIssues(inProgressIssues)
                 .doneIssues(doneIssues)
+                .bugCount(bugCount)
+                .thisWeekActivity(thisWeekActivity)
                 .activeSprints(activeSprints)
                 .myProjects(myProjects)
                 .recentActivities(recentActivities)
