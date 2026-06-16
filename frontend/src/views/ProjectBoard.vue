@@ -1,6 +1,6 @@
-﻿<template>
+<template>
   <div class="board">
-    <!-- 椤堕儴宸ュ叿鏍?-->
+    <!-- 顶部工具栏 -->
     <div class="board__toolbar">
       <div class="board__toolbar-left">
         <el-button class="board__back" @click="$router.push(`/projects/${projectId}`)" text>
@@ -8,7 +8,7 @@
         </el-button>
         <div class="board__project-info">
           <h3 class="board__title">{{ projectName }}</h3>
-          <span class="board__subtitle">鐪嬫澘 路 鎷栨嫿鍗＄墖鏇存柊鐘舵€?/span>
+          <span class="board__subtitle">看板 · 拖拽卡片更新状态</span>
         </div>
         <div class="segmented-control board__view-switcher">
           <button
@@ -24,34 +24,38 @@
       </div>
       <div class="board__toolbar-right">
         <el-button id="create-task-btn" type="primary" @click="showCreateIssue = true">
-          <el-icon><Plus /></el-icon>鏂板缓宸ヤ綔椤?        </el-button>
+          <el-icon><Plus /></el-icon>新建工作项
+        </el-button>
+        <el-button type="success" plain @click="showAiCreator = true">
+          <el-icon><MagicStick /></el-icon>AI 创建
+        </el-button>
       </div>
     </div>
 
-    <!-- 绛涢€夋爮 -->
+    <!-- 筛选栏 -->
     <div v-if="currentView === 'kanban' || currentView === 'buglist'" class="board__filters">
       <el-input
         v-model="searchKeyword"
-        placeholder="鎼滅储鏍囬銆佺紪鍙枫€佹寚娲句汉..."
+        placeholder="搜索标题、编号、指派人..."
         :prefix-icon="Search"
         clearable
         size="default"
         class="board__search"
       />
-      <el-select v-model="filterAssignee" placeholder="鎸囨淳浜? clearable class="board__filter-select">
+      <el-select v-model="filterAssignee" placeholder="指派人" clearable class="board__filter-select">
         <el-option v-for="a in assigneeOptions" :key="a" :label="a" :value="a" />
       </el-select>
-      <el-select v-model="filterPriority" placeholder="浼樺厛绾? clearable class="board__filter-select board__filter-select--sm">
-        <el-option label="鏈€楂? value="HIGHEST" />
-        <el-option label="楂? value="HIGH" />
-        <el-option label="涓? value="MEDIUM" />
-        <el-option label="浣? value="LOW" />
-        <el-option label="鏈€浣? value="LOWEST" />
+      <el-select v-model="filterPriority" placeholder="优先级" clearable class="board__filter-select board__filter-select--sm">
+        <el-option label="最高" value="HIGHEST" />
+        <el-option label="高" value="HIGH" />
+        <el-option label="中" value="MEDIUM" />
+        <el-option label="低" value="LOW" />
+        <el-option label="最低" value="LOWEST" />
       </el-select>
-      <el-select v-if="currentView === 'kanban'" v-model="swimlaneMode" placeholder="娉抽亾" class="board__filter-select board__filter-select--sm">
-        <el-option label="鏃犳吵閬? value="" />
-        <el-option label="鎸夋寚娲句汉" value="assignee" />
-        <el-option label="鎸夊彶璇? value="epic" />
+      <el-select v-if="currentView === 'kanban'" v-model="swimlaneMode" placeholder="泳道" class="board__filter-select board__filter-select--sm">
+        <el-option label="无泳道" value="" />
+        <el-option label="按指派人" value="assignee" />
+        <el-option label="按史诗" value="epic" />
       </el-select>
       <div class="board__presets">
         <button
@@ -75,17 +79,17 @@
       </div>
       <div class="board__toolbar-actions">
         <el-button class="board__report-btn" @click="$router.push(`/projects/${projectId}/reports`)">
-          <el-icon><Document /></el-icon>鎶ュ憡
-          <span v-if="recentReportCount > 0" class="board__report-badge">{{ recentReportCount }}</span>
+          <el-icon><Document /></el-icon>报告<span v-if="recentReportCount > 0" class="board__report-badge">{{ recentReportCount }}</span>
         </el-button>
         <el-dropdown trigger="click" @command="handleQuickReport">
           <el-button type="primary">
-            <el-icon><Plus /></el-icon>鏂板缓宸ヤ綔椤?          </el-button>
+            <el-icon><Plus /></el-icon>新建工作项
+          </el-button>
           <template #dropdown>
             <el-dropdown-menu>
-              <el-dropdown-item command="issue">鏂板缓宸ヤ綔椤?/el-dropdown-item>
-              <el-dropdown-item command="daily" divided>鐢熸垚浠婃棩鏃ユ姤</el-dropdown-item>
-              <el-dropdown-item command="weekly">鐢熸垚鏈懆鍛ㄦ姤</el-dropdown-item>
+              <el-dropdown-item command="issue">新建工作项</el-dropdown-item>
+              <el-dropdown-item command="daily" divided>生成今日日报</el-dropdown-item>
+              <el-dropdown-item command="weekly">生成本周周报</el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
@@ -94,18 +98,18 @@
 
     <!-- Kanban View -->
     <div v-if="currentView === 'kanban'" class="board__kanban">
-      <!-- Tab 鍒囨崲鏍?-->
+      <!-- Tab 切换区 -->
       <div class="board__kanban-tabs">
         <button :class="['board__tab', { 'is-active': kanbanTab === 'tasks' }]" @click="switchKanbanTab('tasks')">
-          <el-icon><Grid /></el-icon> 宸ヤ綔椤?          <span class="board__tab-count">{{ taskTotal }}</span>
+          <el-icon><Grid /></el-icon> 工作项          <span class="board__tab-count">{{ taskTotal }}</span>
         </button>
         <button :class="['board__tab', { 'is-active': kanbanTab === 'bugs', 'board__tab--bug': kanbanTab === 'bugs' }]" @click="switchKanbanTab('bugs')">
-          <el-icon><WarningFilled /></el-icon> 缂洪櫡
+          <el-icon><WarningFilled /></el-icon> 缺陷
           <span class="board__tab-count">{{ bugTotal }}</span>
         </button>
       </div>
 
-      <!-- 鏁呬簨 & 浠诲姟 鍖哄煙 -->
+      <!-- 故事 & 任务 区域 -->
       <div v-show="kanbanTab === 'tasks'" class="board__section">
         <div class="board__columns">
           <div
@@ -154,7 +158,7 @@
         </div>
       </div>
 
-      <!-- 缂洪櫡鍖哄煙锛堢嫭绔嬬姸鎬佸垪锛岀嫭鍗犲叏瀹斤級 -->
+      <!-- 缺陷区域（独立状态列，独占全宽） -->
       <div v-show="kanbanTab === 'bugs'" class="board__section board__section--bug-full">
         <div class="board__columns board__columns--bugs">
           <div
@@ -200,32 +204,33 @@
       </div>
     </div>
 
-    <!-- 椤圭洰姒傝鏍忥紙鐪嬫澘搴曢儴锛屽叧鑱旀姤鍛婏級 -->
+    <!-- 项目概览统计栏（看板底部，关联提醒） -->
     <div v-if="currentView === 'kanban'" class="board__overview">
       <div class="board__overview-stat" @click="$router.push(`/projects/${projectId}/reports`)">
         <span class="board__overview-num">{{ boardStats.total }}</span>
-        <span class="board__overview-label">鎬讳换鍔?/span>
+        <span class="board__overview-label">总任务</span>
       </div>
       <div class="board__overview-divider" />
       <div class="board__overview-stat">
         <span class="board__overview-num board__overview-num--todo">{{ boardStats.todo }}</span>
-        <span class="board__overview-label">寰呭姙</span>
+        <span class="board__overview-label">待办</span>
       </div>
       <div class="board__overview-stat">
         <span class="board__overview-num board__overview-num--progress">{{ boardStats.inProgress }}</span>
-        <span class="board__overview-label">杩涜涓?/span>
+        <span class="board__overview-label">进行中</span>
       </div>
       <div class="board__overview-stat">
         <span class="board__overview-num board__overview-num--done">{{ boardStats.done }}</span>
-        <span class="board__overview-label">宸插畬鎴?/span>
+        <span class="board__overview-label">已完成</span>
       </div>
       <div class="board__overview-divider" />
       <div class="board__overview-stat">
         <span class="board__overview-num board__overview-num--bug">{{ boardStats.bugs }}</span>
-        <span class="board__overview-label">缂洪櫡</span>
+        <span class="board__overview-label">缺陷</span>
       </div>
       <el-button size="small" text type="primary" class="board__overview-link" @click="$router.push(`/projects/${projectId}/reports`)">
-        鏌ョ湅鎶ュ憡涓庢暟鎹湅鏉?鈫?      </el-button>
+        查看报告与数据看板 →
+      </el-button>
     </div>
 
     <!-- Bug Table View -->
@@ -242,6 +247,13 @@
     <div v-else-if="currentView === 'storymap'" class="board__alt-view">
       <StoryMap />
     </div>
+
+    <AiIssueCreator
+      v-model:visible="showAiCreator"
+      :project-id="projectId"
+      :team-id="teamId"
+      @created="onCreated"
+    />
 
     <IssueDetailDialog
       v-model:visible="showCreateIssue"
@@ -274,10 +286,11 @@ import { avatarGradient } from "@/utils/color"
 import draggable from "vuedraggable"
 import { ElMessage } from "element-plus"
 import IssueDetailDialog from "@/components/issue/IssueDetailDialog.vue"
+import AiIssueCreator from "@/components/issue/AiIssueCreator.vue"
 import IssueCard from "@/components/issue/IssueCard.vue"
 import BugTableView from "@/components/issue/bug/BugTableView.vue"
 import StoryMap from "@/components/issue/story/StoryMap.vue"
-import { Search, Grid, List, Connection, Box, Document, WarningFilled } from "@element-plus/icons-vue"
+import { Search, Grid, List, Connection, Box, Document, WarningFilled, MagicStick } from "@element-plus/icons-vue"
 import { useWebSocket } from "@/composables/useWebSocket"
 import { getReports, generateReport } from "@/api/report"
 
@@ -288,6 +301,7 @@ const projectName = ref("")
 const teamId = ref<number>(0)
 const columns = ref<any[]>([])
 const showCreateIssue = ref(false)
+const showAiCreator = ref(false)
 const showEditIssue = ref(false)
 const editingIssueId = ref<number>(0)
 const dragOverColumnId = ref<string | number | null>(null)
@@ -296,24 +310,25 @@ const filterAssignee = ref("")
 const filterPriority = ref("")
 const filterType = ref("")
 const swimlaneMode = ref<'assignee' | 'epic' | ''>('')
-const activePreset = ref("鍏ㄩ儴")
+const activePreset = ref("全部")
 const currentView = ref<'kanban' | 'buglist' | 'storymap'>('kanban')
 const recentReportCount = ref(0)
 
 const columnColors = ['#6366f1', '#f59e0b', '#10b981']
 
-// 缂洪櫡鐙珛鐘舵€佸垪瀹氫箟锛堣櫄鎷熷垪锛屼笉渚濊禆 DB board_columns锛?const BUG_STATUS_FLOW = [
-  { key: 'NEW', label: '鏂板缓', color: '#94a3b8' },
-  { key: 'CONFIRMED', label: '宸茬‘璁?, color: '#3b82f6' },
-  { key: 'IN_PROGRESS', label: '澶勭悊涓?, color: '#f59e0b' },
-  { key: 'RESOLVED', label: '宸茶В鍐?, color: '#8b5cf6' },
-  { key: 'VERIFIED', label: '宸查獙璇?, color: '#06b6d4' },
-  { key: 'CLOSED', label: '宸插叧闂?, color: '#10b981' },
+// 缺陷独立状态列表定义（暗色列表，不依赖 DB board_columns）
+const BUG_STATUS_FLOW = [
+  { key: 'NEW', label: '新建', color: '#94a3b8' },
+  { key: 'CONFIRMED', label: '已确认', color: '#3b82f6' },
+  { key: 'IN_PROGRESS', label: '处理中', color: '#f59e0b' },
+  { key: 'RESOLVED', label: '已解决', color: '#8b5cf6' },
+  { key: 'VERIFIED', label: '已验证', color: '#06b6d4' },
+  { key: 'CLOSED', label: '已关闭', color: '#10b981' },
 ]
 
-// 浠庣湡瀹炲垪涓彁鍙栫己闄峰崱鐗囷紝鎸?bugStatus 鍒嗙粍鍒拌櫄鎷熷垪
+// 从原始列中提取排除卡片，按 bugStatus 分组到暗色列表
 const bugColumns = computed(() => {
-  // 鏀堕泦鎵€鏈?BUG 绫诲瀷 issue
+  // 收集所有 BUG 类型 issue
   const allBugs: any[] = []
   columns.value.forEach((col: any) => {
     ;(col.issues || []).forEach((i: any) => {
@@ -327,34 +342,36 @@ const bugColumns = computed(() => {
   }))
 })
 
-// 鏁呬簨/浠诲姟鍒楋紙杩囨护鎺?BUG 绫诲瀷锛?const taskColumns = computed(() =>
+// 故事/任务列（过滤掉 BUG 类型）
+const taskColumns = computed(() =>
   columns.value.map((col: any) => ({
     ...col,
     issues: (col.issues || []).filter((i: any) => i.type !== 'BUG'),
   }))
 )
 
-// 鐪嬫澘鍐?Tab 鍒囨崲
+// 看板 Tab 切换
 const kanbanTab = ref<'tasks' | 'bugs'>('tasks')
 const taskTotal = computed(() => taskColumns.value.reduce((s: number, c: any) => s + (c.issues?.length || 0), 0))
 const bugTotal = computed(() => bugColumns.value.reduce((s: number, c: any) => s + (c.issues?.length || 0), 0))
 
 function switchKanbanTab(tab: 'tasks' | 'bugs') {
   kanbanTab.value = tab
-  // 鑱斿姩绫诲瀷绛涢€?  filterType.value = tab === 'bugs' ? 'BUG' : ''
+  // 自动切换类型过滤
+  filterType.value = tab === 'bugs' ? 'BUG' : ''
 }
 
 const views = [
-  { key: 'kanban', label: '鐪嬫澘', icon: Grid },
-  { key: 'buglist', label: '缂洪櫡鍒楄〃', icon: List },
-  { key: 'storymap', label: '鏁呬簨鍦板浘', icon: Connection },
+  { key: 'kanban', label: '看板', icon: Grid },
+  { key: 'buglist', label: '缺陷列表', icon: List },
+  { key: 'storymap', label: '故事地图', icon: Connection },
 ]
 
 const typeFilters = [
-  { value: '', label: '鍏ㄩ儴', class: '' },
-  { value: 'STORY', label: '鏁呬簨', class: 'board__type-btn--story' },
+  { value: '', label: '全部', class: '' },
+  { value: 'STORY', label: '故事', class: 'board__type-btn--story' },
   { value: 'TASK', label: '浠诲姟', class: 'board__type-btn--task' },
-  { value: 'BUG', label: '缂洪櫡', class: 'board__type-btn--bug' },
+  { value: 'BUG', label: '缺陷', class: 'board__type-btn--bug' },
 ]
 
 const { subscribe: wsSubscribe } = useWebSocket()
@@ -410,10 +427,10 @@ const filteredIssues = (col: any) =>
   col.issues?.filter((i: any) => issueMatchesFilter(i)) || []
 
 function laneKey(issue: any): string {
-  if (swimlaneMode.value === 'assignee') return issue.assigneeName || '鏈寚娲?
+  if (swimlaneMode.value === 'assignee') return issue.assigneeName || '未指派'
   if (swimlaneMode.value === 'epic') {
-    if (issue.type === 'STORY') return issue.epic || '鏈垎绫诲彶璇?
-    return '鈥?鍏朵粬绫诲瀷 鈥?
+    if (issue.type === 'STORY') return issue.epic || '未分类史诗'
+    return '→ 其他类型'
   }
   return ''
 }
@@ -451,9 +468,9 @@ interface FilterPreset {
 }
 
 const filterPresets = computed<FilterPreset[]>(() => [
-  { name: '鍏ㄩ儴', apply: () => { clearFilters(); kanbanTab.value = 'tasks' } },
-  { name: '缂洪櫡', apply: () => { clearFilters(); filterType.value = 'BUG'; kanbanTab.value = 'bugs' } },
-  { name: '鏁呬簨', apply: () => { clearFilters(); filterType.value = 'STORY'; kanbanTab.value = 'tasks' } },
+  { name: '全部', apply: () => { clearFilters(); kanbanTab.value = 'tasks' } },
+  { name: '缺陷', apply: () => { clearFilters(); filterType.value = 'BUG'; kanbanTab.value = 'bugs' } },
+  { name: '故事', apply: () => { clearFilters(); filterType.value = 'STORY'; kanbanTab.value = 'tasks' } },
   { name: '鎴戠殑', apply: () => { clearFilters(); filterAssignee.value = userStore.username || '' } },
 ])
 
@@ -503,25 +520,26 @@ function handleQuickReport(cmd: string) {
   } else {
     const type = cmd === 'daily' ? 'DAILY' : 'WEEKLY'
     generateReport({ projectId, type })
-      .then(() => ElMessage.success(`${type === 'DAILY' ? '鏃ユ姤' : '鍛ㄦ姤'}宸茬敓鎴恅))
+      .then(() => ElMessage.success(`${type === 'DAILY' ? '日报' : '周报'}已生成`))
       .catch(() => {})
   }
 }
 
 function columnToStatus(colName: string): string {
-  if (colName.includes('寰呭姙') || colName.includes('todo')) return 'TODO'
-  if (colName.includes('瀹屾垚') || colName.includes('done')) return 'DONE'
+  if (colName.includes('待办') || colName.includes('todo')) return 'TODO'
+  if (colName.includes('完成') || colName.includes('done')) return 'DONE'
   return 'IN_PROGRESS'
 }
 
 async function handleDragChange(evt: any, targetColId: number) {
-  // 璺ㄥ垪鎷栨嫿锛氬崱鐗囦粠鍏朵粬鍒楄繘鍏ュ綋鍓嶅垪
+  // 跨列拖拽：卡片从其他列进入当前列
   if (evt.added) {
     const issue = evt.added.element
     if (!issue?.id) return
     const targetCol = columns.value.find((c: any) => c.id === targetColId)
     if (!targetCol) return
-    // 鍏堟洿鏂版湰鍦扮姸鎬侊紙涔愯鏇存柊锛?    if (issue.type === 'BUG') {
+    // 先更新本地状态（状态更新）
+    if (issue.type === 'BUG') {
       issue.bugStatus = bugStatusToColumn(targetCol.name)
     } else {
       issue.status = columnToStatus(targetCol.name)
@@ -529,36 +547,39 @@ async function handleDragChange(evt: any, targetColId: number) {
     try {
       await moveIssue({ issueId: issue.id, targetColumnId: targetColId, sortOrder: evt.added.newIndex ?? 0 })
     } catch (e: any) {
-      const msg = e?.response?.data?.message || e?.message || "绉诲姩澶辫触"
+      const msg = e?.response?.data?.message || e?.message || "移动失败"
       ElMessage.error(msg)
       await fetchBoard()
     }
   }
-  // 鍚屽垪鍐呮帓搴忥細鍗＄墖鍦ㄥ綋鍓嶅垪涓敼鍙樹綅缃?  else if (evt.moved) {
+
+  // 同列内排序：卡片在当前列中改变位置
+  else if (evt.moved) {
     const issue = evt.moved.element
     if (!issue?.id) return
     try {
       await moveIssue({ issueId: issue.id, targetColumnId: targetColId, sortOrder: evt.moved.newIndex ?? 0 })
     } catch (e: any) {
-      ElMessage.error("鎺掑簭澶辫触锛屾鍦ㄦ仮澶?..")
+      ElMessage.error("排序失败，正在恢复...")
       await fetchBoard()
     }
   }
 }
 
-// BUG 鐨?bugStatus 鈫?鍒楀悕鏄犲皠锛堝弽鍚戯級鈥?淇濈暀鍏煎
+// BUG 的 bugStatus → 列名映射（反向）- 保留兼容
 function bugStatusToColumn(colName: string): string {
   const lower = (colName || '').toLowerCase()
-  if (lower.includes('done') || lower.includes('瀹屾垚')) return 'CLOSED'
-  if (lower.includes('progress') || lower.includes('杩涜')) return 'IN_PROGRESS'
-  return 'NEW' // 寰呭姙鍒?鈫?NEW/CONFIRMED
+  if (lower.includes('done') || lower.includes('完成')) return 'CLOSED'
+  if (lower.includes('progress') || lower.includes('进行中')) return 'IN_PROGRESS'
+  return 'NEW' // 待办 → NEW/CONFIRMED
 }
 
-// 缂洪櫡鍦ㄧ嫭绔嬬姸鎬佸垪闂存嫋鎷斤紙鏇存柊 bugStatus锛?async function handleBugDragChange(evt: any, targetBugStatus: string) {
+// 缺陷在独立状态列间拖拽（更新 bugStatus）
+async function handleBugDragChange(evt: any, targetBugStatus: string) {
   if (!evt.added) return
   const issue = evt.added.element
   if (!issue?.id || issue.type !== 'BUG') return
-  // 涔愯鏇存柊
+  // 状态更新
   issue.bugStatus = targetBugStatus
   try {
     await updateIssue({
@@ -567,7 +588,7 @@ function bugStatusToColumn(colName: string): string {
       status: targetBugStatus === 'CLOSED' ? 'DONE' : 'IN_PROGRESS',
     })
   } catch (e: any) {
-    const msg = e?.response?.data?.message || e?.message || "鐘舵€佹洿鏂板け璐?
+    const msg = e?.response?.data?.message || e?.message || "状态更新失败"
     ElMessage.error(msg)
     await fetchBoard()
   }
@@ -576,11 +597,13 @@ function bugStatusToColumn(colName: string): string {
 async function quickComplete(issue: any) {
   try {
     if (issue.type === 'BUG') {
-      // 缂洪櫡锛氭爣璁颁负宸插叧闂紙CLOSED锛?      await updateIssue({ id: issue.id, bugStatus: 'CLOSED', status: 'DONE' })
+      // 缺陷：标记为已关闭（CLOSED）
+      await updateIssue({ id: issue.id, bugStatus: 'CLOSED', status: 'DONE' })
     } else {
-      // 鏁呬簨/浠诲姟锛氭壘鍒?瀹屾垚"鍒?      const doneCol = columns.value.find((c: any) => {
+      // 故事/任务：拖到"完成"列
+      const doneCol = columns.value.find((c: any) => {
         const n = (c.name || '').toLowerCase()
-        return n.includes('done') || n.includes('瀹屾垚')
+        return n.includes('done') || n.includes('完成')
       })
       await updateIssue({
         id: issue.id,
@@ -588,7 +611,7 @@ async function quickComplete(issue: any) {
         columnId: doneCol?.id ?? issue.columnId,
       })
     }
-    ElMessage.success(`${issue.issueKey} 宸叉爣璁板畬鎴恅)
+    ElMessage.success(`${issue.issueKey} 已标记完成`)
     await fetchBoard()
   } catch { /* handled */ }
 }
@@ -609,7 +632,7 @@ function handleBoardSync(event: any) {
         const targetCol = columns.value.find((c: any) => c.id === event.targetColumnId)
         if (targetCol) {
           movedIssue.columnId = event.targetColumnId
-          // BUG 绫诲瀷鍚屾 bugStatus锛屽叾浠栫被鍨嬪悓姝?status
+          // BUG 类型同步 bugStatus，其他类型同步 status
           if (movedIssue.type === 'BUG') {
             movedIssue.bugStatus = bugStatusToColumn(targetCol.name)
             movedIssue.status = columnToStatus(targetCol.name)
@@ -707,7 +730,7 @@ onMounted(async () => {
   &__subtitle { font-size: 12px; color: var(--text-secondary); margin-top: 1px; }
   &__view-switcher { margin-left: 6px; }
 
-  // 绛涢€夋爮
+  // 筛选栏
   &__filters {
     display: flex; align-items: center; gap: 10px;
     flex-wrap: wrap;
@@ -774,7 +797,8 @@ onMounted(async () => {
     &--bug.is-active { background: var(--type-bug); border-color: var(--type-bug); }
   }
 
-  // 鐪嬫澘鍒?  &__columns {
+  // 看板列
+  &__columns {
     display: flex; gap: 16px; overflow-x: auto;
     min-height: calc(70vh - 80px); padding-bottom: 16px;
     align-items: flex-start;
@@ -825,7 +849,7 @@ onMounted(async () => {
 
   &__column--drag-over { border-color: var(--text-muted) !important; }
 
-  // Tab 鍒囨崲
+  // Tab 切换
   &__kanban-tabs { display: flex; gap: 5px; margin-bottom: 18px; padding: 0 2px; }
 
   &__tab {
@@ -845,7 +869,8 @@ onMounted(async () => {
 
   &__tab-count { font-size: 11px; opacity: 0.75; font-weight: 650; }
 
-  // 缂洪櫡鍏ㄥ鍒?  &__section--bug-full .board__columns--bugs {
+  // 缺陷全宽
+  &__section--bug-full .board__columns--bugs {
     gap: 12px;
     .board__column {
       flex: 0 0 calc((100% - 60px) / 6); min-width: 150px;
@@ -859,7 +884,7 @@ onMounted(async () => {
 
   &__drag-item.is-hidden { visibility: hidden; height: 0; overflow: hidden; padding: 0 !important; margin: 0 !important; pointer-events: none; }
 
-  // 搴曢儴姒傝
+  // 底部概览
   &__overview {
     display: flex; align-items: center; gap: 20px;
     margin-top: 18px; padding: 14px 22px;
@@ -887,7 +912,7 @@ onMounted(async () => {
   &__overview-link { margin-left: auto; font-weight: 700; font-size: 12.5px; }
 }
 
-// 鎷栨嫿
+// 拖拽
 :global(.issue-card-ghost) {
   opacity: 0.35;
   background: var(--bg-hover) !important;
@@ -896,17 +921,3 @@ onMounted(async () => {
 }
 :global(.issue-card-dragging) { opacity: 0.35 !important; transform: scale(0.98); }
 </style>
-
-      min-width: 16px; height: 16px; padding: 0 4px;
-      border-radius: 8px;
-      background: var(--color-danger, #ef4444);
-      color: #fff; font-size: 10px; font-weight: 700;
-      line-height: 16px; text-align: center;
-      box-shadow: 0 2px 6px rgba(239, 68, 68, 0.5);
-    }
-  }
-
-  &__back {
-    width: 38px; height: 38px;
-    border-radius: 11px;
-    display: flex; align-items: center; justify-content: center;

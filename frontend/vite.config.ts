@@ -18,6 +18,14 @@ export default defineConfig({
       "/api": {
         target: "http://localhost:8080",
         changeOrigin: true,
+        configure: (proxy) => {
+          proxy.on('proxyRes', (proxyRes) => {
+            // SSE 流式响应不压缩，避免缓冲
+            if (proxyRes.headers['content-type']?.includes('text/event-stream')) {
+              delete proxyRes.headers['content-encoding']
+            }
+          })
+        },
       },
     },
   },

@@ -155,6 +155,7 @@
     </el-container>
 
     <CommandPalette />
+    <AiChatPanel />
   </el-container>
 </template>
 
@@ -170,6 +171,7 @@ import { getNotifications } from '@/api/notification'
 import type { ProjectVO } from '@/types'
 import BreadcrumbNav from './BreadcrumbNav.vue'
 import CommandPalette from '@/components/common/CommandPalette.vue'
+import AiChatPanel from '@/components/common/AiChatPanel.vue'
 import { useTour } from '@/composables/useTour'
 import { useNotifications } from '@/composables/useNotifications'
 import { useWebSocket } from '@/composables/useWebSocket'

@@ -157,11 +157,24 @@
 
     <template #footer>
       <el-button @click="$emit('update:visible', false)">取消</el-button>
+      <el-button v-if="isEdit && form.type === 'STORY'" type="success" plain @click="showAiSplitter = true">
+        <el-icon><MagicStick /></el-icon>AI 拆分
+      </el-button>
       <el-button v-if="isEdit" type="danger" @click="handleDelete" :loading="loading">删除</el-button>
       <el-button type="primary" @click="handleSave" :loading="loading">
         {{ isEdit ? '保存' : '创建' }}
       </el-button>
     </template>
+
+    <AiTaskSplitter
+      v-model:visible="showAiSplitter"
+      :project-id="projectId"
+      :story-title="form.title"
+      :story-description="form.description"
+      :acceptance-criteria="(form.acceptanceCriteria || []).map((ac: any) => ac.content).join('\n')"
+      :parent-issue-id="form.id"
+      @created="emit('updated')"
+    />
   </el-dialog>
 </template>
 
@@ -179,8 +192,9 @@ import { TYPE_LABEL, BUG_STATUS_LABEL } from "@/utils/constants"
 import StoryDialog from "./story/StoryDialog.vue"
 import BugDialog from "./bug/BugDialog.vue"
 import TaskDialog from "./task/TaskDialog.vue"
+import AiTaskSplitter from "./AiTaskSplitter.vue"
 import CommentSection from "./shared/CommentSection.vue"
-import { Notebook, Check, WarningFilled, Upload, Document, Download, Delete } from "@element-plus/icons-vue"
+import { Notebook, Check, WarningFilled, Upload, Document, Download, Delete, MagicStick } from "@element-plus/icons-vue"
 import type { IssueCard, AcceptanceCriterion } from "@/types"
 
 const props = defineProps<{
@@ -200,6 +214,7 @@ const attachments = ref<any[]>([])
 const members = ref<any[]>([])
 const stories = ref<IssueCard[]>([])
 const bugFormRef = ref<any>(null)
+const showAiSplitter = ref(false)
 
 // Comments
 const comments = ref<any[]>([])
