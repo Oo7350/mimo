@@ -4,6 +4,77 @@
 
 ---
 
+## v2.8.0 — AI Copilot + 粒子动画 + 构建修复 (2026-06-16)
+
+### BUG-043: ProjectBoard.vue 中文乱码导致构建失败 [Critical]
+
+- **严重程度**: Critical（构建阻塞）
+- **发现版本**: v2.7.3
+- **文件**: `frontend/src/views/ProjectBoard.vue`
+- **现象**: `vite build` 报错 `[vue/compiler-sfc] Unexpected token`，看板页加载失败 `TypeError: Failed to fetch dynamically imported module`
+- **根因**: 文件中大量中文注释和标签文本出现乱码（如 `鉁?`、`鈹?` 等），导致 Vue 模板解析器和 SCSS 编译器无法正确解析；同时存在函数名拼写错误（`han]leBoardSync`）、标签未闭合、SCSS 括号不匹配等问题
+- **修复**:
+  - 使用 PowerShell 批量替换乱码文本为正确的中文内容
+  - 修正函数名 `han]leBoardSync` → `handleBoardSync`
+  - 修复模板中未闭合的标签和字符串
+  - 调整 SCSS 样式结构，确保括号匹配，整合孤立的 CSS 代码块
+
+### BUG-044: AI 助手请求返回 404 [High]
+
+- **严重程度**: High（功能不可用）
+- **发现版本**: v2.7.3
+- **文件**: `frontend/src/api/ai.ts`, `backend/.../AiController.java`, `backend/.../SecurityConfig.java`
+- **现象**: AI 助手发送消息时返回 `AxiosError: Request failed with status code 404`，路径 `/api/api/ai/chat/stream`
+- **根因**:
+  1. 前端 `ai.ts` 中请求 URL 已包含 `/api` 前缀，但 axios baseURL 也配置了 `/api`，导致双重前缀
+  2. 后端 `SecurityConfig` 未开放 AI 接口的匿名访问权限
+- **修复**:
+  - 移除 `ai.ts` 中多余的 `/api` 前缀，确保请求路径为 `/ai/chat/stream`
+  - 在 `SecurityConfig` 中添加 `/api/ai/**` 到白名单
+
+### BUG-045: chatStream 参数顺序导致 TypeScript 编译错误 [Medium]
+
+- **严重程度**: Medium（构建阻塞）
+- **发现版本**: v2.8.0-dev
+- **文件**: `frontend/src/api/ai.ts:79`
+- **现象**: `error TS1016: A required parameter cannot follow an optional parameter`
+- **根因**: `chatStream(message, systemPrompt?, onChunk)` 中必选参数 `onChunk` 位于可选参数 `systemPrompt` 之后
+- **修复**: 调整参数顺序为 `chatStream(message, onChunk, systemPrompt?, ...)`
+
+### BUG-046: AiChatPanel 类型错误与重复定义 [Medium]
+
+- **严重程度**: Medium（构建阻塞）
+- **发现版本**: v2.8.0-dev
+- **文件**: `frontend/src/components/common/AiChatPanel.vue:35,124,135`
+- **现象**:
+  1. `error TS2304: Cannot find name 'computed'` — 第 124 行使用 `computed()` 但未导入
+  2. `error TS2551: Property 'providerName' does not exist on type 'AiUsageInfo'` — 应为 `provider`
+  3. 存在重复的 `computed(() => ...)` 函数定义
+- **修复**:
+  - vue import 中添加 `computed`
+  - `u.providerName` → `u.provider`
+  - 删除重复的 computed 函数
+
+### BUG-047: AuthLayout canvas 可能为 null [Medium]
+
+- **严重程度**: Medium（构建阻塞）
+- **发现版本**: v2.8.0-dev
+- **文件**: `frontend/src/components/layout/AuthLayout.vue:205-206`
+- **现象**: `error TS18047: 'canvas' is possibly 'null'`
+- **根因**: `onResize()` 函数中使用 `canvas.width` 和 `canvas.height`，但 canvas 来自 `ref<HTMLCanvasElement | null>(null)`，TypeScript 无法排除 null 可能性
+- **修复**: 在 `onResize()` 入口添加 `if (!canvas) return` 守卫
+
+### BUG-048: color.ts PALETTE 变量未定义 [Medium]
+
+- **严重程度**: Medium（构建阻塞）
+- **发现版本**: v2.8.0-dev
+- **文件**: `frontend/src/utils/color.ts:24`
+- **现象**: `error TS2304: Cannot find name 'PALETTE'`
+- **根因**: `avatarColor()` 函数引用了 `PALETTE` 数组，但该变量从未定义
+- **修复**: 定义 PALETTE 为 6 组双色渐变色数组（靛蓝/粉红/青色/橙色/紫色/青蓝）
+
+---
+
 ## v2.7.3 — 代码质量加固 (2026-06-15)
 
 ### BUG-035: N+1 查询风暴导致看板性能严重下降 [Critical]
