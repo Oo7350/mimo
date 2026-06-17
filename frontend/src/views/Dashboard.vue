@@ -11,7 +11,12 @@
           <template v-if="myTasks.length">
             还有 <strong>{{ myTasks.length }}</strong> 项待办等待处理
           </template>
-          <template v-else-if="!loading">所有任务都已处理完毕</template>
+          <template v-else-if="!loading && dashboard?.myProjects?.length">
+            当前没有待办任务
+          </template>
+          <template v-else-if="!loading">
+            加入或创建团队，开始第一个项目
+          </template>
         </p>
       </div>
       <div class="dash-hero__actions">
