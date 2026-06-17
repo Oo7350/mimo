@@ -136,7 +136,7 @@
               <div v-for="d in weekDates" :key="d.key" class="day-col" :class="{ isToday: d.isToday }">
                 <div v-for="h in 24" :key="h" class="hour-slot" @click="openCreateForDateTime(d.date, h-1)" />
                 <div v-for="evt in getWeekDayEvents(d.date)" :key="evt.id" class="week-event-block"
-                  :style="getWeekEventStyle(evt, d.date)" @click="openDetail(evt)">
+                  :style="getWeekEventStyle(evt)" @click="openDetail(evt)">
                   {{ evt.title }}
                 </div>
               </div>
@@ -339,7 +339,12 @@ function formatDate(s:string):string{const d=new Date(s);return`${d.getFullYear(
 function formatDateFull(d:Date):string{return`${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日 ${weekDays[d.getDay()]}`}
 function pad(n:number):string{return String(n).padStart(2,'0')}
 function eventTypeName(t:string):string{return({TASK_DEADLINE:'截止日期',MEETING:'会议',REMINDER:'提醒',SPRINT:'Sprint',CUSTOM:'自定义'})[t]||t}
-function eventTypeTagType(t:string):''|'success'|'warning'|'danger'|'info'{return({TASK_DEADLINE:'danger',MEETING:'',REMINDER:'warning',SPRINT:'success',CUSTOM:'info'})[t]||'info'}
+function eventTypeTagType(t:string):''|'success'|'warning'|'danger'|'info'{
+  const map:{[k:string]:''|'success'|'warning'|'danger'|'info'}={
+    TASK_DEADLINE:'danger',MEETING:'',REMINDER:'warning',SPRINT:'success',CUSTOM:'info'
+  }
+  return map[t]||'info'
+}
 function formatNotifTime(s:string):string{const d=new Date(s),now=new Date(),diff=now.getTime()-d.getTime();if(diff<60000)return'刚刚';if(diff<3600000)return`${Math.floor(diff/60000)}分钟前`;if(diff<86400000)return`${Math.floor(diff/3600000)}小时前`;return`${d.getMonth()+1}/${d.getDate()}`}
 function isDayPanelDate(date:Date):boolean{return dayPanelVisible.value&&toDS(date)===toDS(selectedDate.value)}
 function isSelectedDate(date:Date):boolean{return toDS(date)===toDS(selectedDate.value)}

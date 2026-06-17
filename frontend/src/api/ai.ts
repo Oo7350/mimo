@@ -82,7 +82,9 @@ export function chatStream(
 ): AbortController {
   const controller = new AbortController()
   // 改用 POST + body 传参，避免 URL 长度限制（GET URL 超过 ~8KB 会被浏览器或 Tomcat 拒绝）
-  fetch(`http://localhost:8080/api/ai/chat/stream`, {
+  // 走相对路径 + Vite/Nginx 反代，浏览器无需关心后端 IP/端口
+  // (开发环境 Vite 代理，生产环境 nginx 代理)
+  fetch(`/api/ai/chat/stream`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

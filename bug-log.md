@@ -46,6 +46,58 @@
 - **修复**: `handleSend()` 开头先 `abortController?.abort()` 终止旧请求，避免控制台噪音
 - **已知问题**: AI 助手暂未接入项目上下文（`systemPrompt` 固定），用户需通过 `systemPrompt` 参数手动注入项目信息；后续计划支持自动从 session 加载项目上下文
 
+### BUG-053: 服务器部署 V7 数据库迁移未执行导致日历 500 [High]
+
+- **严重程度**: High（功能不可用）
+- **发现版本**: v2.9.0
+- **文件**: 服务器 `mimo` 数据库、`backend/src/main/resources/db/migration/V7__calendar_events_team_id.sql`
+- **现象**: 服务器上点击日历菜单，浏览器 console 报 `GET /api/calendar?... 500`，后端日志 `17:38:33 ERROR` 触发 `JwtAuthenticationFilter.extractToken` 抛 `StrictHttpFirewall.validateAllowedHeaderValue` (因为后续 SQL 异常被异常处理链冒泡到过滤器链)
+- **根因**:
+  1. `docker-compose.yml` 用 `mysql:/docker-entrypoint-initdb.d/init.sql` 挂载初始化脚本，**仅在 MySQL 数据卷首次创建时执行一次**
+  2. 项目未启用 Flyway，新加的 `V6__calendar_events.sql` / `V7__calendar_events_team_id.sql` **不会自动跑**
+  3. 服务器上 `calendar_events` 表已存在（V6 手工合并过）但**缺 `team_id` 列**（V7 没跑）
+  4. `CalendarEventService.selectByUserAndDateRange` 在 SQL 中 select `team_id` → MySQL 报 `Unknown column 'team_id'` → 异常冒泡成 500
+- **修复**:
+  1. **服务器端立即执行**: `mysql -u root -p336699 mimo -e "ALTER TABLE calendar_events ADD COLUMN team_id BIGINT NULL AFTER user_id; CREATE INDEX idx_calendar_events_team_id ON calendar_events(team_id);"`
+  2. **代码侧改进（待办）**: 启用 Flyway 自动化迁移 / 把 V6+V7 合并到 `init.sql` 并挂卷
+- **教训**: Docker 持久卷 + init.sql 是"一次性"模式，后续每次 schema 变更必须有自动化迁移工具接管
+
+### BUG-054: 前端 ai.ts 写死 localhost:8080 导致生产环境 AI 助手 ERR_CONNECTION_REFUSED [High]
+
+- **严重程度**: High（生产 AI 助手完全不可用）
+- **发现版本**: v2.8.0（v2.9.0 暴露）
+- **文件**: `frontend/src/api/ai.ts:85`
+- **现象**: 服务器部署后浏览器 console 报 `net::ERR_CONNECTION_REFUSED http://localhost:8080/api/ai/chat/stream`
+- **根因**: `chatStream()` 用原生 `fetch` 调用 SSE 端点，URL 写死 `http://localhost:8080/api/ai/chat/stream`。开发环境 Vite 代理会重写，但生产环境直接读这个 URL → 浏览器把 `localhost` 当作本机 127.0.0.1 → 拒绝连接
+- **修复**: 改为相对路径 `/api/ai/chat/stream`，依赖 Vite (dev) / nginx (prod) 反代
+
+### BUG-055: nginx worker 进程无法读 dist/assets 目录导致 JS MIME 错 [High]
+
+- **严重程度**: High（前端完全无法加载）
+- **发现版本**: v2.9.0
+- **文件**: 服务器 `/root/Mimo/frontend/dist/assets/`
+- **现象**: 浏览器 console `Failed to load module script: Expected a JavaScript-or-Wasm module script but the server responded with a MIME type of "text/html"`
+- **根因**: scp 部署后 `/root/Mimo/frontend/dist/assets/` 权限为 `drwx------` (700)——只允许 root 进入。nginx worker 进程以 `nginx` 用户运行，**没有 `o+x` 权限**进入此目录，`try_files $uri $uri/ /index.html` 末尾的 fallback 把 `/assets/index-XXX.js` 路径转给 `/index.html`（823 字节 + text/html），浏览器拒绝执行
+- **修复**: `chmod -R o+rx /root/Mimo/frontend/dist`（或 `chown -R nginx:nginx /root/Mimo/frontend/dist`）
+- **教训**: scp 上传时保留 `umask 022` 的默认权限较安全；建议部署脚本加 `chmod -R o+rX` 后置步骤
+
+### BUG-056: 生产环境 application.yml 缺 deepseek.api-key 段 [Medium]
+
+- **严重程度**: Medium（功能降级，AI 助手不可用但其他正常）
+- **发现版本**: v2.9.0
+- **文件**: 服务器 `/root/Mimo/backend/src/main/resources/application.yml`
+- **现象**: AI 助手返回 "AI 服务未配置，请设置环境变量 DEEPSEEK_API_KEY"
+- **根因**: 部署时 `application.yml` 没包含 v2.8.0 加入的 `deepseek.api-key` 配置段。后端 DeepSeekProvider 用 `@Value("${deepseek.api-key:}")` 读默认空字符串
+- **修复**: 两种方式任选
+  1. **推荐**: 在 `/etc/systemd/system/mimo-backend.service` 的 `[Service]` 段加 `Environment="DEEPSEEK_API_KEY=sk-xxx"`，然后 `systemctl daemon-reload && systemctl restart mimo-backend`
+  2. 编辑 `/root/Mimo/backend/src/main/resources/application.yml` 加：
+     ```yaml
+     deepseek:
+       api-key: sk-xxx
+     ```
+     然后 `systemctl restart mimo-backend`
+- **教训**: 生产环境**敏感配置（API key、密码）必须通过环境变量注入**，不应 hardcode 到 yml（已被 .gitignore 排除 / 应在部署时渲染）
+
 ---
 
 ## v2.8.0 — AI Copilot + 粒子动画 + 构建修复 (2026-06-16)
