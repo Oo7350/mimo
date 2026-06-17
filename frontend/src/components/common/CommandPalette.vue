@@ -66,7 +66,7 @@ import { useUserStore } from '@/store/user'
 import { TYPE_LABEL, PRIORITY_LABEL } from '@/utils/constants'
 import type { IssueType, IssuePriority } from '@/types'
 import {
-  Search, HomeFilled, Folder, UserFilled, Setting, Plus, Grid, Document,
+  Search, HomeFilled, Folder, UserFilled, Setting, Plus, Grid, Document, Calendar,
 } from '@element-plus/icons-vue'
 import { useCommandPalette } from '@/composables/useCommandPalette'
 
@@ -116,6 +116,7 @@ const staticItems = computed<CommandItem[]>(() => {
     { id: 'nav-projects', group: '导航', title: '项目列表', icon: Folder, iconStyle: { background: 'rgba(16,185,129,0.15)', color: 'var(--color-success)' }, action: () => nav('/projects') },
     { id: 'nav-teams', group: '导航', title: '团队管理', icon: UserFilled, iconStyle: { background: 'rgba(245,158,11,0.15)', color: 'var(--color-warning)' }, action: () => nav('/teams') },
     { id: 'nav-profile', group: '导航', title: '个人设置', icon: Setting, iconStyle: { background: 'rgba(148,163,184,0.2)', color: 'var(--text-secondary)' }, action: () => nav('/profile') },
+    { id: 'nav-calendar', group: '导航', title: '日历', icon: Calendar, iconStyle: { background: 'rgba(64,158,255,0.15)', color: '#409EFF' }, action: () => nav('/calendar') },
     { id: 'act-create-team', group: '快捷操作', title: '创建团队', icon: Plus, iconStyle: { background: 'rgba(139,92,246,0.15)', color: 'var(--color-accent)' }, action: () => nav('/teams') },
   ]
   if (pid) {

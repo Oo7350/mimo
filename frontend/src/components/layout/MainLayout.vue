@@ -128,6 +128,10 @@
               <el-icon><Setting /></el-icon>
               <span>个人信息</span>
             </el-menu-item>
+            <el-menu-item index="/calendar">
+              <el-icon><Calendar /></el-icon>
+              <span>日历</span>
+            </el-menu-item>
             <template v-if="userStore.userInfo?.role === 'ROLE_ADMIN'">
               <el-menu-item index="/admin/levels">
                 <el-icon><Medal /></el-icon>
@@ -195,6 +199,7 @@ const activeMenu = computed(() => {
   if (p.startsWith('/projects/')) return '/projects'
   if (p.startsWith('/teams')) return '/teams'
   if (p === '/profile') return '/profile'
+  if (p === '/calendar') return '/calendar'
   return '/'
 })
 
