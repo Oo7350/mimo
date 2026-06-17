@@ -21,6 +21,17 @@ public class NotificationController {
     private final NotificationService notificationService;
     private final NotificationMapper notificationMapper;
 
+    @PostMapping
+    public Result<Void> create(@RequestBody Notification notification, Authentication auth) {
+        Long userId = getLongPrincipal(auth);
+        notification.setUserId(userId);
+        if (notification.getIsRead() == null) {
+            notification.setIsRead(0);
+        }
+        notificationService.create(notification);
+        return Result.successMessage("通知已创建");
+    }
+
     @GetMapping
     public Result<List<NotificationVO>> list(@RequestParam(defaultValue = "20") int limit, Authentication auth) {
         Long userId = getLongPrincipal(auth);

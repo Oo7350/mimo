@@ -14,7 +14,9 @@ from api.attachment_api import AttachmentAPI
 
 
 class MimoAPI:
-    """Mimo 全量 API 门面"""
+    """Mimo 全量 API 门面
+    MimoAPI 是 API 的统一入口，封装了所有模块的 API
+    """
     def __init__(self, client: MimoAPIClient):
         self.client = client
         self.auth = AuthAPI(client)

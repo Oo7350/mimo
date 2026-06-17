@@ -54,39 +54,52 @@ const hovering = ref(false)
 <style scoped lang="scss">
 .issue-card-wrapper {
   position: relative;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
+  border-radius: var(--border-radius-md);
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  &:hover {
+    transform: translateY(-3px) scale(1.01);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.1), 0 2px 6px rgba(79, 70, 229, 0.06);
+  }
 }
 
 .issue-card__actions {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  top: 8px;
+  right: 8px;
   display: flex;
-  gap: 4px;
-  z-index: 2;
+  gap: 5px;
+  z-index: 10;
 }
 
 .issue-card__action {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   border: none;
-  border-radius: 7px;
-  background: var(--bg-card);
-  box-shadow: var(--shadow-md);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow:
+    0 4px 14px rgba(0, 0, 0, 0.12),
+    0 1px 3px rgba(0, 0, 0, 0.06);
   cursor: pointer;
   color: var(--text-secondary);
-  transition: all var(--transition-fast);
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
 
   &:hover {
     color: var(--color-primary);
-    transform: scale(1.08);
+    transform: scale(1.15) rotate(-5deg);
+    box-shadow: 0 6px 18px rgba(79, 70, 229, 0.25);
   }
 
   &--done:hover {
     color: var(--color-success);
+    box-shadow: 0 6px 18px rgba(16, 185, 129, 0.25);
   }
 
   &--danger:hover {
@@ -96,11 +109,11 @@ const hovering = ref(false)
 
 .actions-fade-enter-active,
 .actions-fade-leave-active {
-  transition: opacity 0.15s ease, transform 0.15s ease;
+  transition: opacity 0.2s ease, transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) ease;
 }
 .actions-fade-enter-from,
 .actions-fade-leave-to {
   opacity: 0;
-  transform: translateY(-4px);
+  transform: translateY(-6px) scale(0.85);
 }
 </style>

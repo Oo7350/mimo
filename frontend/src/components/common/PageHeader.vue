@@ -21,13 +21,15 @@ defineProps<{
 .page-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   margin-bottom: 24px;
-  gap: 16px;
+  gap: 20px;
+
+  &__main { flex: 1; }
 
   &__title {
-    font-size: 26px;
-    font-weight: 800;
+    font-size: 24px;
+    font-weight: 750;
     color: var(--text-primary);
     letter-spacing: -0.5px;
     line-height: 1.2;
@@ -35,8 +37,20 @@ defineProps<{
 
   &__subtitle {
     margin-top: 6px;
-    font-size: 14px;
+    font-size: 13.5px;
     color: var(--text-secondary);
+    line-height: 1.5;
+  }
+
+  &__action {
+    flex-shrink: 0;
+
+    .el-button--primary {
+      border-radius: 8px;
+      font-weight: 600;
+      transition: opacity 0.15s;
+      &:hover { opacity: 0.85; }
+    }
   }
 }
 </style>

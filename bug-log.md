@@ -4,6 +4,121 @@
 
 ---
 
+## v2.9.0 — AI 助手流式对话稳定化 (2026-06-17)
+
+### BUG-049: AI 助手 SSE 端点返回 406 Not Acceptable [High]
+
+- **严重程度**: High（功能不可用）
+- **发现版本**: v2.8.0
+- **文件**: `backend/src/main/java/com/mimo/controller/AiController.java`
+- **现象**: AI 助手发送消息时返回 `HttpMediaTypeNotAcceptableException: Could not find acceptable representation`
+- **根因**: Spring MVC 的 content negotiation 在匹配 `text/event-stream` 时未找到对应的 `HttpMessageConverter`，加上 `SseEmitter` 内部用 `ResponseBodyEmitter` 返回，触发了 converter 链的查找
+- **修复**: 放弃 `SseEmitter` / `StreamingResponseBody`，改用 `javax.servlet.AsyncContext` 原生异步 API + `void` 返回 + 在主线程 `flushBuffer()` 立即提交响应头，完全绕开 Spring MVC 的 content negotiation 和 message converter 链
+
+### BUG-050: StreamingResponseBody 触发 HttpMessageNotWritableException [High]
+
+- **严重程度**: High
+- **发现版本**: v2.8.0
+- **文件**: `backend/src/main/java/com/mimo/controller/AiController.java`
+- **现象**: 后端日志 `No converter for [class java.util.LinkedHashMap] with preset Content-Type 'application/javascript;charset=UTF-8'`，导致部分 AI 请求无响应
+- **根因**: `StreamingResponseBody` 在异步分发时 Spring MVC 仍尝试用 `LinkedHashMap` 作为返回值，错误地把 Content-Type 推断为 `application/javascript`（来自 fetch POST 默认 Accept 头）
+- **修复**: 同 BUG-049，使用 `AsyncContext` 直接写响应，**不返回任何对象**给 Spring MVC 处理
+
+### BUG-051: AI 助手长消息 URL 过长触发 ERR_ABORTED [High]
+
+- **严重程度**: High
+- **发现版本**: v2.8.0
+- **文件**: `frontend/src/api/ai.ts`, `backend/.../AiController.java`
+- **现象**: 用户输入超长消息（如 `495000000....` 一长串数字）时，浏览器报 `net::ERR_ABORTED`，后端未收到任何请求
+- **根因**: `chatStream` 最初用 GET 请求 + `URLSearchParams` 将 message 拼接到 URL 中，超长消息导致 URL 超过浏览器/Tomcat 的 URL 长度限制（~8KB），请求被提前终止
+- **修复**:
+  - 前端 `fetch` 改用 `POST` + `body: JSON.stringify({ message, systemPrompt })`
+  - 后端 `@PostMapping("/chat/stream")` + `@RequestBody Map<String, String>` 接收
+  - 不再受 URL 长度限制
+
+### BUG-052: AI 助手连续发送触发旧请求 ERR_ABORTED [Low]
+
+- **严重程度**: Low（噪音）
+- **发现版本**: v2.8.0
+- **文件**: `frontend/src/components/common/AiChatPanel.vue`
+- **现象**: 用户连续发送多条消息时，控制台出现 `net::ERR_ABORTED http://localhost:8080/api/ai/chat/stream`
+- **根因**: `handleSend()` 没有先 abort 上一个未完成的 fetch，新的 controller 覆盖了全局 `abortController`，旧请求被浏览器以 aborted 方式终止
+- **修复**: `handleSend()` 开头先 `abortController?.abort()` 终止旧请求，避免控制台噪音
+- **已知问题**: AI 助手暂未接入项目上下文（`systemPrompt` 固定），用户需通过 `systemPrompt` 参数手动注入项目信息；后续计划支持自动从 session 加载项目上下文
+
+---
+
+## v2.8.0 — AI Copilot + 粒子动画 + 构建修复 (2026-06-16)
+
+### BUG-043: ProjectBoard.vue 中文乱码导致构建失败 [Critical]
+
+- **严重程度**: Critical（构建阻塞）
+- **发现版本**: v2.7.3
+- **文件**: `frontend/src/views/ProjectBoard.vue`
+- **现象**: `vite build` 报错 `[vue/compiler-sfc] Unexpected token`，看板页加载失败 `TypeError: Failed to fetch dynamically imported module`
+- **根因**: 文件中大量中文注释和标签文本出现乱码（如 `鉁?`、`鈹?` 等），导致 Vue 模板解析器和 SCSS 编译器无法正确解析；同时存在函数名拼写错误（`han]leBoardSync`）、标签未闭合、SCSS 括号不匹配等问题
+- **修复**:
+  - 使用 PowerShell 批量替换乱码文本为正确的中文内容
+  - 修正函数名 `han]leBoardSync` → `handleBoardSync`
+  - 修复模板中未闭合的标签和字符串
+  - 调整 SCSS 样式结构，确保括号匹配，整合孤立的 CSS 代码块
+
+### BUG-044: AI 助手请求返回 404 [High]
+
+- **严重程度**: High（功能不可用）
+- **发现版本**: v2.7.3
+- **文件**: `frontend/src/api/ai.ts`, `backend/.../AiController.java`, `backend/.../SecurityConfig.java`
+- **现象**: AI 助手发送消息时返回 `AxiosError: Request failed with status code 404`，路径 `/api/api/ai/chat/stream`
+- **根因**:
+  1. 前端 `ai.ts` 中请求 URL 已包含 `/api` 前缀，但 axios baseURL 也配置了 `/api`，导致双重前缀
+  2. 后端 `SecurityConfig` 未开放 AI 接口的匿名访问权限
+- **修复**:
+  - 移除 `ai.ts` 中多余的 `/api` 前缀，确保请求路径为 `/ai/chat/stream`
+  - 在 `SecurityConfig` 中添加 `/api/ai/**` 到白名单
+
+### BUG-045: chatStream 参数顺序导致 TypeScript 编译错误 [Medium]
+
+- **严重程度**: Medium（构建阻塞）
+- **发现版本**: v2.8.0-dev
+- **文件**: `frontend/src/api/ai.ts:79`
+- **现象**: `error TS1016: A required parameter cannot follow an optional parameter`
+- **根因**: `chatStream(message, systemPrompt?, onChunk)` 中必选参数 `onChunk` 位于可选参数 `systemPrompt` 之后
+- **修复**: 调整参数顺序为 `chatStream(message, onChunk, systemPrompt?, ...)`
+
+### BUG-046: AiChatPanel 类型错误与重复定义 [Medium]
+
+- **严重程度**: Medium（构建阻塞）
+- **发现版本**: v2.8.0-dev
+- **文件**: `frontend/src/components/common/AiChatPanel.vue:35,124,135`
+- **现象**:
+  1. `error TS2304: Cannot find name 'computed'` — 第 124 行使用 `computed()` 但未导入
+  2. `error TS2551: Property 'providerName' does not exist on type 'AiUsageInfo'` — 应为 `provider`
+  3. 存在重复的 `computed(() => ...)` 函数定义
+- **修复**:
+  - vue import 中添加 `computed`
+  - `u.providerName` → `u.provider`
+  - 删除重复的 computed 函数
+
+### BUG-047: AuthLayout canvas 可能为 null [Medium]
+
+- **严重程度**: Medium（构建阻塞）
+- **发现版本**: v2.8.0-dev
+- **文件**: `frontend/src/components/layout/AuthLayout.vue:205-206`
+- **现象**: `error TS18047: 'canvas' is possibly 'null'`
+- **根因**: `onResize()` 函数中使用 `canvas.width` 和 `canvas.height`，但 canvas 来自 `ref<HTMLCanvasElement | null>(null)`，TypeScript 无法排除 null 可能性
+- **修复**: 在 `onResize()` 入口添加 `if (!canvas) return` 守卫
+
+### BUG-048: color.ts PALETTE 变量未定义 [Medium]
+
+- **严重程度**: Medium（构建阻塞）
+- **发现版本**: v2.8.0-dev
+- **文件**: `frontend/src/utils/color.ts:24`
+- **现象**: `error TS2304: Cannot find name 'PALETTE'`
+- **根因**: `avatarColor()` 函数引用了 `PALETTE` 数组，但该变量从未定义
+- **修复**: 定义 PALETTE 为 6 组双色渐变色数组（靛蓝/粉红/青色/橙色/紫色/青蓝）
+
+---
+
 ## v2.7.3 — 代码质量加固 (2026-06-15)
 
 ### BUG-035: N+1 查询风暴导致看板性能严重下降 [Critical]

@@ -6,7 +6,6 @@ import com.mimo.common.ResultCode;
 import com.mimo.dto.TeamDTO.*;
 import com.mimo.service.TeamService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 

@@ -6,7 +6,7 @@
         <el-button @click="$router.push('/')" text class="overview__back">
           <el-icon><ArrowLeft /></el-icon>
         </el-button>
-        <div class="overview__project-avatar" :style="{ background: avatarGradient(projectName) }">
+        <div class="overview__project-avatar" :style="{ background: avatarGradient(projectName, 'project') }">
           {{ projectName.charAt(0).toUpperCase() }}
         </div>
         <div>
@@ -14,9 +14,14 @@
           <p class="overview__subtitle">项目概览 · 数据仪表盘</p>
         </div>
       </div>
-      <el-button id="create-task-btn" type="primary" @click="showCreateIssue = true">
-        <el-icon><Plus /></el-icon>新建工作项
-      </el-button>
+      <div class="overview__hero-actions">
+        <el-button @click="showCreateCalendarEvent = true">
+          <el-icon><Calendar /></el-icon>新建日程
+        </el-button>
+        <el-button id="create-task-btn" type="primary" @click="showCreateIssue = true">
+          <el-icon><Plus /></el-icon>新建工作项
+        </el-button>
+      </div>
     </div>
 
     <el-tabs v-model="activeTab" class="overview__tabs" @tab-change="onTabChange">
@@ -90,7 +95,7 @@
                 <div ref="memberChartRef" class="ov-card__chart ov-card__chart--sm"></div>
                 <div class="ov-member-list">
                   <div v-for="m in memberData" :key="m.name" class="ov-member-row">
-                    <div class="ov-member-row__avatar" :style="{ background: avatarGradient(m.name) }">
+                    <div class="ov-member-row__avatar" :style="{ background: avatarGradient(m.name, 'user') }">
                       {{ m.name.charAt(0) }}
                     </div>
                     <span class="ov-member-row__name">{{ m.name }}</span>
@@ -156,7 +161,7 @@
               <div v-if="recentActivities.length === 0" class="ov-card__empty">暂无动态</div>
               <div v-else class="ov-activity-list">
                 <div v-for="a in recentActivities" :key="a.id" class="ov-activity-item">
-                  <div class="ov-activity-item__avatar" :style="{ background: avatarGradient(a.username) }">
+                  <div class="ov-activity-item__avatar" :style="{ background: avatarGradient(a.username, 'user') }">
                     {{ a.username.charAt(0).toUpperCase() }}
                   </div>
                   <div class="ov-activity-item__content">
@@ -188,6 +193,15 @@
       :columns="columns"
       @created="onIssueCreated"
     />
+
+    <EventForm
+      v-model:visible="showCreateCalendarEvent"
+      :event="null"
+      :default-date="new Date()"
+      :teams="projectTeams"
+      :projects="[{ id: projectId, name: projectName }]"
+      @saved="onCalendarEventSaved"
+    />
   </div>
 </template>
 
@@ -203,6 +217,9 @@ import SkeletonLoader from "@/components/common/SkeletonLoader.vue"
 import IssueDetailDialog from "@/components/issue/IssueDetailDialog.vue"
 import ProjectBoardView from "./ProjectBoard.vue"
 import ReportListView from "./ReportList.vue"
+import EventForm from "./EventForm.vue"
+import { getMyTeams } from "@/api/team"
+import { ElMessage } from "element-plus"
 
 const route = useRoute()
 const projectId = Number(route.params.id)
@@ -212,6 +229,8 @@ const columns = ref<any[]>([])
 const loading = ref(true)
 const activeTab = ref("overview")
 const showCreateIssue = ref(false)
+const showCreateCalendarEvent = ref(false)
+const projectTeams = ref<{ id: number; name: string }[]>([])
 
 const statusChartRef = ref<HTMLElement>()
 const memberChartRef = ref<HTMLElement>()
@@ -409,9 +428,11 @@ function onTabChange(name: string | number) {
 }
 
 function onIssueCreated() { fetchData().then(() => nextTick(renderCharts)) }
+function onCalendarEventSaved() { ElMessage.success('日程已创建，可在日历中查看') }
 
 onMounted(() => {
   fetchData().then(() => nextTick(renderCharts))
+  getMyTeams().then(res => { projectTeams.value = res.data || [] }).catch(() => {})
 })
 </script>
 
@@ -430,6 +451,11 @@ onMounted(() => {
     display: flex;
     align-items: center;
     gap: 14px;
+  }
+
+  &__hero-actions {
+    display: flex;
+    gap: 8px;
   }
 
   &__back { color: var(--text-secondary); }

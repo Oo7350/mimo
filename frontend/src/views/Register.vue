@@ -159,74 +159,120 @@ async function handleRegister() {
 <style scoped lang="scss">
 .auth-form {
   &__title {
-    font-size: 28px;
+    font-size: 32px;
     font-weight: 800;
     color: var(--text-primary);
-    letter-spacing: -0.5px;
-    margin-bottom: 8px;
+    letter-spacing: -0.8px;
+    margin-bottom: 10px;
+    line-height: 1.2;
   }
 
   &__desc {
     color: var(--text-secondary);
-    font-size: 14px;
-    margin-bottom: 28px;
+    font-size: 15px;
+    margin-bottom: 36px;
+    line-height: 1.6;
+  }
+
+  &__body {
+    :deep(.el-form-item__label) {
+      font-weight: 650;
+      font-size: 13.5px;
+      color: var(--text-primary);
+      letter-spacing: -0.1px;
+      padding-bottom: 8px;
+    }
+    :deep(.el-input) {
+      .el-input__wrapper {
+        border-radius: var(--border-radius-md);
+        padding: 4px 16px;
+        box-shadow: 0 0 0 1px var(--border-color);
+        transition: border-color 0.15s;
+
+        &:hover { border-color: var(--text-muted); }
+        &.is-focus {
+          border-color: var(--text-primary);
+          box-shadow: none;
+        }
+      }
+      .el-input__inner { height: 44px; font-size: 14.5px; }
+    }
   }
 
   &__submit {
     width: 100%;
-    height: 44px;
-    font-size: 15px;
-    font-weight: 600;
-    border-radius: 10px;
+    height: 48px;
+    font-size: 16px;
+    font-weight: 700;
+    border-radius: var(--border-radius-md);
+    background: var(--text-primary);
+    border: none;
+    letter-spacing: 2px;
+    color: #fff;
+    transition: opacity 0.15s;
+
+    &:hover { opacity: 0.85; }
+    &:active { transform: scale(0.97); }
   }
 
+  // ===== 密码强度 — Premium =====
   &__strength {
     display: flex;
     align-items: center;
-    gap: 10px;
-    margin-top: 8px;
+    gap: 12px;
+    margin-top: 10px;
   }
 
   &__strength-bar {
     display: flex;
-    gap: 4px;
+    gap: 5px;
     flex: 1;
   }
 
   &__strength-seg {
     flex: 1;
-    height: 4px;
+    height: 5px;
     background: var(--border-color);
-    border-radius: 2px;
-    transition: all var(--transition-fast);
+    border-radius: 3px;
+    transition: all 0.25s ease;
 
     &.is-filled {
-      &.is-weak { background: #ef4444; }
-      &.is-fair { background: #f59e0b; }
-      &.is-good { background: #10b981; }
-      &.is-strong { background: #6366f1; }
+      &.is-weak { background: #ef4444; height: 6px; }
+      &.is-fair { background: #f59e0b; height: 7px; }
+      &.is-good { background: #10b981; height: 7px; }
+      &.is-strong { background: #10b981; height: 7px; }
     }
   }
 
   &__strength-text {
-    font-size: 11px;
+    font-size: 11.5px;
     white-space: nowrap;
+    font-weight: 600;
 
     &.text-weak { color: #ef4444; }
     &.text-fair { color: #f59e0b; }
     &.text-good { color: #10b981; }
-    &.text-strong { color: #6366f1; }
+    &.text-strong { color: #4f46e5; }
   }
 
   &__footer {
     text-align: center;
-    margin-top: 24px;
+    margin-top: 28px;
     font-size: 14px;
     color: var(--text-secondary);
 
     a {
-      font-weight: 600;
+      font-weight: 700;
       margin-left: 4px;
+      color: var(--color-primary);
+      text-decoration: none;
+      transition: all 0.2s ease;
+
+      &:hover {
+        color: var(--color-primary-dark);
+        text-decoration: underline;
+        text-underline-offset: 3px;
+      }
     }
   }
 }

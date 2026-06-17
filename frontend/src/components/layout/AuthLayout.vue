@@ -1,8 +1,9 @@
 <template>
   <div class="auth-page">
-    <!-- 左侧品牌区 -->
+    <!-- 左侧品牌区 - 粒子动画 -->
     <div class="auth-page__hero">
-      <div class="auth-page__hero-bg" />
+      <div class="glass-bg" />
+      <canvas ref="particleCanvasRef" class="particle-canvas" />
       <div class="auth-page__hero-content">
         <div class="auth-page__brand">
           <div class="auth-page__logo">
@@ -13,8 +14,8 @@
               <rect x="21" y="8" width="5" height="14" rx="2" fill="white" opacity="0.5" />
               <defs>
                 <linearGradient id="logo-grad" x1="0" y1="0" x2="32" y2="32">
-                  <stop stop-color="#6366f1" />
-                  <stop offset="1" stop-color="#8b5cf6" />
+                  <stop stop-color="#4f46e5" />
+                  <stop offset="1" stop-color="#7c3aed" />
                 </linearGradient>
               </defs>
             </svg>
@@ -22,29 +23,6 @@
           </div>
           <p class="auth-page__tagline">轻量级敏捷项目管理，让小团队协作更高效</p>
         </div>
-
-        <!-- 模拟看板预览 -->
-        <div class="auth-page__preview">
-          <div class="preview-board">
-            <div v-for="col in previewColumns" :key="col.name" class="preview-board__col">
-              <div class="preview-board__col-header">
-                <span class="preview-board__dot" :style="{ background: col.color }" />
-                {{ col.name }}
-                <span class="preview-board__count">{{ col.cards.length }}</span>
-              </div>
-              <div
-                v-for="(card, i) in col.cards"
-                :key="i"
-                class="preview-board__card"
-                :style="{ borderLeftColor: card.color }"
-              >
-                <div class="preview-board__card-type">{{ card.type }}</div>
-                <div class="preview-board__card-title">{{ card.title }}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
         <ul class="auth-page__features">
           <li v-for="f in features" :key="f">
             <el-icon><CircleCheck /></el-icon>
@@ -64,36 +42,190 @@
 </template>
 
 <script setup lang="ts">
-const previewColumns = [
-  {
-    name: '待办',
-    color: '#6366f1',
-    cards: [
-      { type: 'STORY', title: '用户登录优化', color: '#10b981' },
-      { type: 'BUG', title: '修复导出异常', color: '#ef4444' },
-    ],
-  },
-  {
-    name: '进行中',
-    color: '#f59e0b',
-    cards: [
-      { type: 'TASK', title: 'API 接口联调', color: '#6366f1' },
-    ],
-  },
-  {
-    name: '已完成',
-    color: '#10b981',
-    cards: [
-      { type: 'TASK', title: '数据库迁移', color: '#6366f1' },
-    ],
-  },
-]
+import { ref, onMounted, onBeforeUnmount } from 'vue'
+
+const particleCanvasRef = ref<HTMLCanvasElement | null>(null)
 
 const features = [
   'Story / Task / Bug 差异化管理',
   '看板拖拽 · 实时协作同步',
   'Sprint 燃尽图 · 日报周报',
 ]
+
+// ---- Particle Animation (from init.html) ----
+let animFrameId = 0
+
+onMounted(() => {
+  const canvas = particleCanvasRef.value
+  if (!canvas) return
+  const ctx = canvas.getContext('2d')!
+  const container = canvas.parentElement!
+
+  let width = canvas.width = container.clientWidth
+  let height = canvas.height = container.clientHeight
+
+  const mouse = { x: null as number | null, y: null as number | null, radius: 120 }
+
+  // 高饱和度实色，消除雾蒙蒙感
+  const colors = [
+    '#FF69B4', // 亮粉色
+    '#00BFFF', // 深天蓝
+    '#FFD700', // 金黄色
+  ]
+
+  function getTextCoordinates() {
+    const text = 'MIMO'
+    const fontSize = Math.min(120, width * 0.22)
+    ctx.font = `bold ${fontSize}px Arial`
+    ctx.fillStyle = '#000'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(text, width / 2, height / 2)
+    const data = ctx.getImageData(0, 0, width, height).data
+    ctx.clearRect(0, 0, width, height)
+    const coords: { x: number; y: number }[] = []
+    const gap = 5
+    for (let y = 0; y < height; y += gap) {
+      for (let x = 0; x < width; x += gap) {
+        const index = (y * width + x) * 4
+        if (data[index + 3] > 128) coords.push({ x, y })
+      }
+    }
+    return coords
+  }
+
+  class Particle {
+    baseX: number; baseY: number
+    x: number; y: number
+    size: number; color: string
+    vx = 0; vy = 0
+    offsetX: number; offsetY: number // 固定偏移，防止融合
+    waveOffset: number
+    scatterX: number; scatterY: number
+
+    constructor(targetX: number, targetY: number) {
+      this.x = Math.random() * width
+      this.y = Math.random() * height
+      this.size = Math.random() * 2.5 + 1.5
+      this.color = colors[Math.floor(Math.random() * colors.length)]
+      this.baseX = targetX
+      this.baseY = targetY
+      this.offsetX = (Math.random() - 0.5) * 4
+      this.offsetY = (Math.random() - 0.5) * 4
+      this.waveOffset = Math.random() * Math.PI * 2
+      this.scatterX = Math.random() * width
+      this.scatterY = Math.random() * height
+    }
+
+    update(state: string, time: number) {
+      if (mouse.x != null && mouse.y != null) {
+        const dx = this.x - mouse.x
+        const dy = this.y - mouse.y
+        const dist = Math.sqrt(dx * dx + dy * dy)
+        if (dist < mouse.radius) {
+          const force = (mouse.radius - dist) / mouse.radius
+          const angle = Math.atan2(dy, dx)
+          this.vx += Math.cos(angle) * force * 2
+          this.vy += Math.sin(angle) * force * 2
+        }
+      }
+
+      if (state === 'gathering') {
+        // 正弦波浪效果
+        const waveAmplitude = 3
+        const waveFrequency = 0.02
+        const wave = Math.sin((this.baseX * waveFrequency) + time * 0.003 + this.waveOffset) * waveAmplitude
+
+        const tx = this.baseX + this.offsetX
+        const ty = this.baseY + this.offsetY + wave
+
+        this.vx += (tx - this.x) * 0.04
+        this.vy += (ty - this.y) * 0.04
+        this.vx *= 0.90
+        this.vy *= 0.90
+      } else {
+        const dx = this.scatterX - this.x
+        const dy = this.scatterY - this.y
+        const dist = Math.sqrt(dx * dx + dy * dy)
+        if (dist > 50) {
+          this.vx += dx * 0.01
+          this.vy += dy * 0.01
+        } else {
+          this.vx += (Math.random() - 0.5) * 1.0
+          this.vy += (Math.random() - 0.5) * 1.0
+        }
+        this.vx *= 0.95
+        this.vy *= 0.95
+      }
+      this.x += this.vx
+      this.y += this.vy
+      if (this.x < 0 || this.x > width) this.vx *= -1
+      if (this.y < 0 || this.y > height) this.vy *= -1
+    }
+
+    draw() {
+      ctx.fillStyle = this.color
+      ctx.beginPath()
+      ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  }
+
+  let particles: Particle[] = []
+  let state = 'chaos'
+  let lastTime = 0
+  const interval = 5000
+
+  function init() {
+    particles = []
+    const coords = getTextCoordinates()
+    coords.forEach(c => particles.push(new Particle(c.x, c.y)))
+  }
+
+  function animate(timestamp: number) {
+    ctx.clearRect(0, 0, width, height)
+    if (timestamp - lastTime > interval) {
+      lastTime = timestamp
+      state = state === 'chaos' ? 'gathering' : 'chaos'
+      if (state === 'chaos') {
+        particles.forEach(p => {
+          p.scatterX = Math.random() * width
+          p.scatterY = Math.random() * height
+          const angle = Math.random() * Math.PI * 2
+          p.vx = Math.cos(angle) * 10
+          p.vy = Math.sin(angle) * 10
+        })
+      }
+    }
+    particles.forEach(p => { p.update(state, timestamp); p.draw() })
+    animFrameId = requestAnimationFrame(animate)
+  }
+
+  function onResize() {
+    if (!canvas) return
+    width = canvas.width = container.clientWidth
+    height = canvas.height = container.clientHeight
+    init()
+  }
+
+  init()
+  animate(0)
+
+  window.addEventListener('resize', onResize)
+  ;(container as HTMLElement).addEventListener('mousemove', (e: MouseEvent) => {
+    mouse.x = e.offsetX
+    mouse.y = e.offsetY
+  })
+  ;(container as HTMLElement).addEventListener('mouseout', () => {
+    mouse.x = null
+    mouse.y = null
+  })
+
+  onBeforeUnmount(() => {
+    cancelAnimationFrame(animFrameId)
+    window.removeEventListener('resize', onResize)
+  })
+})
 </script>
 
 <style scoped lang="scss">
@@ -107,106 +239,108 @@ const features = [
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 56px;
+    padding: 60px;
     overflow: hidden;
-    background: #0a0c14;
+    background: #ffffff;
   }
 
-  &__hero-bg {
+  .glass-bg {
     position: absolute;
     inset: 0;
-    background:
-      radial-gradient(ellipse 700px 500px at 18% 35%, rgba(91, 107, 246, 0.28) 0%, transparent 65%),
-      radial-gradient(ellipse 550px 420px at 82% 68%, rgba(124, 108, 246, 0.22) 0%, transparent 58%),
-      radial-gradient(ellipse 380px 320px at 52% 5%, rgba(34, 197, 94, 0.06) 0%, transparent 50%),
-      linear-gradient(180deg, rgba(10,12,20,1) 0%, rgba(15,17,28,1) 100%);
+    background: rgba(255, 255, 255, 0.6);
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
+    z-index: 0;
   }
 
-  // Animated mesh glow
-  &__hero-bg::after {
-    content: '';
+  .particle-canvas {
     position: absolute;
-    top: 20%;
-    left: 30%;
-    width: 400px;
-    height: 400px;
-    border-radius: 50%;
-    background: radial-gradient(circle, rgba(91,107,246,0.08) 0%, transparent 70%);
-    animation: hero-glow 8s ease-in-out infinite alternate;
-    pointer-events: none;
-  }
-  @keyframes hero-glow {
-    0% { transform: translate(0, 0); }
-    100% { transform: translate(40px, -30px); }
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
   }
 
   &__hero-content {
     position: relative;
-    max-width: 540px;
-    z-index: 1;
+    max-width: 560px;
+    z-index: 2;
   }
 
   &__brand {
-    margin-bottom: 40px;
+    margin-bottom: 44px;
   }
 
   &__logo {
     display: flex;
     align-items: center;
-    gap: 14px;
-    margin-bottom: 14px;
+    gap: 16px;
+    margin-bottom: 18px;
 
-    svg { width: 44px; height: 44px; filter: drop-shadow(0 4px 12px rgba(91,107,246,0.3)); }
+    svg {
+      width: 52px;
+      height: 52px;
+      filter: drop-shadow(0 8px 24px rgba(79, 70, 229, 0.4));
+    }
 
     span {
-      font-size: 30px;
+      font-size: 36px;
       font-weight: 800;
-      color: #fff;
-      letter-spacing: -0.8px;
+      color: #1a1a2e;
+      letter-spacing: -1.2px;
     }
   }
 
   &__tagline {
-    color: rgba(255, 255, 255, 0.6);
-    font-size: 15.5px;
+    color: #555;
+    font-size: 16px;
     line-height: 1.7;
     font-weight: 400;
-  }
-
-  &__preview {
-    margin-bottom: 36px;
+    letter-spacing: -0.1px;
   }
 
   &__features {
     list-style: none;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 14px;
 
     li {
       display: flex;
       align-items: center;
-      gap: 11px;
-      color: rgba(255, 255, 255, 0.7);
-      font-size: 14px;
+      gap: 12px;
+      color: #666;
+      font-size: 14.5px;
       font-weight: 400;
 
       .el-icon {
-        color: #22c55e;
-        font-size: 17px;
-        filter: drop-shadow(0 1px 3px rgba(34,197,94,0.4));
+        color: #059669;
+        font-size: 18px;
+        filter: drop-shadow(0 2px 6px rgba(5, 150, 105, 0.5));
       }
     }
   }
 
   &__form-side {
-    width: 500px;
+    width: 520px;
     flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 48px;
+    padding: 52px;
     background: #fff;
+    position: relative;
+  }
+
+  // Subtle gradient accent on form side
+  &__form-side::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 4px;
+    background: var(--gradient-primary);
   }
 
   &__form-wrapper {
@@ -215,82 +349,11 @@ const features = [
   }
 }
 
-.preview-board {
-  display: flex;
-  gap: 14px;
-  padding: 20px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 18px;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-
-  &__col {
-    flex: 1;
-    min-width: 0;
-  }
-
-  &__col-header {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 11px;
-    font-weight: 600;
-    color: rgba(255, 255, 255, 0.55);
-    margin-bottom: 12px;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-  }
-
-  &__dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-
-  &__count {
-    margin-left: auto;
-    background: rgba(255, 255, 255, 0.1);
-    padding: 1px 6px;
-    border-radius: 8px;
-    font-size: 10px;
-  }
-
-  &__card {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    border-left: 3px solid;
-    border-radius: 10px;
-    padding: 12px;
-    margin-bottom: 10px;
-    transition: transform 0.25s cubic-bezier(0.23, 1, 0.32, 1);
-
-    &:hover { transform: translateY(-3px); }
-  }
-
-  &__card-type {
-    font-size: 9px;
-    font-weight: 700;
-    color: rgba(255, 255, 255, 0.4);
-    letter-spacing: 0.8px;
-    margin-bottom: 5px;
-  }
-
-  &__card-title {
-    font-size: 12.5px;
-    color: rgba(255, 255, 255, 0.85);
-    font-weight: 500;
-    line-height: 1.45;
-  }
-}
-
 @media (max-width: 900px) {
   .auth-page {
     flex-direction: column;
 
     &__hero { padding: 36px 28px; min-height: auto; }
-    &__preview { display: none; }
     &__form-side { width: 100%; padding: 36px 28px; }
   }
 }

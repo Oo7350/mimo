@@ -92,36 +92,80 @@ async function handleLogin() {
 <style scoped lang="scss">
 .auth-form {
   &__title {
-    font-size: 28px;
+    font-size: 32px;
     font-weight: 800;
     color: var(--text-primary);
-    letter-spacing: -0.5px;
-    margin-bottom: 8px;
+    letter-spacing: -0.8px;
+    margin-bottom: 10px;
+    line-height: 1.2;
   }
 
   &__desc {
     color: var(--text-secondary);
-    font-size: 14px;
-    margin-bottom: 32px;
+    font-size: 15px;
+    margin-bottom: 36px;
+    line-height: 1.6;
+  }
+
+  &__body {
+    :deep(.el-form-item__label) {
+      font-weight: 650;
+      font-size: 13.5px;
+      color: var(--text-primary);
+      letter-spacing: -0.1px;
+      padding-bottom: 8px;
+    }
+    :deep(.el-input) {
+      .el-input__wrapper {
+        border-radius: var(--border-radius-md);
+        padding: 4px 16px;
+        box-shadow: 0 0 0 1px var(--border-color);
+        transition: border-color 0.15s;
+
+        &:hover { border-color: var(--text-muted); }
+        &.is-focus {
+          border-color: var(--text-primary);
+          box-shadow: none;
+        }
+      }
+      .el-input__inner { height: 44px; font-size: 14.5px; }
+    }
   }
 
   &__submit {
     width: 100%;
-    height: 44px;
-    font-size: 15px;
-    font-weight: 600;
-    border-radius: 10px;
+    height: 48px;
+    font-size: 16px;
+    font-weight: 700;
+    border-radius: var(--border-radius-md);
+    background: var(--text-primary);
+    border: none;
+    letter-spacing: 2px;
+    color: #fff;
+    transition: opacity 0.15s;
+
+    &:hover { opacity: 0.85; }
+    &:active { transform: scale(0.97); }
   }
 
   &__footer {
     text-align: center;
-    margin-top: 24px;
+    margin-top: 28px;
     font-size: 14px;
     color: var(--text-secondary);
 
     a {
-      font-weight: 600;
+      font-weight: 700;
       margin-left: 4px;
+      color: var(--color-primary);
+      text-decoration: none;
+      transition: all 0.2s ease;
+
+      &:hover {
+        color: var(--color-primary-dark);
+        text-decoration: underline;
+        text-underline-offset: 3px;
+      }
     }
   }
 }

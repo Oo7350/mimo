@@ -6,8 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Mimo is a lightweight Trello-like project management platform for small teams. It supports team collaboration, kanban task tracking, and progress visualization.
 
-- **Version**: v2.7.3 — Code Quality Hardening: N+1 Fix, Type Safety, Configurable Params + XSS Protection (2026-06-15)
-- **Previous**: v2.7.1 — Approval Permission Enforcement + Global Approval List (2026-06-13)
+- **Version**: v2.8.0 — AI Copilot Integration: DeepSeek Streaming Chat + Smart Issue Creator + Task Splitter (2026-06-16)
+- **Previous**: v2.7.3 — Code Quality Hardening: N+1 Fix, Type Safety, Configurable Params + XSS Protection (2026-06-15)
 - **GitHub**: https://github.com/Oo7350/mimo
 - **API docs**: `接口文档.md` (70+ endpoints, Chinese)
 - **User manual**: `操作手册.md` (Chinese)
@@ -15,7 +15,7 @@ Mimo is a lightweight Trello-like project management platform for small teams. I
 ## Tech Stack
 
 - **Frontend**: Vue 3 + Vite + Element Plus + Pinia + Vue Router + ECharts + vuedraggable + driver.js + marked + SockJS + STOMP.js + html2pdf.js + DeepSeek API + Inter font
-- **Backend**: Spring Boot 2.7.18 (Java 17+) + MyBatis-Plus 3.5.3.1 + MySQL 8.0 + Redis + Spring Security + JWT (jjwt 0.11.5) + Spring WebSocket + STOMP
+- **Backend**: Spring Boot 2.7.18 (Java 17+) + MyBatis-Plus 3.5.3.1 + MySQL 8.0 + Redis + Spring Security + JWT (jjwt 0.11.5) + Spring WebSocket + STOMP + **DeepSeek API (AI Copilot)**
 - **Deployment**: Docker Compose (Nginx + Spring Boot + MySQL + Redis)
 - **Build**: Maven (backend), npm (frontend)
 
@@ -83,8 +83,9 @@ Single backend + RBAC with two roles: `ROLE_ADMIN` (team/project admin) and `ROL
 | Package | Purpose |
 |---------|---------|
 | `common/` | `Result<T>` response wrapper, `ResultCode` enum, `BusinessException`, `GlobalExceptionHandler` |
+| `ai/` | **`AiProvider`** (interface), **`AiService`** (orchestration + quota), **`DeepSeekProvider`** (SSE streaming impl), `dto/` (`AiChatRequest`, `AiChatResponse`) |
 | `config/` | `SecurityConfig`, `JwtAuthenticationFilter`, `CorsConfig`, `MyBatisPlusConfig`, `WebSocketConfig`, `WebSocketAuthInterceptor` |
-| `controller/` | 15 REST controllers under `/api/*` (including ApprovalController, UserLevelController) |
+| `controller/` | 16 REST controllers under `/api/*` (including **`AiController`**, ApprovalController, UserLevelController) |
 | `service/` | 15 service classes including `WebSocketService`, `ChatService`, **`ApprovalService`**, **`UserLevelService`** |
 | `mapper/` | MyBatis-Plus `BaseMapper` interfaces (no XML, all queries via `LambdaQueryWrapper`) |
 | `entity/` | 18 entity classes mapped to database tables (including ApprovalRequest, UserLevel) |
@@ -94,13 +95,13 @@ Single backend + RBAC with two roles: `ROLE_ADMIN` (team/project admin) and `ROL
 
 | Directory | Purpose |
 |-----------|---------|
-| `api/` | `request.ts` (Axios instance + interceptors) + per-domain API modules + `ai.ts` (DeepSeek API) |
+| `api/` | `request.ts` (Axios instance + interceptors) + per-domain API modules + **`ai.ts`** (DeepSeek API: chatStream/polish/priority/parse-issue/suggest-tasks/estimate-story-points) |
 | `store/` | Pinia stores — `user.ts` (auth/role), `app.ts` (sidebar, current project, **dark mode**) |
 | `router/` | Vue Router with navigation guard for auth + redirect |
 | `views/` | 11 page components (Dashboard, ProjectOverview, ProjectBoard, ReportList, **LevelManage**, etc.) |
 | `components/layout/` | `MainLayout.vue`, `AuthLayout.vue` (split login/register), `BreadcrumbNav.vue` |
-| `components/issue/` | `IssueDetailDialog.vue`, `IssueCard.vue` (hover quick actions), type-specific cards/dialogs |
-| `components/common/` | `StatCard.vue`, `SkeletonLoader.vue`, `PageHeader.vue`, **`CommandPalette.vue`**, `AssigneeAvatar.vue`, **`UserBadge.vue`** |
+| `components/issue/` | `IssueDetailDialog.vue`, `IssueCard.vue` (hover quick actions), type-specific cards/dialogs, **`AiIssueCreator.vue`** (AI对话式创建), **`AiTaskSplitter.vue`** (Story拆分) |
+| `components/common/` | `StatCard.vue`, `SkeletonLoader.vue`, `PageHeader.vue`, **`CommandPalette.vue`**, `AssigneeAvatar.vue`, **`UserBadge.vue`**, **`AiChatPanel.vue`** (全局AI助手悬浮窗) |
 | `composables/` | `useTour.ts`, `useNotifications.ts`, `useWebSocket.ts`, **`useCommandPalette.ts`** (Ctrl+K) |
 | `types/` | TypeScript interfaces for all domain objects |
 | `utils/` | `constants.ts`, `markdown.ts`, **`color.ts`** (avatar gradient hash) |
@@ -134,7 +135,7 @@ Single backend + RBAC with two roles: `ROLE_ADMIN` (team/project admin) and `ROL
 - **Task Comments**: Markdown-enabled discussion thread per issue, Ctrl+Enter to send; commenter notification to assignee
 - **Reports**: Daily/weekly report generation with auto-draft content; data dashboard with 3 ECharts charts; one-click PDF export
 - **Sprint**: Quick-start 2-week iteration with auto task assignment; burndown chart with snapshots; member statistics (completion rate, overdue rate, avg time in column); complete-with-migration for undone tasks
-- **AI Assistant**: DeepSeek-powered polish description (professionalize draft text) and priority recommendation (analyze urgency/importance), frontend-only integration
+- **AI Assistant (v2.8.0)**: **DeepSeek-powered AI Copilot** — SSE流式对话(`GET /api/ai/chat/stream`)、智能任务创建(自然语言→结构化任务)、Story拆分子任务、润色描述、优先级推荐、故事点估算；全局悬浮窗(AiChatPanel)集成于MainLayout；API Key由后端管理(DEEPSEEK_API_KEY环境变量)
 - **Onboarding Tour**: driver.js guided walkthrough triggered on first board visit
 - **Chat Recall**: Messages can be recalled within 2 minutes; recalled messages show gray italic text; WS broadcast syncs recall state
 - **Single-Session Login**: Redis-backed token validation — same account login kicks previous session (401 "账号已在其他设备登录")
@@ -184,6 +185,52 @@ This file defines allowed Bash commands for Claude Code in this repo — if you 
 - **Board Sync Flow**: Drag → `PUT /api/board/issue/move` → backend updates issue + logs + WebSocket broadcast → all board subscribers receive event → optimistic UI update
 
 ## Version History
+
+### v2.8.0 — AI Copilot Integration: DeepSeek Streaming Chat + Smart Issue Creator + Task Splitter (2026-06-16)
+
+Major AI feature upgrade from 2 thin endpoints to a full AI Copilot system.
+
+**Backend — New AI Module (`com.mimo.ai`)**:
+1. **AiProvider** (interface) — Abstracts LLM provider, defines `chatJson()` and `chatStream(callback)` contracts
+2. **DeepSeekProvider** — SSE streaming implementation using Java 11 `HttpClient`, calls `https://api.deepseek.com/chat/completions`
+3. **AiService** — Orchestration layer with usage quota tracking; `chatStreamWithQuota()` wraps provider call
+4. **AiController** — 7 endpoints:
+   - `GET /api/ai/chat/stream` (SSE) — 流式对话，支持systemPrompt自定义
+   - `POST /api/ai/polish` — 润色描述文本
+   - `POST /api/ai/priority` — 推荐任务优先级
+   - `POST /api/ai/parse-issue` — 自然语言解析为结构化任务
+   - `POST /api/ai/suggest-tasks` — Story拆分子任务建议
+   - `POST /api/ai/estimate-story-points` — AI估算故事点
+   - `GET /api/ai/usage` — 查询AI使用量配额
+
+**Frontend — New Components**:
+5. **AiChatPanel.vue** — 全局AI助手悬浮窗（右下角），SSE流式输出，Markdown渲染，支持DeepSeek模型选择
+6. **AiIssueCreator.vue** — 看板页AI对话式创建任务入口，自然语言→结构化Issue
+7. **AiTaskSplitter.vue** — 任务详情页Story拆分面板，AI建议子任务列表
+
+**Frontend — API & Config**:
+8. **ai.ts** — 完整重写：移除双重`/api`前缀(修复404)，新增6个接口函数+fetch SSE实现
+9. **vite.config.ts** — 添加SSE代理配置：禁用压缩、超时60秒、noBuffering
+10. **MainLayout.vue** — 集成AiChatPanel全局悬浮窗入口
+
+**ProjectBoard.vue 全面修复 (40+处)**:
+11. 中文乱码修复：注释、标签文本、状态标签等全部恢复为正确中文
+12. SCSS样式修复：括号不匹配、选择器嵌套错误、孤立CSS代码块整合
+13. 语法修复：模板标签未闭合、函数名拼写错误(`han]leBoardSync`→`handleBoardSync`)
+14. IssueCard.vue从git commit恢复（模板和脚本完全丢失）
+
+**Other Fixes**:
+15. application.yml添加`deepseek.api-key`配置项
+16. TeamController移除`@PreAuthorize("hasRole('ROLE_ADMIN')")`的ROLE_重复前缀bug
+
+**Environment Variables Required**:
+```bash
+DEEPSEEK_API_KEY=sk-xxxxx  # DeepSeek API密钥
+```
+
+**Files changed (17 files, +2170/-181)**:
+- Backend: `ai/` package (5 new files), AiController.java, TeamController.java, application.yml
+- Frontend: ai.ts, AiChatPanel.vue, AiIssueCreator.vue, AiTaskSplitter.vue, MainLayout.vue, ProjectBoard.vue, IssueCard.vue, vite.config.ts, IssueDetailDialog.vue
 
 ### v2.7.3 — Code Quality Hardening: N+1 Fix, Type Safety, Configurable Params + XSS Protection (2026-06-15)
 

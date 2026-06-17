@@ -16,7 +16,7 @@
         @click="$router.push(`/projects/${p.id}/board`)"
       >
         <div class="list-card__header">
-          <div class="list-card__avatar" :style="{ background: avatarGradient(p.name) }">
+          <div class="list-card__avatar" :style="{ background: avatarGradient(p.name, 'project') }">
             {{ p.name.charAt(0).toUpperCase() }}
           </div>
           <div class="list-card__title">{{ p.name }}</div>
@@ -139,14 +139,97 @@ onMounted(fetchProjects)
 
   &__grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: 16px;
+    grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+    gap: 20px;
   }
 
   &__key {
-    font-family: monospace;
-    font-weight: 600;
+    font-family: var(--font-mono);
+    font-weight: 700;
     color: var(--color-primary);
+    letter-spacing: -0.3px;
+  }
+}
+
+.list-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-lg);
+  padding: 24px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+  position: relative;
+  overflow: hidden;
+
+  // Top accent line
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    opacity: 0;
+    transition: opacity 0.25s ease;
+  }
+
+  &:hover {
+    border-color: rgba(0,0,0,0.12);
+
+    &::before { opacity: 1; }
+  }
+
+  &__header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 12px;
+  }
+
+  &__avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 20px;
+    flex-shrink: 0;
+    background: #3370ff;
+    color: #fff;
+  }
+
+  &__title {
+    font-size: 17px;
+    font-weight: 750;
+    color: var(--text-primary);
+    letter-spacing: -0.3px;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__desc {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 16px;
+    line-height: 1.55;
+  }
+
+  &__actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+
+    .el-button {
+      border-radius: 9px;
+      font-weight: 600;
+      font-size: 12.5px;
+      transition: opacity 0.15s;
+
+      &:hover { opacity: 0.85; }
+    }
   }
 }
 </style>

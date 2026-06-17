@@ -26,6 +26,9 @@
         <el-button id="create-task-btn" type="primary" @click="showCreateIssue = true">
           <el-icon><Plus /></el-icon>新建工作项
         </el-button>
+        <el-button type="success" plain @click="showAiCreator = true">
+          <el-icon><MagicStick /></el-icon>AI 创建
+        </el-button>
       </div>
     </div>
 
@@ -76,8 +79,7 @@
       </div>
       <div class="board__toolbar-actions">
         <el-button class="board__report-btn" @click="$router.push(`/projects/${projectId}/reports`)">
-          <el-icon><Document /></el-icon>报告
-          <span v-if="recentReportCount > 0" class="board__report-badge">{{ recentReportCount }}</span>
+          <el-icon><Document /></el-icon>报告<span v-if="recentReportCount > 0" class="board__report-badge">{{ recentReportCount }}</span>
         </el-button>
         <el-dropdown trigger="click" @command="handleQuickReport">
           <el-button type="primary">
@@ -96,11 +98,10 @@
 
     <!-- Kanban View -->
     <div v-if="currentView === 'kanban'" class="board__kanban">
-      <!-- Tab 切换栏 -->
+      <!-- Tab 切换区 -->
       <div class="board__kanban-tabs">
         <button :class="['board__tab', { 'is-active': kanbanTab === 'tasks' }]" @click="switchKanbanTab('tasks')">
-          <el-icon><Grid /></el-icon> 工作项
-          <span class="board__tab-count">{{ taskTotal }}</span>
+          <el-icon><Grid /></el-icon> 工作项          <span class="board__tab-count">{{ taskTotal }}</span>
         </button>
         <button :class="['board__tab', { 'is-active': kanbanTab === 'bugs', 'board__tab--bug': kanbanTab === 'bugs' }]" @click="switchKanbanTab('bugs')">
           <el-icon><WarningFilled /></el-icon> 缺陷
@@ -151,7 +152,7 @@
 
             <div v-if="filteredIssues(col).length === 0" class="board__column-empty">
               <el-icon :size="28"><Box /></el-icon>
-              <span>暂无任务</span>
+              <span>鏆傛棤浠诲姟</span>
             </div>
           </div>
         </div>
@@ -203,7 +204,7 @@
       </div>
     </div>
 
-    <!-- 项目概览栏（看板底部，关联报告） -->
+    <!-- 项目概览统计栏（看板底部，关联提醒） -->
     <div v-if="currentView === 'kanban'" class="board__overview">
       <div class="board__overview-stat" @click="$router.push(`/projects/${projectId}/reports`)">
         <span class="board__overview-num">{{ boardStats.total }}</span>
@@ -247,6 +248,13 @@
       <StoryMap />
     </div>
 
+    <AiIssueCreator
+      v-model:visible="showAiCreator"
+      :project-id="projectId"
+      :team-id="teamId"
+      @created="onCreated"
+    />
+
     <IssueDetailDialog
       v-model:visible="showCreateIssue"
       :project-id="projectId"
@@ -278,10 +286,11 @@ import { avatarGradient } from "@/utils/color"
 import draggable from "vuedraggable"
 import { ElMessage } from "element-plus"
 import IssueDetailDialog from "@/components/issue/IssueDetailDialog.vue"
+import AiIssueCreator from "@/components/issue/AiIssueCreator.vue"
 import IssueCard from "@/components/issue/IssueCard.vue"
 import BugTableView from "@/components/issue/bug/BugTableView.vue"
 import StoryMap from "@/components/issue/story/StoryMap.vue"
-import { Search, Grid, List, Connection, Box, Document, WarningFilled } from "@element-plus/icons-vue"
+import { Search, Grid, List, Connection, Box, Document, WarningFilled, MagicStick } from "@element-plus/icons-vue"
 import { useWebSocket } from "@/composables/useWebSocket"
 import { getReports, generateReport } from "@/api/report"
 
@@ -292,6 +301,7 @@ const projectName = ref("")
 const teamId = ref<number>(0)
 const columns = ref<any[]>([])
 const showCreateIssue = ref(false)
+const showAiCreator = ref(false)
 const showEditIssue = ref(false)
 const editingIssueId = ref<number>(0)
 const dragOverColumnId = ref<string | number | null>(null)
@@ -306,7 +316,7 @@ const recentReportCount = ref(0)
 
 const columnColors = ['#6366f1', '#f59e0b', '#10b981']
 
-// 缺陷独立状态列定义（虚拟列，不依赖 DB board_columns）
+// 缺陷独立状态列表定义（暗色列表，不依赖 DB board_columns）
 const BUG_STATUS_FLOW = [
   { key: 'NEW', label: '新建', color: '#94a3b8' },
   { key: 'CONFIRMED', label: '已确认', color: '#3b82f6' },
@@ -316,7 +326,7 @@ const BUG_STATUS_FLOW = [
   { key: 'CLOSED', label: '已关闭', color: '#10b981' },
 ]
 
-// 从真实列中提取缺陷卡片，按 bugStatus 分组到虚拟列
+// 从原始列中提取排除卡片，按 bugStatus 分组到暗色列表
 const bugColumns = computed(() => {
   // 收集所有 BUG 类型 issue
   const allBugs: any[] = []
@@ -340,14 +350,14 @@ const taskColumns = computed(() =>
   }))
 )
 
-// 看板内 Tab 切换
+// 看板 Tab 切换
 const kanbanTab = ref<'tasks' | 'bugs'>('tasks')
 const taskTotal = computed(() => taskColumns.value.reduce((s: number, c: any) => s + (c.issues?.length || 0), 0))
 const bugTotal = computed(() => bugColumns.value.reduce((s: number, c: any) => s + (c.issues?.length || 0), 0))
 
 function switchKanbanTab(tab: 'tasks' | 'bugs') {
   kanbanTab.value = tab
-  // 联动类型筛选
+  // 自动切换类型过滤
   filterType.value = tab === 'bugs' ? 'BUG' : ''
 }
 
@@ -360,7 +370,7 @@ const views = [
 const typeFilters = [
   { value: '', label: '全部', class: '' },
   { value: 'STORY', label: '故事', class: 'board__type-btn--story' },
-  { value: 'TASK', label: '任务', class: 'board__type-btn--task' },
+  { value: 'TASK', label: '浠诲姟', class: 'board__type-btn--task' },
   { value: 'BUG', label: '缺陷', class: 'board__type-btn--bug' },
 ]
 
@@ -382,7 +392,7 @@ const allBugs = computed(() => {
   return bugs
 })
 
-// 看板底部统计（关联报告数据）
+// 鐪嬫澘搴曢儴缁熻锛堝叧鑱旀姤鍛婃暟鎹級
 const boardStats = computed(() => {
   let total = 0, todo = 0, inProgress = 0, done = 0, bugs = 0
   columns.value.forEach((c: any) => {
@@ -420,7 +430,7 @@ function laneKey(issue: any): string {
   if (swimlaneMode.value === 'assignee') return issue.assigneeName || '未指派'
   if (swimlaneMode.value === 'epic') {
     if (issue.type === 'STORY') return issue.epic || '未分类史诗'
-    return '— 其他类型 —'
+    return '→ 其他类型'
   }
   return ''
 }
@@ -461,7 +471,7 @@ const filterPresets = computed<FilterPreset[]>(() => [
   { name: '全部', apply: () => { clearFilters(); kanbanTab.value = 'tasks' } },
   { name: '缺陷', apply: () => { clearFilters(); filterType.value = 'BUG'; kanbanTab.value = 'bugs' } },
   { name: '故事', apply: () => { clearFilters(); filterType.value = 'STORY'; kanbanTab.value = 'tasks' } },
-  { name: '我的', apply: () => { clearFilters(); filterAssignee.value = userStore.username || '' } },
+  { name: '鎴戠殑', apply: () => { clearFilters(); filterAssignee.value = userStore.username || '' } },
 ])
 
 function clearFilters() {
@@ -498,12 +508,12 @@ async function fetchBoard() {
   teamId.value = projRes.data?.teamId || 0
   recentReportCount.value = (reportRes.data || []).filter((r: any) => {
     const d = r.reportDate || ''
-    // 近7天的报告
+    // 杩?澶╃殑鎶ュ憡
     return d >= new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10)
   }).length
 }
 
-// 快捷操作：新建工作项 / 生成报告
+// 蹇嵎鎿嶄綔锛氭柊寤哄伐浣滈」 / 鐢熸垚鎶ュ憡
 function handleQuickReport(cmd: string) {
   if (cmd === 'issue') {
     showCreateIssue.value = true
@@ -528,7 +538,7 @@ async function handleDragChange(evt: any, targetColId: number) {
     if (!issue?.id) return
     const targetCol = columns.value.find((c: any) => c.id === targetColId)
     if (!targetCol) return
-    // 先更新本地状态（乐观更新）
+    // 先更新本地状态（状态更新）
     if (issue.type === 'BUG') {
       issue.bugStatus = bugStatusToColumn(targetCol.name)
     } else {
@@ -542,6 +552,7 @@ async function handleDragChange(evt: any, targetColId: number) {
       await fetchBoard()
     }
   }
+
   // 同列内排序：卡片在当前列中改变位置
   else if (evt.moved) {
     const issue = evt.moved.element
@@ -555,12 +566,12 @@ async function handleDragChange(evt: any, targetColId: number) {
   }
 }
 
-// BUG 的 bugStatus → 列名映射（反向）— 保留兼容
+// BUG 的 bugStatus → 列名映射（反向）- 保留兼容
 function bugStatusToColumn(colName: string): string {
   const lower = (colName || '').toLowerCase()
   if (lower.includes('done') || lower.includes('完成')) return 'CLOSED'
-  if (lower.includes('progress') || lower.includes('进行')) return 'IN_PROGRESS'
-  return 'NEW' // 待办列 → NEW/CONFIRMED
+  if (lower.includes('progress') || lower.includes('进行中')) return 'IN_PROGRESS'
+  return 'NEW' // 待办 → NEW/CONFIRMED
 }
 
 // 缺陷在独立状态列间拖拽（更新 bugStatus）
@@ -568,7 +579,7 @@ async function handleBugDragChange(evt: any, targetBugStatus: string) {
   if (!evt.added) return
   const issue = evt.added.element
   if (!issue?.id || issue.type !== 'BUG') return
-  // 乐观更新
+  // 状态更新
   issue.bugStatus = targetBugStatus
   try {
     await updateIssue({
@@ -589,7 +600,7 @@ async function quickComplete(issue: any) {
       // 缺陷：标记为已关闭（CLOSED）
       await updateIssue({ id: issue.id, bugStatus: 'CLOSED', status: 'DONE' })
     } else {
-      // 故事/任务：找到"完成"列
+      // 故事/任务：拖到"完成"列
       const doneCol = columns.value.find((c: any) => {
         const n = (c.name || '').toLowerCase()
         return n.includes('done') || n.includes('完成')
@@ -682,193 +693,114 @@ onMounted(async () => {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 16px;
+    margin-bottom: 18px;
     gap: 16px;
     flex-wrap: wrap;
   }
 
   &__toolbar-left {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
   }
 
-  &__toolbar-right {
-    flex-shrink: 0;
-  }
+  &__toolbar-right { display: flex; align-items: center; gap: 10px; }
 
-  &__toolbar-actions {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-shrink: 0;
-  }
-
-  &__report-btn {
-    position: relative;
+  &__report-btn { position: relative;
 
     .board__report-badge {
-      position: absolute;
-      top: -2px;
-      right: -6px;
-      min-width: 16px;
-      height: 16px;
-      padding: 0 4px;
+      position: absolute; top: -2px; right: -6px;
+      min-width: 16px; height: 16px; padding: 0 4px;
       border-radius: 8px;
       background: var(--color-danger, #ef4444);
-      color: #fff;
-      font-size: 10px;
-      font-weight: 700;
-      line-height: 16px;
-      text-align: center;
+      color: #fff; font-size: 10px; font-weight: 700;
+      line-height: 16px; text-align: center;
     }
   }
 
   &__back {
-    color: var(--text-secondary);
-    &:hover { color: var(--color-primary); }
+    width: 34px; height: 34px;
+    border-radius: 9px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-secondary); transition: all 0.15s;
+
+    &:hover { background: var(--bg-hover); color: var(--text-primary); }
   }
 
-  &__project-info {
-    margin-right: 8px;
-  }
+  &__project-info { margin-right: 8px; }
+  &__title { font-size: 20px; font-weight: 750; color: var(--text-primary); letter-spacing: -0.4px; line-height: 1.2; }
+  &__subtitle { font-size: 12px; color: var(--text-secondary); margin-top: 1px; }
+  &__view-switcher { margin-left: 6px; }
 
-  &__title {
-    font-size: 20px;
-    font-weight: 800;
-    color: var(--text-primary);
-    letter-spacing: -0.3px;
-    line-height: 1.2;
-  }
-
-  &__subtitle {
-    font-size: 12px;
-    color: var(--text-secondary);
-  }
-
-  &__view-switcher {
-    margin-left: 4px;
-  }
-
+  // 筛选栏
   &__filters {
-    display: flex;
-    align-items: center;
-    gap: 10px;
+    display: flex; align-items: center; gap: 10px;
     flex-wrap: wrap;
-    padding: 12px 16px;
+    padding: 12px 18px;
     background: var(--bg-card);
     border: 1px solid var(--border-color);
-    border-radius: var(--border-radius-lg);
-    margin-bottom: 16px;
-    box-shadow: var(--shadow-sm);
+    border-radius: 11px;
+    margin-bottom: 18px;
   }
 
-  &__search {
-    width: 220px;
-  }
-
-  &__filter-select {
-    width: 120px;
-    &--sm { width: 100px; }
-  }
-
-  &__type-filters {
-    display: flex;
-    gap: 6px;
-  }
-
-  &__presets {
-    display: flex;
-    gap: 6px;
-    margin-left: auto;
-  }
+  &__search { width: 220px; }
+  &__filter-select { width: 120px; &--sm { width: 100px; } }
+  &__type-filters { display: flex; gap: 6px; }
+  &__presets { display: flex; gap: 6px; margin-left: auto; }
 
   &__preset-btn {
-    padding: 5px 12px;
-    border-radius: 7px;
-    font-size: 12px;
-    font-weight: 500;
+    padding: 5px 12px; border-radius: 7px; font-size: 12px; font-weight: 600;
     border: 1px solid var(--border-color);
-    background: var(--bg-page);
-    color: var(--text-secondary);
-    cursor: pointer;
-    transition: all var(--transition-fast);
+    background: var(--bg-page); color: var(--text-secondary);
+    cursor: pointer; transition: all 0.15s;
 
-    &:hover { border-color: var(--color-primary); color: var(--color-primary); }
+    &:hover { border-color: var(--text-muted); color: var(--text-primary); }
     &.is-active {
-      background: rgba(99, 102, 241, 0.1);
-      border-color: var(--color-primary);
-      color: var(--color-primary);
-      font-weight: 600;
+      background: var(--bg-subtle); border-color: var(--text-muted);
+      color: var(--text-primary); font-weight: 700;
     }
   }
 
   &__swimlane-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 4px 6px;
-    margin-top: 4px;
-    font-size: 12px;
-    font-weight: 700;
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 6px 6px; margin-top: 4px;
+    font-size: 12px; font-weight: 700;
     color: var(--text-regular);
-    border-bottom: 1px dashed var(--border-color);
+    border-bottom: 1.5px dashed var(--border-color);
     margin-bottom: 6px;
   }
 
   &__swimlane-avatar {
-    width: 22px;
-    height: 22px;
-    border-radius: 6px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #fff;
-    font-size: 11px;
-    font-weight: 700;
-    flex-shrink: 0;
+    width: 22px; height: 22px; border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 10px; font-weight: 700; flex-shrink: 0;
+    background: #f7b955; color: #fff;
   }
 
   &__swimlane-count {
-    margin-left: auto;
-    font-size: 10px;
-    font-weight: 600;
+    margin-left: auto; font-size: 10px; font-weight: 600;
     color: var(--text-secondary);
-    background: var(--bg-card);
-    padding: 1px 7px;
-    border-radius: 8px;
-    border: 1px solid var(--border-color);
+    background: var(--bg-card); padding: 2px 7px;
+    border-radius: 7px; border: 1px solid var(--border-color);
   }
 
   &__type-btn {
-    padding: 5px 12px;
-    border-radius: 7px;
-    font-size: 12px;
-    font-weight: 600;
+    padding: 5px 12px; border-radius: 7px; font-size: 12px; font-weight: 600;
     border: 1px solid var(--border-color);
-    background: var(--bg-page);
-    color: var(--text-secondary);
-    cursor: pointer;
-    transition: all var(--transition-fast);
+    background: var(--bg-page); color: var(--text-secondary);
+    cursor: pointer; transition: all 0.15s;
 
-    &:hover { border-color: var(--color-primary); color: var(--color-primary); }
+    &:hover { border-color: var(--text-muted); color: var(--text-primary); }
     &.is-active {
-      background: var(--color-primary);
-      border-color: var(--color-primary);
-      color: #fff;
+      color: #fff !important; font-weight: 700;
     }
     &--story.is-active { background: var(--type-story); border-color: var(--type-story); }
     &--task.is-active { background: var(--type-task); border-color: var(--type-task); }
     &--bug.is-active { background: var(--type-bug); border-color: var(--type-bug); }
   }
 
+  // 看板列
   &__columns {
-    display: flex;
-    gap: 16px;
-    overflow-x: auto;
-    min-height: calc(70vh - 80px);
-    padding-bottom: 16px;
+    display: flex; gap: 16px; overflow-x: auto;
+    min-height: calc(70vh - 80px); padding-bottom: 16px;
     align-items: flex-start;
   }
 
@@ -876,253 +808,116 @@ onMounted(async () => {
     flex: 0 0 310px;
     background: var(--bg-column);
     border: 1px solid var(--border-color);
-    border-radius: var(--border-radius-lg);
-    display: flex;
-    flex-direction: column;
-    max-height: calc(100vh - 220px);
-    transition: border var(--transition-fast), box-shadow var(--transition-fast);
+    border-radius: 11px;
+    display: flex; flex-direction: column;
+    max-height: calc(100vh - 210px);
+    transition: border-color 0.15s;
+    overflow: hidden;
 
-    &:hover {
-      box-shadow: var(--shadow-sm);
-    }
+    &:hover { border-color: rgba(0,0,0,0.12); }
   }
 
   &__column-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+    display: flex; justify-content: space-between; align-items: center;
     padding: 14px 16px 10px;
     border-top: 3px solid;
-    border-radius: var(--border-radius-lg) var(--border-radius-lg) 0 0;
+    border-radius: 11px 11px 0 0;
   }
 
-  &__column-title {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  &__column-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-
-  &__column-name {
-    font-weight: 700;
-    font-size: 14px;
-    color: var(--text-primary);
-  }
-
+  &__column-title { display: flex; align-items: center; gap: 8px; }
+  &__column-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  &__column-name { font-weight: 700; font-size: 13.5px; color: var(--text-primary); letter-spacing: -0.15px; }
   &__column-count {
-    font-size: 12px;
-    font-weight: 700;
-    color: var(--text-secondary);
-    background: var(--bg-card);
-    padding: 2px 9px;
-    border-radius: 10px;
-    border: 1px solid var(--border-color);
+    font-size: 11px; font-weight: 700; color: var(--text-secondary);
+    background: var(--bg-page); padding: 2px 9px;
+    border-radius: 8px; border: 1px solid var(--border-color);
   }
 
-  &__column-body {
-    flex: 1;
-    overflow-y: auto;
-    padding: 0 12px 12px;
-    min-height: 80px;
-  }
+  &__column-body { flex: 1; overflow-y: auto; padding: 0 12px 12px; min-height: 70px; }
 
   &__column-empty {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    padding: 32px 16px;
-    color: var(--text-placeholder);
-    font-size: 13px;
-
-    .el-icon { opacity: 0.5; }
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    padding: 30px 16px; color: var(--text-placeholder); font-size: 12.5px;
+    .el-icon { opacity: 0.4; }
   }
 
   &__alt-view {
     background: var(--bg-card);
     border: 1px solid var(--border-color);
-    border-radius: var(--border-radius-lg);
-    padding: 16px;
-    box-shadow: var(--shadow-sm);
+    border-radius: 11px; padding: 18px;
   }
 
-  // 拖拽增强视觉反馈
-  &__column--drag-over {
-    border-color: var(--color-primary) !important;
-    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15), var(--shadow-md) !important;
-  }
+  &__column--drag-over { border-color: var(--text-muted) !important; }
 
-  // ===== 看板内 Tab 切换 =====
-  &__kanban-tabs {
-    display: flex;
-    gap: 4px;
-    margin-bottom: 16px;
-    padding: 0 2px;
-  }
+  // Tab 切换
+  &__kanban-tabs { display: flex; gap: 5px; margin-bottom: 18px; padding: 0 2px; }
 
   &__tab {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 18px;
+    display: flex; align-items: center; gap: 6px;
+    padding: 8px 20px;
     border: 1px solid var(--border-color);
-    border-radius: 10px;
+    border-radius: 9px;
     background: transparent;
-    font-size: 13px;
-    font-weight: 600;
+    font-size: 13px; font-weight: 600;
     color: var(--text-secondary);
-    cursor: pointer;
-    transition: all 0.2s ease;
+    cursor: pointer; transition: all 0.15s;
 
-    &:hover {
-      background: var(--bg-card);
-      color: var(--text-primary);
-    }
+    &:hover { background: var(--bg-hover); color: var(--text-primary); }
+    &.is-active { background: var(--text-primary); color: #fff; border-color: var(--text-primary); font-weight: 700; }
+    &--bug.is-active { background: var(--color-danger); border-color: var(--color-danger); }
+  }
 
-    &.is-active {
-      background: var(--color-primary, #6366f1);
-      color: #fff;
-      border-color: var(--color-primary, #6366f1);
-      box-shadow: 0 2px 8px rgba(99, 102, 241, 0.25);
-    }
+  &__tab-count { font-size: 11px; opacity: 0.75; font-weight: 650; }
 
-    &--bug.is-active {
-      background: var(--color-danger, #ef4444);
-      border-color: var(--color-danger, #ef4444);
-      box-shadow: 0 2px 8px rgba(239, 68, 68, 0.25);
+  // 缺陷全宽
+  &__section--bug-full .board__columns--bugs {
+    gap: 12px;
+    .board__column {
+      flex: 0 0 calc((100% - 60px) / 6); min-width: 150px;
+      max-height: calc(100vh - 260px);
+      .board__column-header { padding: 10px 12px 8px; border-top-width: 3px; }
+      .board__column-name { font-size: 12.5px; }
+      .board__column-body { padding: 0 8px 8px; min-height: 45px; }
+      .board__column-empty { padding: 18px 8px; font-size: 11px; }
     }
   }
 
-  &__tab-count {
-    font-size: 11px;
-    opacity: 0.75;
-    font-weight: 700;
-  }
+  &__drag-item.is-hidden { visibility: hidden; height: 0; overflow: hidden; padding: 0 !important; margin: 0 !important; pointer-events: none; }
 
-  // ===== 缺陷独占全宽 =====
-  &__section--bug-full {
-    .board__columns--bugs {
-      gap: 12px;
-
-      .board__column {
-        flex: 0 0 calc((100% - 60px) / 6);  /* 6列均分 */
-        min-width: 150px;
-        max-height: calc(100vh - 280px);
-
-        .board__column-header {
-          padding: 10px 12px 8px;
-          border-top-width: 3px;
-        }
-
-        .board__column-name {
-          font-size: 13px;
-        }
-
-        .board__column-body {
-          padding: 0 8px 8px;
-          min-height: 50px;
-        }
-
-        .board__column-empty {
-          padding: 20px 8px;
-          font-size: 11px;
-        }
-      }
-    }
-  }
-
-  // 筛选隐藏：用 visibility+height:0 保持元素在文档流中，避免破坏 sortablejs 索引计算
-  &__drag-item {
-    &.is-hidden {
-      visibility: hidden;
-      height: 0;
-      overflow: hidden;
-      padding: 0 !important;
-      margin: 0 !important;
-      border: none !important;
-      pointer-events: none;
-    }
-  }
-
-  // 底部项目概览栏（关联报告入口）
+  // 底部概览
   &__overview {
-    display: flex;
-    align-items: center;
-    gap: 20px;
-    margin-top: 16px;
-    padding: 14px 20px;
+    display: flex; align-items: center; gap: 20px;
+    margin-top: 18px; padding: 14px 22px;
     background: var(--bg-card);
     border: 1px solid var(--border-color);
-    border-radius: var(--border-radius-lg);
-    box-shadow: var(--shadow-sm);
+    border-radius: 11px;
   }
 
   &__overview-stat {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 2px;
-    cursor: default;
-
-    &:first-of-type {
-      cursor: pointer;
-      &:hover .board__overview-num { color: var(--color-primary); }
-    }
+    display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: default;
+    &:first-of-type:hover .board__overview-num { color: var(--text-primary); }
   }
 
   &__overview-num {
-    font-size: 22px;
-    font-weight: 800;
-    color: var(--text-primary);
-    line-height: 1.1;
-    transition: color 0.2s;
-
+    font-size: 24px; font-weight: 800; color: var(--text-primary);
+    line-height: 1; letter-spacing: -0.8px; transition: color 0.15s;
     &--todo { color: #94a3b8; }
-    &--progress { color: #f59e0b; }
-    &--done { color: #10b981; }
-    &--bug { color: #ef4444; }
+    &--progress { color: #d97706; }
+    &--done { color: #059669; }
+    &--bug { color: #dc2626; }
   }
 
-  &__overview-label {
-    font-size: 11px;
-    color: var(--text-secondary);
-    font-weight: 500;
-  }
-
-  &__overview-divider {
-    width: 1px;
-    height: 28px;
-    background: var(--border-color);
-    flex-shrink: 0;
-  }
-
-  &__overview-link {
-    margin-left: auto;
-    font-weight: 600;
-    letter-spacing: 0.3px;
-  }
+  &__overview-label { font-size: 11px; color: var(--text-muted); font-weight: 550; }
+  &__overview-divider { width: 1px; height: 28px; background: var(--border-color); flex-shrink: 0; }
+  &__overview-link { margin-left: auto; font-weight: 700; font-size: 12.5px; }
 }
 
-// 全局拖拽样式（sortable.js 使用，不能用 scoped）
+// 拖拽
 :global(.issue-card-ghost) {
-  opacity: 0.4;
-  background: rgba(99, 102, 241, 0.06) !important;
-  border: 2px dashed var(--color-primary) !important;
+  opacity: 0.35;
+  background: var(--bg-hover) !important;
+  border: 2px dashed var(--border-color) !important;
   border-radius: var(--border-radius-md) !important;
-  transform: scale(0.98);
 }
-
-:global(.issue-card-dragging) {
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18), 0 4px 8px rgba(0, 0, 0, 0.08) !important;
-  transform: rotate(2deg) scale(1.03);
-  opacity: 0.95 !important;
-  cursor: grabbing !important;
-  z-index: 1000;
-}
+:global(.issue-card-dragging) { opacity: 0.35 !important; transform: scale(0.98); }
 </style>

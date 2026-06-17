@@ -74,6 +74,11 @@ const routes: RouteRecordRaw[] = [
         component: () => import("@/views/Profile.vue"),
       },
       {
+        path: "calendar",
+        name: "Calendar",
+        component: () => import("@/views/CalendarView.vue"),
+      },
+      {
         path: "admin/levels",
         name: "LevelManage",
         component: () => import("@/views/LevelManage.vue"),
