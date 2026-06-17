@@ -4,6 +4,50 @@
 
 ---
 
+## v2.9.0 — AI 助手流式对话稳定化 (2026-06-17)
+
+### BUG-049: AI 助手 SSE 端点返回 406 Not Acceptable [High]
+
+- **严重程度**: High（功能不可用）
+- **发现版本**: v2.8.0
+- **文件**: `backend/src/main/java/com/mimo/controller/AiController.java`
+- **现象**: AI 助手发送消息时返回 `HttpMediaTypeNotAcceptableException: Could not find acceptable representation`
+- **根因**: Spring MVC 的 content negotiation 在匹配 `text/event-stream` 时未找到对应的 `HttpMessageConverter`，加上 `SseEmitter` 内部用 `ResponseBodyEmitter` 返回，触发了 converter 链的查找
+- **修复**: 放弃 `SseEmitter` / `StreamingResponseBody`，改用 `javax.servlet.AsyncContext` 原生异步 API + `void` 返回 + 在主线程 `flushBuffer()` 立即提交响应头，完全绕开 Spring MVC 的 content negotiation 和 message converter 链
+
+### BUG-050: StreamingResponseBody 触发 HttpMessageNotWritableException [High]
+
+- **严重程度**: High
+- **发现版本**: v2.8.0
+- **文件**: `backend/src/main/java/com/mimo/controller/AiController.java`
+- **现象**: 后端日志 `No converter for [class java.util.LinkedHashMap] with preset Content-Type 'application/javascript;charset=UTF-8'`，导致部分 AI 请求无响应
+- **根因**: `StreamingResponseBody` 在异步分发时 Spring MVC 仍尝试用 `LinkedHashMap` 作为返回值，错误地把 Content-Type 推断为 `application/javascript`（来自 fetch POST 默认 Accept 头）
+- **修复**: 同 BUG-049，使用 `AsyncContext` 直接写响应，**不返回任何对象**给 Spring MVC 处理
+
+### BUG-051: AI 助手长消息 URL 过长触发 ERR_ABORTED [High]
+
+- **严重程度**: High
+- **发现版本**: v2.8.0
+- **文件**: `frontend/src/api/ai.ts`, `backend/.../AiController.java`
+- **现象**: 用户输入超长消息（如 `495000000....` 一长串数字）时，浏览器报 `net::ERR_ABORTED`，后端未收到任何请求
+- **根因**: `chatStream` 最初用 GET 请求 + `URLSearchParams` 将 message 拼接到 URL 中，超长消息导致 URL 超过浏览器/Tomcat 的 URL 长度限制（~8KB），请求被提前终止
+- **修复**:
+  - 前端 `fetch` 改用 `POST` + `body: JSON.stringify({ message, systemPrompt })`
+  - 后端 `@PostMapping("/chat/stream")` + `@RequestBody Map<String, String>` 接收
+  - 不再受 URL 长度限制
+
+### BUG-052: AI 助手连续发送触发旧请求 ERR_ABORTED [Low]
+
+- **严重程度**: Low（噪音）
+- **发现版本**: v2.8.0
+- **文件**: `frontend/src/components/common/AiChatPanel.vue`
+- **现象**: 用户连续发送多条消息时，控制台出现 `net::ERR_ABORTED http://localhost:8080/api/ai/chat/stream`
+- **根因**: `handleSend()` 没有先 abort 上一个未完成的 fetch，新的 controller 覆盖了全局 `abortController`，旧请求被浏览器以 aborted 方式终止
+- **修复**: `handleSend()` 开头先 `abortController?.abort()` 终止旧请求，避免控制台噪音
+- **已知问题**: AI 助手暂未接入项目上下文（`systemPrompt` 固定），用户需通过 `systemPrompt` 参数手动注入项目信息；后续计划支持自动从 session 加载项目上下文
+
+---
+
 ## v2.8.0 — AI Copilot + 粒子动画 + 构建修复 (2026-06-16)
 
 ### BUG-043: ProjectBoard.vue 中文乱码导致构建失败 [Critical]
