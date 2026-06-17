@@ -3,6 +3,8 @@ import request from './request'
 export interface CalendarEvent {
   id: number
   userId: number
+  teamId: number | null
+  teamName: string | null
   projectId: number | null
   projectName: string | null
   title: string
@@ -24,7 +26,8 @@ export interface CalendarEvent {
 }
 
 export interface CreateCalendarEvent {
-  projectId?: number
+  teamId?: number | null
+  projectId?: number | null
   title: string
   description?: string
   startTime: string
@@ -39,9 +42,17 @@ export interface CreateCalendarEvent {
   reminderMinutes?: number
 }
 
-export function getCalendarEvents(start: string, end: string, projectId?: number) {
+export function getCalendarEvents(
+  start: string,
+  end: string,
+  teamId?: number | null,
+  projectId?: number | null,
+  eventType?: string | null
+) {
   const params = new URLSearchParams({ start, end })
+  if (teamId) params.set('teamId', String(teamId))
   if (projectId) params.set('projectId', String(projectId))
+  if (eventType) params.set('eventType', eventType)
   return request.get(`/calendar?${params.toString()}`)
 }
 

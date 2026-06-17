@@ -10,6 +10,7 @@ public class CalendarEvent {
     @TableId(type = IdType.AUTO)
     private Long id;
     private Long userId;
+    private Long teamId;
     private Long projectId;
     private String title;
     private String description;

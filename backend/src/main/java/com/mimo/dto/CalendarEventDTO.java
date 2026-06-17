@@ -15,6 +15,7 @@ public class CalendarEventDTO {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class CreateRequest {
+        private Long teamId;
         private Long projectId;
         private String title;
         private String description;
@@ -35,6 +36,7 @@ public class CalendarEventDTO {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class UpdateRequest {
+        private Long teamId;
         private Long projectId;
         private String title;
         private String description;
@@ -57,6 +59,8 @@ public class CalendarEventDTO {
     public static class EventVO {
         private Long id;
         private Long userId;
+        private Long teamId;
+        private String teamName;
         private Long projectId;
         private String projectName;
         private String title;

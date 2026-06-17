@@ -15,3 +15,7 @@ export function markRead(id: number) {
 export function markAllRead() {
   return request.put("/notifications/read-all");
 }
+
+export function createNotification(data: { userId: number; type: string; title: string; content: string; relatedId?: number; relatedType?: string }) {
+  return request.post("/notifications", data);
+}

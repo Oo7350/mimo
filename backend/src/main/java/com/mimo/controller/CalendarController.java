@@ -3,7 +3,6 @@ package com.mimo.controller;
 import com.mimo.common.Result;
 import com.mimo.dto.CalendarEventDTO.*;
 import com.mimo.service.CalendarEventService;
-import com.mimo.service.TeamService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.core.Authentication;
@@ -18,7 +17,6 @@ import java.util.List;
 public class CalendarController {
 
     private final CalendarEventService calendarEventService;
-    private final TeamService teamService;
 
     @PostMapping
     public Result<EventVO> create(@RequestBody CreateRequest request, Authentication auth) {
@@ -43,12 +41,14 @@ public class CalendarController {
 
     @GetMapping
     public Result<List<EventVO>> listEvents(
-            @RequestParam @DateTimeFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss") LocalDateTime start,
-            @RequestParam @DateTimeFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss") LocalDateTime end,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime start,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime end,
+            @RequestParam(required = false) Long teamId,
             @RequestParam(required = false) Long projectId,
+            @RequestParam(required = false) String eventType,
             Authentication auth) {
         Long userId = getLongPrincipal(auth);
-        return Result.success(calendarEventService.listByUserAndDateRange(userId, start, end, projectId));
+        return Result.success(calendarEventService.listByUserAndDateRange(userId, start, end, teamId, projectId, eventType));
     }
 
     @GetMapping("/{id}")
