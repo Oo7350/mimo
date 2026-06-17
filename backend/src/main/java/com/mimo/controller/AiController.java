@@ -13,9 +13,9 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
-import java.util.Map;
-
+import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/ai")
@@ -175,76 +175,103 @@ public class AiController {
 
     /**
      * 流式对话 - SSE (Server-Sent Events)
-     * 前端可通过 EventSource 或 fetch+ReadableStream 接收
+     * 使用 javax.servlet.AsyncContext 直接写响应流，完全绕开 Spring MVC 的
+     * MessageConverter / content negotiation，避免 HttpMessageNotWritableException
+     * 改用 POST + JSON body 避免 URL 长度限制
      */
-    @GetMapping("/chat/stream")
-    public SseEmitter chatStream(
-            @RequestParam String message,
-            @RequestParam(defaultValue = "你是一个项目管理AI助手") String systemPrompt,
+    @PostMapping("/chat/stream")
+    public void chatStream(
+            @org.springframework.web.bind.annotation.RequestBody Map<String, String> body,
             Authentication auth,
-            HttpServletResponse response) {
+            HttpServletRequest request,
+            HttpServletResponse response) throws IOException {
 
-        // 手动设置SSE响应头，避免produces声明与异常处理器冲突
+        // 立即在主线程完成响应头设置（这是关键：必须在异步分发前 commit 响应头）
+        response.setStatus(200);
         response.setContentType("text/event-stream;charset=UTF-8");
         response.setHeader("Cache-Control", "no-cache");
         response.setHeader("Connection", "keep-alive");
+        response.setCharacterEncoding("UTF-8");
 
-        SseEmitter emitter = new SseEmitter(60000L); // 60秒超时
+        // 立即 flush 响应头（commit 响应），防止后续 converter 干扰
+        response.flushBuffer();
 
-        // 提取userId，失败时通过SSE返回错误
-        final Long userId;
+        // 启用异步
+        javax.servlet.AsyncContext asyncContext = request.startAsync();
+        asyncContext.setTimeout(60000L);
+
+        String message = body != null ? body.getOrDefault("message", "") : "";
+        String systemPrompt = body != null ? body.getOrDefault("systemPrompt", "") : "";
+
+        // 提取 userId
+        Long userId;
         try {
             userId = getLongPrincipal(auth);
         } catch (Exception e) {
             log.warn("chatStream 认证失败: {}", e.getMessage());
-            try {
-                emitter.send(SseEmitter.event().data("[错误] 未登录或登录状态异常，请重新登录"));
-                emitter.complete();
-            } catch (IOException ignored) {}
-            return emitter;
+            writeSseLine(response, "[错误] 未登录或登录状态异常");
+            asyncContext.complete();
+            return;
         }
 
-        // 防止SSE异常冒泡为500
-        emitter.onError(ex -> log.warn("SSE连接错误, userId={}: {}", userId, ex.getMessage()));
-        emitter.onTimeout(() -> {
-            log.warn("SSE超时, userId={}", userId);
-            try { emitter.complete(); } catch (Exception ignored) {}
-        });
+        if (message == null || message.isEmpty()) {
+            writeSseLine(response, "[错误] 消息不能为空");
+            asyncContext.complete();
+            return;
+        }
 
-        AiProvider.StreamCallback callback = new AiProvider.StreamCallback() {
-            @Override
-            public boolean onText(String textChunk, boolean done) {
-                try {
-                    emitter.send(SseEmitter.event().data(textChunk));
-                    if (done) {
-                        emitter.complete();
+        final Long finalUserId = userId;
+        asyncContext.start(() -> {
+            java.util.concurrent.atomic.AtomicBoolean closed = new java.util.concurrent.atomic.AtomicBoolean(false);
+            try (java.io.PrintWriter writer = response.getWriter()) {
+                AiProvider.StreamCallback callback = new AiProvider.StreamCallback() {
+                    @Override
+                    public boolean onText(String textChunk, boolean done) {
+                        if (closed.get()) return false;
+                        try {
+                            if (textChunk != null && !textChunk.isEmpty()) {
+                                String escaped = textChunk.replace("\r", "").replace("\n", "\\n");
+                                writer.write("data: " + escaped + "\n\n");
+                                writer.flush();
+                            }
+                            if (done) {
+                                writer.write("data: [DONE]\n\n");
+                                writer.flush();
+                            }
+                            return !done;
+                        } catch (Exception e) {
+                            closed.set(true);
+                            log.debug("SSE写入失败, userId={}: {}", finalUserId, e.getMessage());
+                            return false;
+                        }
                     }
-                    return true;
-                } catch (IOException e) {
-                    log.warn("SSE发送中断, userId={}", userId, e);
-                    emitter.completeWithError(e);
-                    return false;
-                }
-            }
-        };
+                };
 
-        // 异步执行避免阻塞Servlet线程
-        new Thread(() -> {
-            try {
-                AiChatRequest request = AiChatRequest.builder()
-                        .systemMessage(systemPrompt)
+                AiChatRequest aiRequest = AiChatRequest.builder()
+                        .systemMessage(systemPrompt.isEmpty() ? "你是一个项目管理AI助手" : systemPrompt)
                         .userMessage(message)
                         .build();
-                aiService.chatStreamWithQuota(userId, request, callback);
-            } catch (Exception e) {
-                try {
-                    emitter.send(SseEmitter.event().data("[错误] " + e.getMessage()));
-                    emitter.complete();
-                } catch (IOException ignored) {}
-            }
-        }).start();
+                aiService.chatStreamWithQuota(finalUserId, aiRequest, callback);
 
-        return emitter;
+                if (!closed.get()) {
+                    writer.flush();
+                }
+            } catch (Exception e) {
+                log.error("SSE流处理异常, userId={}", finalUserId, e);
+            } finally {
+                try { asyncContext.complete(); } catch (Exception ignored) {}
+            }
+        });
+    }
+
+    /**
+     * 写入一行 SSE 数据并关闭连接
+     */
+    private void writeSseLine(HttpServletResponse response, String data) {
+        try {
+            response.getWriter().write("data: " + data + "\n\n");
+            response.getWriter().flush();
+        } catch (IOException ignored) {}
     }
 
     // ==================== 用量查询 ====================

@@ -142,6 +142,12 @@ async function handleSend() {
   const text = inputText.value.trim()
   if (!text || streaming.value) return
 
+  // 终止上一个未完成的请求，避免 ERR_ABORTED 噪音
+  if (abortController) {
+    try { abortController.abort() } catch {}
+    abortController = null
+  }
+
   // 添加用户消息
   messages.value.push({ role: 'user', content: text })
   inputText.value = ''

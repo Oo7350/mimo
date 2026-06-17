@@ -81,10 +81,22 @@ export function chatStream(
   onError?: (err: Error) => void
 ): AbortController {
   const controller = new AbortController()
-  const params = new URLSearchParams({ message, systemPrompt: systemPrompt || '' })
-  fetch(`/api/ai/chat/stream?${params.toString()}`, {
-    headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+  // 改用 POST + body 传参，避免 URL 长度限制（GET URL 超过 ~8KB 会被浏览器或 Tomcat 拒绝）
+  fetch(`http://localhost:8080/api/ai/chat/stream`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${localStorage.getItem('token')}`,
+      // text/event-stream 后保留通配符, 避免服务端 content negotiation 失败
+      Accept: 'text/event-stream, */*',
+    },
+    body: JSON.stringify({
+      message,
+      systemPrompt: systemPrompt || '',
+    }),
     signal: controller.signal,
+    // 明确告诉浏览器这是流式请求
+    cache: 'no-store',
   })
     .then(async (response) => {
       if (!response.ok) {
@@ -96,24 +108,42 @@ export function chatStream(
       const reader = response.body!.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
+      // 处理 [DONE] 标记
+      const handleData = (raw: string) => {
+        const data = raw.trim()
+        if (!data) return
+        if (data === '[DONE]') return
+        onChunk(data)
+      }
       while (true) {
         const { done, value } = await reader.read()
-        if (done) break
+        if (done) {
+          // 处理缓冲区残留
+          if (buffer.trim()) {
+            const tail = buffer.split('\n')
+            for (const line of tail) {
+              if (line.startsWith('data: ')) handleData(line.slice(6))
+            }
+          }
+          break
+        }
         buffer += decoder.decode(value, { stream: true })
-        // 解析SSE: data: ...\n\n
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6).trim()
-            if (data) onChunk(data)
+        // SSE 事件以 \n\n 分隔，先按 \n\n 拆分
+        const events = buffer.split('\n\n')
+        buffer = events.pop() || ''
+        for (const evt of events) {
+          for (const line of evt.split('\n')) {
+            if (line.startsWith('data: ')) handleData(line.slice(6))
           }
         }
       }
       onDone?.()
     })
     .catch((err) => {
-      if ((err as Error).name !== 'AbortError') onError?.(err as Error)
+      if ((err as Error).name !== 'AbortError') {
+        console.error('[AI Stream] error:', err)
+        onError?.(err as Error)
+      }
     })
   return controller
 }

@@ -67,7 +67,8 @@ public class DeepSeekProvider implements AiProvider {
             return;
         }
         try {
-            Map<String, Object> body = buildBody(systemMessage, userMessage, 0.7, 4096);
+            // 使用 HashMap 避免 immutable 限制
+            Map<String, Object> body = new java.util.HashMap<>(buildBody(systemMessage, userMessage, 0.7, 4096));
             body.put("stream", true);
 
             String jsonBody = objectMapper.writeValueAsString(body);
@@ -77,37 +78,44 @@ public class DeepSeekProvider implements AiProvider {
                     .timeout(Duration.ofSeconds(60))
                     .header("Authorization", "Bearer " + apiKey)
                     .header("Content-Type", "application/json")
+                    .header("Accept", "text/event-stream")
                     .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
                     .build();
 
-            HttpResponse<String> response = httpClient.send(
-                    request, HttpResponse.BodyHandlers.ofString());
+            // 关键：使用 ofInputStream 让响应流式到达
+            HttpResponse<java.io.InputStream> response = httpClient.send(
+                    request, HttpResponse.BodyHandlers.ofInputStream());
 
             if (response.statusCode() != 200) {
-                log.error("DeepSeek流式API返回错误: status={}, body={}", response.statusCode(), response.body());
-                callback.onText("AI服务返回错误(" + response.statusCode() + "): " + response.body(), true);
+                String err = new String(response.body().readAllBytes());
+                log.error("DeepSeek流式API返回错误: status={}, body={}", response.statusCode(), err);
+                callback.onText("AI服务返回错误(" + response.statusCode() + "): " + err, true);
                 return;
             }
 
-            // 解析SSE流: data: {...}\n\n
-            String raw = response.body();
-            for (String line : raw.split("\n")) {
-                if (line.startsWith("data: ")) {
-                    String data = line.substring(6).trim();
-                    if ("[DONE]".equals(data)) {
-                        callback.onText("", true);
-                        return;
-                    }
-                    try {
-                        JsonNode chunk = objectMapper.readTree(data);
-                        JsonNode choices = chunk.get("choices");
-                        if (choices != null && choices.isArray() && !choices.isEmpty()) {
-                            JsonNode delta = choices.get(0).path("delta").path("content");
-                            if (!delta.isMissingNode() && !delta.asText().isEmpty()) {
-                                if (!callback.onText(delta.asText(), false)) return;
-                            }
+            // 逐行读取 SSE 流
+            try (java.io.BufferedReader reader = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(response.body(), java.nio.charset.StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (line.startsWith("data: ")) {
+                        String data = line.substring(6).trim();
+                        if (data.isEmpty()) continue;
+                        if ("[DONE]".equals(data)) {
+                            callback.onText("", true);
+                            return;
                         }
-                    } catch (Exception ignored) { /* 跳过解析失败的块 */ }
+                        try {
+                            JsonNode chunk = objectMapper.readTree(data);
+                            JsonNode choices = chunk.get("choices");
+                            if (choices != null && choices.isArray() && !choices.isEmpty()) {
+                                JsonNode delta = choices.get(0).path("delta").path("content");
+                                if (!delta.isMissingNode() && !delta.asText().isEmpty()) {
+                                    if (!callback.onText(delta.asText(), false)) return;
+                                }
+                            }
+                        } catch (Exception ignored) { /* 跳过解析失败的块 */ }
+                    }
                 }
             }
             callback.onText("", true);
