@@ -20,12 +20,7 @@
                 </linearGradient>
               </defs>
             </svg>
-            <ShinyText
-              text="Mimo"
-              color="#ffffff"
-              shine-color="#a78bfa"
-              :speed="3.5"
-            />
+            <span class="auth-page__brand-name">Mimo</span>
           </div>
           <p class="auth-page__tagline">轻量级敏捷项目管理，让小团队协作更高效</p>
         </div>
@@ -50,7 +45,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import MagnetLines from '@/components/common/MagnetLines.vue'
-import ShinyText from '@/components/common/ShinyText.vue'
 
 const particleCanvasRef = ref<HTMLCanvasElement | null>(null)
 
@@ -291,11 +285,12 @@ onMounted(() => {
       filter: drop-shadow(0 8px 24px rgba(79, 70, 229, 0.4));
     }
 
-    span {
+    .auth-page__brand-name {
       font-size: 36px;
       font-weight: 800;
-      color: #1a1a2e;
+      color: #ffffff;          // 留在白色底版上更清晰
       letter-spacing: -1.2px;
+      text-shadow: 0 4px 20px rgba(79, 70, 229, 0.35);
     }
   }
 
