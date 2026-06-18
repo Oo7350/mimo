@@ -4,7 +4,9 @@
       <h1 class="page-header__title">
         <slot name="title">{{ title }}</slot>
       </h1>
-      <p v-if="subtitle" class="page-header__subtitle">{{ subtitle }}</p>
+      <p v-if="$slots.subtitle || subtitle" class="page-header__subtitle">
+        <slot name="subtitle">{{ subtitle }}</slot>
+      </p>
     </div>
     <div v-if="$slots.action" class="page-header__action">
       <slot name="action" />

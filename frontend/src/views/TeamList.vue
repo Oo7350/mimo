@@ -21,9 +21,11 @@
           </h1>
           <p class="team-hero__desc">管理团队成员，协作推进项目</p>
         </div>
-        <el-button type="primary" class="team-hero__btn" @click="showCreateDialog = true" round>
-          <el-icon><Plus /></el-icon> 创建团队
-        </el-button>
+        <ClickSpark spark-color="#a7f3d0" :spark-radius="20">
+          <el-button type="primary" class="team-hero__btn" @click="showCreateDialog = true" round>
+            <el-icon><Plus /></el-icon> 创建团队
+          </el-button>
+        </ClickSpark>
       </div>
     </div>
 
@@ -110,6 +112,7 @@ import { avatarGradient } from "@/utils/color"
 import type { TeamVO } from "@/types"
 import ShinyText from "@/components/common/ShinyText.vue"
 import Aurora from "@/components/common/Aurora.vue"
+import ClickSpark from "@/components/common/ClickSpark.vue"
 
 const router = useRouter()
 const teams = ref<TeamVO[]>([])

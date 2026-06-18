@@ -1,6 +1,6 @@
 <template>
   <div class="project-list">
-    <PageHeader subtitle="你参与的所有项目，快速进入看板或报告">
+    <PageHeader>
       <template #title>
         <ShinyText
           text="项目列表"
@@ -9,10 +9,18 @@
           :speed="3.2"
         />
       </template>
+      <template #subtitle>
+        <GradientText
+          :colors="['#475569', '#7c3aed', '#06b6d4', '#475569']"
+          :speed="6"
+        >你参与的所有项目，快速进入看板或报告</GradientText>
+      </template>
       <template #action>
-        <el-button type="primary" @click="$router.push('/teams')">
-          <el-icon><Plus /></el-icon> 创建项目
-        </el-button>
+        <ClickSpark spark-color="#7c3aed" :spark-radius="18">
+          <el-button type="primary" @click="$router.push('/teams')">
+            <el-icon><Plus /></el-icon> 创建项目
+          </el-button>
+        </ClickSpark>
       </template>
     </PageHeader>
 
@@ -71,6 +79,8 @@ import { avatarGradient } from "@/utils/color"
 import { ElMessage, ElMessageBox } from "element-plus"
 import PageHeader from "@/components/common/PageHeader.vue"
 import ShinyText from "@/components/common/ShinyText.vue"
+import GradientText from "@/components/common/GradientText.vue"
+import ClickSpark from "@/components/common/ClickSpark.vue"
 import { Delete, Grid, DataAnalysis, Document } from "@element-plus/icons-vue"
 import { useUserStore } from "@/store/user"
 

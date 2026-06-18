@@ -32,10 +32,14 @@
         </p>
       </div>
       <div class="dash-hero__actions">
-        <el-button type="primary" @click="$router.push('/projects')">
-          进入项目
-        </el-button>
-        <el-button @click="$router.push('/teams')">创建团队</el-button>
+        <ClickSpark spark-color="#7c3aed" :spark-radius="16">
+          <el-button type="primary" @click="$router.push('/projects')">
+            进入项目
+          </el-button>
+        </ClickSpark>
+        <ClickSpark spark-color="#4f46e5" :spark-radius="14">
+          <el-button @click="$router.push('/teams')">创建团队</el-button>
+        </ClickSpark>
       </div>
     </div>
 
@@ -187,6 +191,7 @@ import SkeletonLoader from "@/components/common/SkeletonLoader.vue"
 import ShinyText from "@/components/common/ShinyText.vue"
 import Aurora from "@/components/common/Aurora.vue"
 import CountUp from "@/components/common/CountUp.vue"
+import ClickSpark from "@/components/common/ClickSpark.vue"
 
 const router = useRouter()
 const userStore = useUserStore()

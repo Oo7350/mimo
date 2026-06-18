@@ -9,7 +9,12 @@
           :speed="3"
         />
       </h2>
-      <p class="auth-form__desc">登录你的 Mimo 账号，继续团队协作</p>
+      <p class="auth-form__desc">
+        <GradientText
+          :colors="['#4f46e5', '#7c3aed', '#06b6d4', '#4f46e5']"
+          :speed="5"
+        >登录你的 Mimo 账号，继续团队协作</GradientText>
+      </p>
 
       <el-form
         ref="formRef"
@@ -64,6 +69,7 @@ import { useUserStore } from "@/store/user"
 import type { FormInstance, FormRules } from "element-plus"
 import AuthLayout from "@/components/layout/AuthLayout.vue"
 import ShinyText from "@/components/common/ShinyText.vue"
+import GradientText from "@/components/common/GradientText.vue"
 
 const userStore = useUserStore()
 const formRef = ref<FormInstance>()

@@ -63,9 +63,11 @@
             </div>
           </div>
         </el-popover>
-        <el-button type="primary" size="default" @click="openCreateDialog">
-          <el-icon><Plus /></el-icon> 新建
-        </el-button>
+        <ClickSpark spark-color="#06b6d4" :spark-radius="16">
+          <el-button type="primary" size="default" @click="openCreateDialog">
+            <el-icon><Plus /></el-icon> 新建
+          </el-button>
+        </ClickSpark>
       </div>
     </div>
 
@@ -264,6 +266,7 @@ import { getMyTeams } from '@/api/team'
 import { getNotifications, markAllRead as apiMarkAllRead, createNotification, markRead } from '@/api/notification'
 import EventForm from './EventForm.vue'
 import ShinyText from '@/components/common/ShinyText.vue'
+import ClickSpark from '@/components/common/ClickSpark.vue'
 
 const viewMode = ref<'month'|'week'|'day'>('month')
 const filterTeamId = ref<number|null>(null)
