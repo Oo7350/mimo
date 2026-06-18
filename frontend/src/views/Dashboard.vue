@@ -39,22 +39,30 @@
       </div>
     </div>
 
-    <!-- 统计卡片 — 纯净数字，无彩色图标 -->
+    <!-- 统计卡片 — 数字滚动入场 -->
     <div class="dash-stats">
       <div class="dash-stat">
-        <span class="dash-stat__value">{{ dashboard?.totalIssues || 0 }}</span>
+        <span class="dash-stat__value">
+          <CountUp :to="dashboard?.totalIssues || 0" :duration="1.4" />
+        </span>
         <span class="dash-stat__label">总任务</span>
       </div>
       <div class="dash-stat">
-        <span class="dash-stat__value">{{ dashboard?.inProgressIssues || 0 }}</span>
+        <span class="dash-stat__value">
+          <CountUp :to="dashboard?.inProgressIssues || 0" :duration="1.4" />
+        </span>
         <span class="dash-stat__label">进行中</span>
       </div>
       <div class="dash-stat">
-        <span class="dash-stat__value">{{ dashboard?.doneIssues || 0 }}</span>
+        <span class="dash-stat__value">
+          <CountUp :to="dashboard?.doneIssues || 0" :duration="1.4" />
+        </span>
         <span class="dash-stat__label">已完成</span>
       </div>
       <div class="dash-stat">
-        <span class="dash-stat__value">{{ completionRate }}%</span>
+        <span class="dash-stat__value">
+          <CountUp :to="completionRate" :duration="1.6" />%
+        </span>
         <span class="dash-stat__label">完成率</span>
       </div>
     </div>
@@ -178,6 +186,7 @@ import type { DashboardData, IssueCard, IssueType } from "@/types"
 import SkeletonLoader from "@/components/common/SkeletonLoader.vue"
 import ShinyText from "@/components/common/ShinyText.vue"
 import Aurora from "@/components/common/Aurora.vue"
+import CountUp from "@/components/common/CountUp.vue"
 
 const router = useRouter()
 const userStore = useUserStore()

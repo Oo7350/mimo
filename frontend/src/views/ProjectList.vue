@@ -1,6 +1,14 @@
 <template>
   <div class="project-list">
-    <PageHeader title="项目列表" subtitle="你参与的所有项目，快速进入看板或报告">
+    <PageHeader subtitle="你参与的所有项目，快速进入看板或报告">
+      <template #title>
+        <ShinyText
+          text="项目列表"
+          color="#0f172a"
+          shine-color="#7c3aed"
+          :speed="3.2"
+        />
+      </template>
       <template #action>
         <el-button type="primary" @click="$router.push('/teams')">
           <el-icon><Plus /></el-icon> 创建项目
@@ -62,6 +70,7 @@ import { createApproval } from "@/api/approval"
 import { avatarGradient } from "@/utils/color"
 import { ElMessage, ElMessageBox } from "element-plus"
 import PageHeader from "@/components/common/PageHeader.vue"
+import ShinyText from "@/components/common/ShinyText.vue"
 import { Delete, Grid, DataAnalysis, Document } from "@element-plus/icons-vue"
 import { useUserStore } from "@/store/user"
 

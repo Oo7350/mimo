@@ -1,7 +1,9 @@
 <template>
   <div class="page-header">
     <div class="page-header__main">
-      <h1 class="page-header__title">{{ title }}</h1>
+      <h1 class="page-header__title">
+        <slot name="title">{{ title }}</slot>
+      </h1>
       <p v-if="subtitle" class="page-header__subtitle">{{ subtitle }}</p>
     </div>
     <div v-if="$slots.action" class="page-header__action">
@@ -12,7 +14,7 @@
 
 <script setup lang="ts">
 defineProps<{
-  title: string
+  title?: string
   subtitle?: string
 }>()
 </script>

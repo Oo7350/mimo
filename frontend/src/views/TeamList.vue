@@ -2,14 +2,23 @@
   <div class="team-page">
     <!-- 团队专属 Hero 区域 -->
     <div class="team-hero">
-      <div class="team-hero__bg">
-        <div class="team-hero__orb team-hero__orb--1" />
-        <div class="team-hero__orb team-hero__orb--2" />
-        <div class="team-hero__orb team-hero__orb--3" />
-      </div>
+      <Aurora
+        color1="#10b981"
+        color2="#059669"
+        color3="#a7f3d0"
+        :opacity="0.55"
+        speed="normal"
+      />
       <div class="team-hero__content">
         <div class="team-hero__text">
-          <h1 class="team-hero__title">我的团队</h1>
+          <h1 class="team-hero__title">
+            <ShinyText
+              text="我的团队"
+              color="#ffffff"
+              shine-color="#a7f3d0"
+              :speed="3"
+            />
+          </h1>
           <p class="team-hero__desc">管理团队成员，协作推进项目</p>
         </div>
         <el-button type="primary" class="team-hero__btn" @click="showCreateDialog = true" round>
@@ -99,6 +108,8 @@ import { ElMessage, ElMessageBox } from "element-plus"
 import { Plus, User, ArrowRight, UserFilled, Delete } from "@element-plus/icons-vue"
 import { avatarGradient } from "@/utils/color"
 import type { TeamVO } from "@/types"
+import ShinyText from "@/components/common/ShinyText.vue"
+import Aurora from "@/components/common/Aurora.vue"
 
 const router = useRouter()
 const teams = ref<TeamVO[]>([])
@@ -165,35 +176,7 @@ onMounted(fetchTeams)
   padding: 40px 32px;
   border-radius: 20px;
   overflow: hidden;
-  background: linear-gradient(135deg, #065f46 0%, #047857 40%, #059669 100%);
-
-  &__bg {
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-  }
-
-  &__orb {
-    position: absolute;
-    border-radius: 50%;
-    opacity: 0.12;
-
-    &--1 {
-      width: 280px; height: 280px;
-      background: #34d399;
-      top: -80px; right: -40px;
-    }
-    &--2 {
-      width: 160px; height: 160px;
-      background: #6ee7b7;
-      bottom: -40px; left: 20%;
-    }
-    &--3 {
-      width: 100px; height: 100px;
-      background: #a7f3d0;
-      top: 30%; left: 50%;
-    }
-  }
+  background: linear-gradient(135deg, #064e3b 0%, #065f46 40%, #047857 100%);
 
   &__content {
     position: relative;

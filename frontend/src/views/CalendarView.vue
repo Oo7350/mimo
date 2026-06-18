@@ -3,7 +3,14 @@
     <!-- ===== HEADER ===== -->
     <div class="cal-header">
       <div class="cal-header__left">
-        <h2 class="cal-title">日历</h2>
+        <h2 class="cal-title">
+          <ShinyText
+            text="日历"
+            color="#0f172a"
+            shine-color="#06b6d4"
+            :speed="3.5"
+          />
+        </h2>
         <div class="cal-nav">
           <el-button text size="small" @click="goToday">今天</el-button>
           <el-button-group size="small">
@@ -256,6 +263,7 @@ import { getMyProjects, getProjectsByTeam } from '@/api/project'
 import { getMyTeams } from '@/api/team'
 import { getNotifications, markAllRead as apiMarkAllRead, createNotification, markRead } from '@/api/notification'
 import EventForm from './EventForm.vue'
+import ShinyText from '@/components/common/ShinyText.vue'
 
 const viewMode = ref<'month'|'week'|'day'>('month')
 const filterTeamId = ref<number|null>(null)
