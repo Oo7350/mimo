@@ -26,14 +26,8 @@ spring:
       max-file-size: 10MB
       max-request-size: 20MB
 
-  # 一次性迁移: 本地开发/首次部署时执行 V9__issue_gantt.sql
-  # 生产环境会通过 flyway/sql init 自动跑，本配置 continue-on-error 确保不影响
-  sql:
-    init:
-      mode: always
-      continue-on-error: true
-      schema-locations: classpath:db/migration/V9__issue_gantt.sql
-      platform: mysql
+  # 一次性迁移: 由 MigrationRunner 在启动时显式执行 (替代 spring.sql.init, 兼容性更好)
+  # V8 工时表 + V9 甘特图字段
 
 mybatis-plus:
   mapper-locations: classpath:mapper/*.xml
