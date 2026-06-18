@@ -1,30 +1,41 @@
 <template>
-  <div :class="['ai-chat-panel', { 'is-open': isOpen, 'is-minimized': isMinimized }]">
+  <div
+    :class="['ai-chat-panel', { 'is-open': isOpen, 'is-minimized': isMinimized, 'is-dragging': isDragging }]"
+    :style="panelStyle"
+  >
     <!-- 触发按钮 (折叠状态) -->
     <button
       v-if="!isOpen"
       class="ai-chat-panel__trigger"
-      @click="isOpen = true; isMinimized = false"
-      title="AI 助手"
+      :style="{ cursor: isDragging ? 'grabbing' : 'grab' }"
+      @mousedown="onTriggerMouseDown"
+      @click="onTriggerClick"
+      @touchstart="onTriggerTouchStart"
+      title="AI 助手 (可拖动)"
     >
       <el-icon :size="22"><ChatDotRound /></el-icon>
       <span v-if="unreadCount > 0" class="ai-chat-panel__badge">{{ unreadCount }}</span>
     </button>
 
     <!-- 面板主体 -->
-    <div v-else class="ai-chat-panel__body">
-      <!-- 头部 -->
-      <div class="ai-chat-panel__header">
+    <div v-else class="ai-chat-panel__body" :style="bodyStyle">
+      <!-- 头部（可拖动） -->
+      <div
+        class="ai-chat-panel__header"
+        :style="{ cursor: isDragging ? 'grabbing' : 'grab' }"
+        @mousedown="onHeaderMouseDown"
+        @touchstart="onHeaderTouchStart"
+      >
         <div class="ai-chat-panel__header-left">
           <span class="ai-chat-panel__title">Mimo AI</span>
           <el-tag size="small" effect="plain" type="primary">{{ providerName }}</el-tag>
         </div>
         <div class="ai-chat-panel__header-actions">
           <el-tooltip content="最小化" placement="bottom">
-            <el-icon class="ai-chat-panel__icon-btn" @click="isMinimized = true"><Minus /></el-icon>
+            <el-icon class="ai-chat-panel__icon-btn" @click.stop="isMinimized = true"><Minus /></el-icon>
           </el-tooltip>
           <el-tooltip content="关闭" placement="bottom">
-            <el-icon class="ai-chat-panel__icon-btn" @click="handleClose"><Close /></el-icon>
+            <el-icon class="ai-chat-panel__icon-btn" @click.stop="handleClose"><Close /></el-icon>
           </el-tooltip>
         </div>
       </div>
@@ -97,7 +108,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, watch } from 'vue'
+import { ref, computed, nextTick, watch, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   ChatDotRound, Minus, Close, DocumentCopy, Refresh, Promotion
@@ -112,6 +123,153 @@ const messagesRef = ref<HTMLElement | null>(null)
 const providerName = ref('DeepSeek')
 const unreadCount = ref(0)
 let abortController: AbortController | null = null
+
+// ====== 可拖动：位置持久化 ======
+const STORAGE_KEY = 'ai-panel-pos'
+interface PanelPos { right: number; bottom: number }
+const pos = ref<PanelPos>({ right: 24, bottom: 24 })
+const isDragging = ref(false)
+let dragStartX = 0
+let dragStartY = 0
+let dragStartRight = 0
+let dragStartBottom = 0
+let dragMoved = false
+let dragPointerId: number | null = null
+let dragMoveHandler: ((e: PointerEvent) => void) | null = null
+let dragUpHandler: (() => void) | null = null
+
+const panelStyle = computed(() => ({
+  right: `${pos.value.right}px`,
+  bottom: `${pos.value.bottom}px`,
+  left: 'auto',
+  top: 'auto',
+  transition: isDragging.value ? 'none' : undefined,
+}))
+
+// 展开后 body 仍然吸附在 panel 容器，宽度由容器决定
+const bodyStyle = computed(() => ({}))
+
+function loadPos() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw) as PanelPos
+      if (typeof parsed.right === 'number' && typeof parsed.bottom === 'number') {
+        pos.value = clampPos(parsed)
+      }
+    }
+  } catch {}
+}
+
+function savePos() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(pos.value))
+  } catch {}
+}
+
+function clampPos(p: PanelPos): PanelPos {
+  const w = window.innerWidth
+  const h = window.innerHeight
+  const W = isOpen.value ? 380 : 52
+  const H = isOpen.value ? 560 : 52
+  return {
+    right: Math.max(0, Math.min(p.right, w - W)),
+    bottom: Math.max(0, Math.min(p.bottom, h - H)),
+  }
+}
+
+function beginDrag(clientX: number, clientY: number, pointerId?: number) {
+  dragStartX = clientX
+  dragStartY = clientY
+  dragStartRight = pos.value.right
+  dragStartBottom = pos.value.bottom
+  isDragging.value = true
+  dragMoved = false
+  dragPointerId = pointerId ?? null
+
+  dragMoveHandler = (e: PointerEvent) => {
+    if (dragPointerId !== null && e.pointerId !== dragPointerId) return
+    const dx = e.clientX - dragStartX
+    const dy = e.clientY - dragStartY
+    if (Math.abs(dx) + Math.abs(dy) > 3) dragMoved = true
+    pos.value = clampPos({
+      right: dragStartRight - dx,
+      bottom: dragStartBottom - dy,
+    })
+  }
+  dragUpHandler = () => {
+    isDragging.value = false
+    savePos()
+    if (dragMoveHandler) window.removeEventListener('pointermove', dragMoveHandler)
+    if (dragUpHandler) {
+      window.removeEventListener('pointerup', dragUpHandler)
+      window.removeEventListener('pointercancel', dragUpHandler)
+    }
+    dragMoveHandler = null
+    dragUpHandler = null
+  }
+  window.addEventListener('pointermove', dragMoveHandler)
+  window.addEventListener('pointerup', dragUpHandler)
+  window.addEventListener('pointercancel', dragUpHandler)
+}
+
+function onTriggerMouseDown(e: MouseEvent) {
+  // 区分点击与拖动：mousedown 时记录，按 click 时检测是否移动过
+  beginDrag(e.clientX, e.clientY)
+}
+
+function onTriggerClick(_e: MouseEvent) {
+  // 拖动过程中不应该触发 click
+  if (dragMoved) {
+    dragMoved = false
+    return
+  }
+  isOpen.value = true
+  isMinimized.value = false
+}
+
+function onTriggerTouchStart(e: TouchEvent) {
+  const t = e.touches[0]
+  if (!t) return
+  beginDrag(t.clientX, t.clientY)
+}
+
+function onHeaderMouseDown(e: MouseEvent) {
+  // 点击 header 上的按钮时不应触发拖动
+  const target = e.target as HTMLElement
+  if (target.closest('.ai-chat-panel__icon-btn')) return
+  e.preventDefault()
+  beginDrag(e.clientX, e.clientY)
+}
+
+function onHeaderTouchStart(e: TouchEvent) {
+  const target = e.target as HTMLElement
+  if (target.closest('.ai-chat-panel__icon-btn')) return
+  const t = e.touches[0]
+  if (!t) return
+  beginDrag(t.clientX, t.clientY)
+}
+
+onMounted(() => {
+  loadPos()
+  window.addEventListener('resize', () => {
+    pos.value = clampPos(pos.value)
+  })
+})
+
+onBeforeUnmount(() => {
+  if (dragMoveHandler) window.removeEventListener('pointermove', dragMoveHandler)
+  if (dragUpHandler) {
+    window.removeEventListener('pointerup', dragUpHandler)
+    window.removeEventListener('pointercancel', dragUpHandler)
+  }
+})
+
+watch(isOpen, (v) => {
+  // 重新计算位置以适配展开后尺寸
+  pos.value = clampPos(pos.value)
+  if (v) unreadCount.value = 0
+})
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -230,14 +388,22 @@ function renderMarkdown(text: string): string {
     .replace(/(<li>.*<\/li>\n?)/g, '<ul>$1</ul>')
     .replace(/\n/g, '<br/>')
 }
-
-watch(isOpen, (v) => {
-  if (v) unreadCount.value = 0
-})
 </script>
 
 <style scoped>
-.ai-chat-panel { position: fixed; z-index: 9999; bottom: 24px; right: 24px; }
+.ai-chat-panel {
+  position: fixed;
+  z-index: 9999;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+.ai-chat-panel.is-dragging,
+.ai-chat-panel.is-dragging * {
+  cursor: grabbing !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
 
 /* 触发按钮 */
 .ai-chat-panel__trigger {

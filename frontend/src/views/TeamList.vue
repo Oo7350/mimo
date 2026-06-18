@@ -3,9 +3,9 @@
     <!-- 团队专属 Hero 区域 -->
     <div class="team-hero">
       <Aurora
-        color1="#4f46e5"
-        color2="#7c3aed"
-        color3="#a78bfa"
+        color1="#10b981"
+        color2="#059669"
+        color3="#a7f3d0"
         :opacity="0.55"
         speed="normal"
       />

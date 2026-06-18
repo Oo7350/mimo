@@ -1,9 +1,12 @@
 <template>
   <div class="dashboard">
-    <Aurora
-      :opacity="0.32"
-      speed="slow"
-      :show-noise="true"
+    <MagnetLines
+      :rows="14"
+      :cols="22"
+      :radius="160"
+      :max-angle="35"
+      line-color="rgba(79, 70, 229, 0.08)"
+      active-color="rgba(124, 58, 237, 0.55)"
     />
     <!-- Hero — 干净文字，无渐变无光球 -->
     <div class="dash-hero">
@@ -187,7 +190,7 @@ import {
 import type { DashboardData, IssueCard, IssueType } from "@/types"
 import SkeletonLoader from "@/components/common/SkeletonLoader.vue"
 import ShinyText from "@/components/common/ShinyText.vue"
-import Aurora from "@/components/common/Aurora.vue"
+import MagnetLines from "@/components/common/MagnetLines.vue"
 import CountUp from "@/components/common/CountUp.vue"
 import RippleButton from "@/components/common/RippleButton.vue"
 
