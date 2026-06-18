@@ -3,9 +3,9 @@
     <!-- 团队专属 Hero 区域 -->
     <div class="team-hero">
       <Aurora
-        color1="#10b981"
-        color2="#059669"
-        color3="#a7f3d0"
+        color1="#4f46e5"
+        color2="#7c3aed"
+        color3="#a78bfa"
         :opacity="0.55"
         speed="normal"
       />
@@ -21,11 +21,9 @@
           </h1>
           <p class="team-hero__desc">管理团队成员，协作推进项目</p>
         </div>
-        <ClickSpark spark-color="#a7f3d0" :spark-radius="20">
-          <el-button type="primary" class="team-hero__btn" @click="showCreateDialog = true" round>
-            <el-icon><Plus /></el-icon> 创建团队
-          </el-button>
-        </ClickSpark>
+        <RippleButton variant="primary" @click="showCreateDialog = true" size="large">
+          <el-icon><Plus /></el-icon> 创建团队
+        </RippleButton>
       </div>
     </div>
 
@@ -112,7 +110,7 @@ import { avatarGradient } from "@/utils/color"
 import type { TeamVO } from "@/types"
 import ShinyText from "@/components/common/ShinyText.vue"
 import Aurora from "@/components/common/Aurora.vue"
-import ClickSpark from "@/components/common/ClickSpark.vue"
+import RippleButton from "@/components/common/RippleButton.vue"
 
 const router = useRouter()
 const teams = ref<TeamVO[]>([])
