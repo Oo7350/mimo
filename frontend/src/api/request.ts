@@ -37,15 +37,18 @@ request.interceptors.response.use(
   (error) => {
     if (error.response) {
       const status = error.response.status;
+      const serverMsg = error.response.data?.message || error.response.data?.error
       if (status === 401) {
         localStorage.removeItem("token");
         localStorage.removeItem("user");
         router.push("/login");
         ElMessage.error("登录已过期，请重新登录");
       } else if (status === 403) {
-        ElMessage.error("无操作权限");
+        ElMessage.error(serverMsg || "无操作权限");
       } else if (status >= 500) {
-        ElMessage.error("服务器错误");
+        ElMessage.error(serverMsg || `服务器错误 (${status})`);
+      } else {
+        ElMessage.error(serverMsg || `请求失败 (${status})`);
       }
     } else {
       ElMessage.error("网络连接异常");

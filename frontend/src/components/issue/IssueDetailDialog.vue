@@ -113,16 +113,16 @@
           <div class="issue-dialog__gantt-fields">
             <div class="issue-dialog__gantt-title">
               <el-icon><DataLine /></el-icon>
-              <span>计划时间（甘特图）</span>
+              <span>甘特图排期（用于项目时间线视图）</span>
             </div>
             <div class="issue-dialog__gantt-row">
-              <el-form-item label="计划起">
-                <el-date-picker v-model="form.planStartDate" type="date" placeholder="开始日期" value-format="YYYY-MM-DD" style="width: 100%" />
+              <el-form-item label="排期起">
+                <el-date-picker v-model="form.planStartDate" type="date" placeholder="计划开始" value-format="YYYY-MM-DD" style="width: 100%" />
               </el-form-item>
-              <el-form-item label="计划止">
-                <el-date-picker v-model="form.planEndDate" type="date" placeholder="结束日期" value-format="YYYY-MM-DD" style="width: 100%" />
+              <el-form-item label="排期止">
+                <el-date-picker v-model="form.planEndDate" type="date" placeholder="计划结束" value-format="YYYY-MM-DD" style="width: 100%" />
               </el-form-item>
-              <el-form-item label="依赖 Issue ID">
+              <el-form-item label="前置任务">
                 <el-input v-model="form.dependencies" placeholder="如 1,5,8 (逗号分隔)" maxlength="200" />
               </el-form-item>
             </div>
