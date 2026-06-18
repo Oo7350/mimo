@@ -1,9 +1,21 @@
 <template>
   <div class="dashboard">
+    <Aurora
+      :opacity="0.32"
+      speed="slow"
+      :show-noise="true"
+    />
     <!-- Hero — 干净文字，无渐变无光球 -->
     <div class="dash-hero">
       <div class="dash-hero__text">
-        <h1>{{ greeting }}，{{ userStore.username }}</h1>
+        <h1>
+          <ShinyText
+            :text="`${greeting}，${userStore.username}`"
+            color="#0f172a"
+            shine-color="#7c3aed"
+            :speed="3.2"
+          />
+        </h1>
         <p>
           <template v-if="overdueCount > 0">
             你有 <strong class="text-danger">{{ overdueCount }}</strong> 项任务已逾期，
@@ -164,6 +176,8 @@ import {
 } from "@element-plus/icons-vue"
 import type { DashboardData, IssueCard, IssueType } from "@/types"
 import SkeletonLoader from "@/components/common/SkeletonLoader.vue"
+import ShinyText from "@/components/common/ShinyText.vue"
+import Aurora from "@/components/common/Aurora.vue"
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -258,8 +272,10 @@ onMounted(() => { fetchDashboard(); fetchMyTasks() })
 <style scoped lang="scss">
 /* ===== 全局：零阴影，中性灰调，Linear/Notion 风格 ===== */
 .dashboard {
+  position: relative;     // 让 Aurora 绝对定位有锚点
   max-width: 1100px;
   margin: 0 auto;
+  padding: 0 24px;        // 给 Aurora 一些呼吸空间
 }
 
 /* --- Hero --- */

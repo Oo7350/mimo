@@ -1,7 +1,14 @@
 <template>
   <AuthLayout>
     <div class="auth-form">
-      <h2 class="auth-form__title">欢迎回来</h2>
+      <h2 class="auth-form__title">
+        <ShinyText
+          text="欢迎回来"
+          color="#0f172a"
+          shine-color="#7c3aed"
+          :speed="3"
+        />
+      </h2>
       <p class="auth-form__desc">登录你的 Mimo 账号，继续团队协作</p>
 
       <el-form
@@ -56,6 +63,7 @@ import { ref, reactive } from "vue"
 import { useUserStore } from "@/store/user"
 import type { FormInstance, FormRules } from "element-plus"
 import AuthLayout from "@/components/layout/AuthLayout.vue"
+import ShinyText from "@/components/common/ShinyText.vue"
 
 const userStore = useUserStore()
 const formRef = ref<FormInstance>()

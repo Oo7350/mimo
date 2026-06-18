@@ -1,9 +1,9 @@
 <template>
   <div class="auth-page">
-    <!-- 左侧品牌区 - 粒子动画 -->
+    <!-- 左侧品牌区 - MagnetLines 磁吸网格线背景 -->
     <div class="auth-page__hero">
+      <MagnetLines :rows="9" :cols="14" :radius="180" :max-angle="55" />
       <div class="glass-bg" />
-      <canvas ref="particleCanvasRef" class="particle-canvas" />
       <div class="auth-page__hero-content">
         <div class="auth-page__brand">
           <div class="auth-page__logo">
@@ -19,7 +19,12 @@
                 </linearGradient>
               </defs>
             </svg>
-            <span>Mimo</span>
+            <ShinyText
+              text="Mimo"
+              color="#ffffff"
+              shine-color="#a78bfa"
+              :speed="3.5"
+            />
           </div>
           <p class="auth-page__tagline">轻量级敏捷项目管理，让小团队协作更高效</p>
         </div>
@@ -42,190 +47,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from 'vue'
-
-const particleCanvasRef = ref<HTMLCanvasElement | null>(null)
+import MagnetLines from '@/components/common/MagnetLines.vue'
+import ShinyText from '@/components/common/ShinyText.vue'
 
 const features = [
   'Story / Task / Bug 差异化管理',
   '看板拖拽 · 实时协作同步',
   'Sprint 燃尽图 · 日报周报',
 ]
-
-// ---- Particle Animation (from init.html) ----
-let animFrameId = 0
-
-onMounted(() => {
-  const canvas = particleCanvasRef.value
-  if (!canvas) return
-  const ctx = canvas.getContext('2d')!
-  const container = canvas.parentElement!
-
-  let width = canvas.width = container.clientWidth
-  let height = canvas.height = container.clientHeight
-
-  const mouse = { x: null as number | null, y: null as number | null, radius: 120 }
-
-  // 高饱和度实色，消除雾蒙蒙感
-  const colors = [
-    '#FF69B4', // 亮粉色
-    '#00BFFF', // 深天蓝
-    '#FFD700', // 金黄色
-  ]
-
-  function getTextCoordinates() {
-    const text = 'MIMO'
-    const fontSize = Math.min(120, width * 0.22)
-    ctx.font = `bold ${fontSize}px Arial`
-    ctx.fillStyle = '#000'
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.fillText(text, width / 2, height / 2)
-    const data = ctx.getImageData(0, 0, width, height).data
-    ctx.clearRect(0, 0, width, height)
-    const coords: { x: number; y: number }[] = []
-    const gap = 5
-    for (let y = 0; y < height; y += gap) {
-      for (let x = 0; x < width; x += gap) {
-        const index = (y * width + x) * 4
-        if (data[index + 3] > 128) coords.push({ x, y })
-      }
-    }
-    return coords
-  }
-
-  class Particle {
-    baseX: number; baseY: number
-    x: number; y: number
-    size: number; color: string
-    vx = 0; vy = 0
-    offsetX: number; offsetY: number // 固定偏移，防止融合
-    waveOffset: number
-    scatterX: number; scatterY: number
-
-    constructor(targetX: number, targetY: number) {
-      this.x = Math.random() * width
-      this.y = Math.random() * height
-      this.size = Math.random() * 2.5 + 1.5
-      this.color = colors[Math.floor(Math.random() * colors.length)]
-      this.baseX = targetX
-      this.baseY = targetY
-      this.offsetX = (Math.random() - 0.5) * 4
-      this.offsetY = (Math.random() - 0.5) * 4
-      this.waveOffset = Math.random() * Math.PI * 2
-      this.scatterX = Math.random() * width
-      this.scatterY = Math.random() * height
-    }
-
-    update(state: string, time: number) {
-      if (mouse.x != null && mouse.y != null) {
-        const dx = this.x - mouse.x
-        const dy = this.y - mouse.y
-        const dist = Math.sqrt(dx * dx + dy * dy)
-        if (dist < mouse.radius) {
-          const force = (mouse.radius - dist) / mouse.radius
-          const angle = Math.atan2(dy, dx)
-          this.vx += Math.cos(angle) * force * 2
-          this.vy += Math.sin(angle) * force * 2
-        }
-      }
-
-      if (state === 'gathering') {
-        // 正弦波浪效果
-        const waveAmplitude = 3
-        const waveFrequency = 0.02
-        const wave = Math.sin((this.baseX * waveFrequency) + time * 0.003 + this.waveOffset) * waveAmplitude
-
-        const tx = this.baseX + this.offsetX
-        const ty = this.baseY + this.offsetY + wave
-
-        this.vx += (tx - this.x) * 0.04
-        this.vy += (ty - this.y) * 0.04
-        this.vx *= 0.90
-        this.vy *= 0.90
-      } else {
-        const dx = this.scatterX - this.x
-        const dy = this.scatterY - this.y
-        const dist = Math.sqrt(dx * dx + dy * dy)
-        if (dist > 50) {
-          this.vx += dx * 0.01
-          this.vy += dy * 0.01
-        } else {
-          this.vx += (Math.random() - 0.5) * 1.0
-          this.vy += (Math.random() - 0.5) * 1.0
-        }
-        this.vx *= 0.95
-        this.vy *= 0.95
-      }
-      this.x += this.vx
-      this.y += this.vy
-      if (this.x < 0 || this.x > width) this.vx *= -1
-      if (this.y < 0 || this.y > height) this.vy *= -1
-    }
-
-    draw() {
-      ctx.fillStyle = this.color
-      ctx.beginPath()
-      ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2)
-      ctx.fill()
-    }
-  }
-
-  let particles: Particle[] = []
-  let state = 'chaos'
-  let lastTime = 0
-  const interval = 5000
-
-  function init() {
-    particles = []
-    const coords = getTextCoordinates()
-    coords.forEach(c => particles.push(new Particle(c.x, c.y)))
-  }
-
-  function animate(timestamp: number) {
-    ctx.clearRect(0, 0, width, height)
-    if (timestamp - lastTime > interval) {
-      lastTime = timestamp
-      state = state === 'chaos' ? 'gathering' : 'chaos'
-      if (state === 'chaos') {
-        particles.forEach(p => {
-          p.scatterX = Math.random() * width
-          p.scatterY = Math.random() * height
-          const angle = Math.random() * Math.PI * 2
-          p.vx = Math.cos(angle) * 10
-          p.vy = Math.sin(angle) * 10
-        })
-      }
-    }
-    particles.forEach(p => { p.update(state, timestamp); p.draw() })
-    animFrameId = requestAnimationFrame(animate)
-  }
-
-  function onResize() {
-    if (!canvas) return
-    width = canvas.width = container.clientWidth
-    height = canvas.height = container.clientHeight
-    init()
-  }
-
-  init()
-  animate(0)
-
-  window.addEventListener('resize', onResize)
-  ;(container as HTMLElement).addEventListener('mousemove', (e: MouseEvent) => {
-    mouse.x = e.offsetX
-    mouse.y = e.offsetY
-  })
-  ;(container as HTMLElement).addEventListener('mouseout', () => {
-    mouse.x = null
-    mouse.y = null
-  })
-
-  onBeforeUnmount(() => {
-    cancelAnimationFrame(animFrameId)
-    window.removeEventListener('resize', onResize)
-  })
-})
 </script>
 
 <style scoped lang="scss">
@@ -251,14 +80,6 @@ onMounted(() => {
     backdrop-filter: blur(15px);
     -webkit-backdrop-filter: blur(15px);
     z-index: 0;
-  }
-
-  .particle-canvas {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    z-index: 1;
   }
 
   &__hero-content {
