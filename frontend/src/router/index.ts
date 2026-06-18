@@ -46,11 +46,13 @@ const routes: RouteRecordRaw[] = [
       },
       {
         path: "projects/:id/sprints",
-        redirect: (to: any) => `/projects/${to.params.id}/board`,
+        name: "SprintList",
+        component: () => import("@/views/SprintView.vue"),
       },
       {
         path: "projects/:id/sprints/:sprintId/burndown",
-        redirect: (to: any) => `/projects/${to.params.id}/board`,
+        name: "SprintBurndown",
+        component: () => import("@/views/SprintView.vue"),
       },
       {
         path: "projects/:id/reports",

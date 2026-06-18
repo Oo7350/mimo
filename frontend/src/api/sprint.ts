@@ -1,5 +1,18 @@
 import request from "./request";
 
+export interface SprintVO {
+  id: number
+  name: string
+  goal?: string
+  startDate: string
+  endDate: string
+  isActive: boolean
+  status: string
+  totalIssues?: number
+  completedIssues?: number
+  createdAt: string
+}
+
 export function getSprints(projectId: number) {
   return request.get(`/sprints/project/${projectId}`);
 }

@@ -138,16 +138,29 @@
               </div>
             </div>
 
-            <!-- 项目进度概览（替代原 Sprint 燃尽图） -->
+            <!-- 当前活跃 Sprint 燃尽图 -->
             <div class="ov-card">
               <div class="ov-card__header">
-                <div class="ov-card__header-icon" style="background: rgba(6,182,212,0.12); color: #06b6d4">
-                  <el-icon><DataAnalysis /></el-icon>
+                <div class="ov-card__header-icon" style="background: rgba(79,70,229,0.12); color: #4f46e5">
+                  <el-icon><DataLine /></el-icon>
                 </div>
-                <span>项目进度</span>
+                <span>当前 Sprint 燃尽</span>
+                <el-button
+                  v-if="activeSprint"
+                  link
+                  type="primary"
+                  size="small"
+                  @click="$router.push(`/projects/${projectId}/sprints/${activeSprint.id}/burndown`)"
+                >查看详情</el-button>
               </div>
-              <div v-if="stats" ref="progressChartRef" class="ov-card__chart"></div>
-              <div v-else class="ov-card__empty">暂无任务数据</div>
+              <div v-if="activeSprint && burndownData" ref="progressChartRef" class="ov-card__chart"></div>
+              <div v-else class="ov-card__empty">
+                <template v-if="!activeSprint">暂无活跃 Sprint</template>
+                <template v-else>暂无燃尽数据</template>
+                <div style="margin-top: 8px">
+                  <el-button type="primary" link @click="$router.push(`/projects/${projectId}/sprints`)">前往 Sprint 管理</el-button>
+                </div>
+              </div>
             </div>
 
             <!-- 最近活动 -->
@@ -211,6 +224,7 @@ import { useRoute } from "vue-router"
 import * as echarts from "echarts"
 import { getBoard } from "@/api/board"
 import { getProjectById } from "@/api/project"
+import { getSprints, getBurndown } from "@/api/sprint"
 import request from "@/api/request"
 import { avatarGradient } from "@/utils/color"
 import SkeletonLoader from "@/components/common/SkeletonLoader.vue"
@@ -234,11 +248,13 @@ const projectTeams = ref<{ id: number; name: string }[]>([])
 
 const statusChartRef = ref<HTMLElement>()
 const memberChartRef = ref<HTMLElement>()
-const progressChartRef = ref<HTMLElement>()  // 替代原 burndownChartRef
+const progressChartRef = ref<HTMLElement>()  // 燃尽图 DOM 节点
 let charts: echarts.ECharts[] = []
 
 const recentActivities = ref<any[]>([])
-const stats = ref<any>(null)  // 项目统计（替代 activeSprint）
+const stats = ref<any>(null)  // 项目统计
+const activeSprint = ref<any>(null)
+const burndownData = ref<any>(null)
 
 const TYPE_ICONS: Record<string, string> = { STORY: '📖', TASK: '✅', BUG: '🐛' }
 function typeIcon(t: string) { return TYPE_ICONS[t] || '📋' }
@@ -309,40 +325,69 @@ async function fetchProjectStats() {
     // 使用通用项目统计接口（不依赖 Sprint）
     const res = await request.get(`/api/reports/stats/${projectId}`)
     stats.value = res.data
-    await nextTick()
-    renderProgressChart()
   } catch { /* no data */ }
 }
 
-/** 项目进度图 — 替代原 Sprint 燃尽图 */
+async function fetchActiveSprintBurndown() {
+  try {
+    const res = await getSprints(projectId)
+    const list = (res.data || []) as any[]
+    const active = list.find(s => s.status === 'ACTIVE')
+    activeSprint.value = active || null
+    if (active) {
+      const bd = await getBurndown(active.id)
+      burndownData.value = bd.data
+    } else {
+      burndownData.value = null
+    }
+  } catch { /* no data */ }
+  await nextTick()
+  renderProgressChart()
+}
+
+/** Sprint 燃尽图 — 理想线 vs 实际线 */
 function renderProgressChart() {
-  if (!progressChartRef.value || !stats.value) return
+  if (!progressChartRef.value || !burndownData.value) return
+  const points = burndownData.value.points || []
+  if (points.length === 0) return
   const c = echarts.init(progressChartRef.value)
   charts.push(c)
-  const so = stats.value.statusOverview || {}
-  const total = so.totalCount || 1
+  const dates = points.map((p: any) => p.date.slice(5))
+  const ideal = points.map((p: any) => p.idealRemaining)
+  const actual = points.map((p: any) => p.actualRemaining)
   c.setOption({
-    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
-    legend: { orient: 'vertical', right: 10, top: 'center', itemWidth: 12, itemHeight: 12, textStyle: { fontSize: 12 } },
-    series: [{
-      type: 'pie',
-      radius: ['42%', '68%'],
-      center: ['38%', '50%'],
-      avoidLabelOverlap: false,
-      label: {
-        show: true,
-        position: 'center',
-        formatter: () => `{total|${total}}\n{label|任务总数}`,
-        rich: { total: { fontSize: 26, fontWeight: 'bold' }, label: { fontSize: 11, color: '#94a3b8', padding: [6,0,0,0] } },
+    grid: { left: 36, right: 12, top: 26, bottom: 28 },
+    tooltip: { trigger: 'axis' },
+    legend: { top: 0, right: 0, itemWidth: 10, itemHeight: 8, textStyle: { fontSize: 11 } },
+    xAxis: {
+      type: 'category', data: dates, boundaryGap: false,
+      axisLine: { lineStyle: { color: '#e2e8f0' } },
+      axisLabel: { color: '#94a3b8', fontSize: 10 },
+      axisTick: { show: false },
+    },
+    yAxis: {
+      type: 'value', name: '点', nameTextStyle: { color: '#94a3b8', fontSize: 10 },
+      axisLine: { show: false }, axisTick: { show: false },
+      axisLabel: { color: '#94a3b8', fontSize: 10 },
+      splitLine: { lineStyle: { color: '#f1f5f9', type: 'dashed' } },
+    },
+    series: [
+      {
+        name: '理想剩余', type: 'line', data: ideal, smooth: false,
+        symbol: 'circle', symbolSize: 4,
+        lineStyle: { color: '#94a3b8', width: 1.2, type: 'dashed' },
+        itemStyle: { color: '#94a3b8' },
+        z: 1,
       },
-      data: [
-        { name: '待办', value: so.todoCount || 0, itemStyle: { color: '#94a3b8' } },
-        { name: '进行中', value: so.inProgressCount || 0, itemStyle: { color: '#f59e0b' } },
-        { name: '已完成', value: so.doneCount || 0, itemStyle: { color: '#10b981' } },
-      ],
-      itemStyle: { borderRadius: 6, borderColor: '#fff', borderWidth: 2 },
-      emphasis: { itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0,0,0,0.15)' } },
-    }],
+      {
+        name: '实际剩余', type: 'line', data: actual, smooth: true,
+        symbol: 'circle', symbolSize: 5,
+        lineStyle: { color: '#4f46e5', width: 2 },
+        itemStyle: { color: '#4f46e5' },
+        areaStyle: { color: 'rgba(79,70,229,0.08)' },
+        z: 2,
+      },
+    ],
   })
 }
 
@@ -361,7 +406,8 @@ async function fetchData() {
   } finally {
     loading.value = false
   }
-  fetchProjectStats() // 替代原 fetchSprintAndBurndown
+  fetchProjectStats()
+  fetchActiveSprintBurndown()
 }
 
 function renderCharts() {
