@@ -153,6 +153,11 @@
           @comment-added="onCommentAdded"
         />
       </el-tab-pane>
+
+      <!-- Tab 4: Worklog (edit mode) — v2.9.2 -->
+      <el-tab-pane v-if="isEdit && issueId" label="工时" name="worklog">
+        <WorkLogTab :issue-id="issueId" :current-user-id="currentUserId" />
+      </el-tab-pane>
     </el-tabs>
 
     <template #footer>
@@ -194,6 +199,8 @@ import BugDialog from "./bug/BugDialog.vue"
 import TaskDialog from "./task/TaskDialog.vue"
 import AiTaskSplitter from "./AiTaskSplitter.vue"
 import CommentSection from "./shared/CommentSection.vue"
+import WorkLogTab from "./WorkLogTab.vue"
+import { useUserStore } from "@/store/user"
 import { Notebook, Check, WarningFilled, Upload, Document, Download, Delete, MagicStick } from "@element-plus/icons-vue"
 import type { IssueCard, AcceptanceCriterion } from "@/types"
 
@@ -215,6 +222,10 @@ const members = ref<any[]>([])
 const stories = ref<IssueCard[]>([])
 const bugFormRef = ref<any>(null)
 const showAiSplitter = ref(false)
+
+// 当前用户（用于工时删除权限）
+const userStore = useUserStore()
+const currentUserId = computed(() => Number(userStore.userInfo?.id) || 0)
 
 // Comments
 const comments = ref<any[]>([])

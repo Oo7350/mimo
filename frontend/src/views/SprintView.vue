@@ -114,6 +114,30 @@
           <div class="sprint-detail__chart-wrap">
             <BurndownChart :data="burndownData" />
           </div>
+
+          <!-- 团队工时分布 -->
+          <div v-if="workloadData" class="sprint-detail__workload">
+            <div class="sprint-detail__workload-header">
+              <h4>团队工时分布</h4>
+              <span class="sprint-detail__workload-total">合计 {{ workloadData.totalHours }} h</span>
+            </div>
+            <div v-if="workloadData.members.length === 0" class="sprint-detail__workload-empty">
+              该 Sprint 下还没有工时记录
+            </div>
+            <div v-else class="sprint-detail__workload-list">
+              <div v-for="m in workloadData.members" :key="m.userId" class="wl-row">
+                <div class="wl-row__avatar" :style="{ background: avatarGradient(m.username || '?', 'user') }">
+                  {{ (m.username || '?').charAt(0).toUpperCase() }}
+                </div>
+                <span class="wl-row__name">{{ m.username || '未知' }}</span>
+                <span class="wl-row__count">{{ m.issueCount }} 任务 · {{ m.logCount }} 记录</span>
+                <div class="wl-row__bar-wrap">
+                  <div class="wl-row__bar" :style="{ width: workloadBarWidth(m.totalHours) + '%' }" />
+                </div>
+                <span class="wl-row__hours">{{ Number(m.totalHours).toFixed(1) }} h</span>
+              </div>
+            </div>
+          </div>
         </template>
       </div>
     </div>
@@ -159,9 +183,11 @@ import {
   startSprint, completeSprint, takeSnapshot,
   type SprintVO,
 } from '@/api/sprint'
+import { getSprintWorkloadSummary, type SprintWorkloadVO } from '@/api/worklog'
 import SkeletonLoader from '@/components/common/SkeletonLoader.vue'
 import RippleButton from '@/components/common/RippleButton.vue'
 import BurndownChart from '@/components/common/BurndownChart.vue'
+import { avatarGradient } from '@/utils/color'
 
 const route = useRoute()
 const router = useRouter()
@@ -172,6 +198,7 @@ const sprints = ref<SprintVO[]>([])
 const selectedId = ref<number | null>(null)
 const burndownData = ref<any>(null)
 const burndownLoading = ref(false)
+const workloadData = ref<SprintWorkloadVO | null>(null)
 
 const showCreateDialog = ref(false)
 const creating = ref(false)
@@ -251,6 +278,20 @@ async function loadBurndown(sprintId: number) {
   } finally {
     burndownLoading.value = false
   }
+  loadWorkload(sprintId)
+}
+
+async function loadWorkload(sprintId: number) {
+  try {
+    const res = await getSprintWorkloadSummary(sprintId)
+    workloadData.value = res.data
+  } catch { workloadData.value = null }
+}
+
+function workloadBarWidth(hours: number) {
+  const max = workloadData.value?.members?.[0]?.totalHours || 0
+  if (!max || !hours) return 0
+  return Math.min(100, Math.round((hours / max) * 100))
 }
 
 function selectSprint(id: number) {
@@ -539,6 +580,93 @@ onMounted(async () => {
 .sprint-detail__chart-wrap {
   width: 100%;
   min-height: 320px;
+}
+
+.sprint-detail__workload {
+  margin-top: 28px;
+  padding-top: 24px;
+  border-top: 1px dashed #e2e8f0;
+}
+.sprint-detail__workload-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.sprint-detail__workload-header h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f172a;
+  margin: 0;
+}
+.sprint-detail__workload-total {
+  font-size: 13px;
+  color: #4f46e5;
+  font-weight: 600;
+}
+.sprint-detail__workload-empty {
+  text-align: center;
+  padding: 24px 12px;
+  color: #94a3b8;
+  font-size: 13px;
+  background: #f8fafc;
+  border-radius: 8px;
+}
+.sprint-detail__workload-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.wl-row {
+  display: grid;
+  grid-template-columns: 32px 100px 1fr 60px;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+.wl-row__avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 600;
+  font-size: 13px;
+}
+.wl-row__name {
+  color: #0f172a;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wl-row__count {
+  font-size: 12px;
+  color: #94a3b8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wl-row__bar-wrap {
+  position: relative;
+  height: 8px;
+  background: #f1f5f9;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.wl-row__bar {
+  height: 100%;
+  background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 100%);
+  border-radius: 4px;
+  transition: width 0.3s;
+}
+.wl-row__hours {
+  font-size: 13px;
+  font-weight: 600;
+  color: #4f46e5;
+  text-align: right;
 }
 
 [data-theme='dark'] {
