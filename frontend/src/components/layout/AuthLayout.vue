@@ -288,9 +288,8 @@ onMounted(() => {
     .auth-page__brand-name {
       font-size: 36px;
       font-weight: 800;
-      color: #ffffff;          // 留在白色底版上更清晰
+      color: #1a1a2e;          // 白色 hero 底，深色字
       letter-spacing: -1.2px;
-      text-shadow: 0 4px 20px rgba(79, 70, 229, 0.35);
     }
   }
 
