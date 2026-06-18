@@ -32,6 +32,10 @@ public class IssueDTO {
         private Integer storyPoints;
         private String severity;
         private String stepsToRepro;
+        // 甘特图 — v2.9.3
+        private LocalDate planStartDate;
+        private LocalDate planEndDate;
+        private String dependencies;
         private List<String> labels;
         // STORY 专属
         private String userRole;
@@ -62,6 +66,10 @@ public class IssueDTO {
         private Integer storyPoints;
         private String severity;
         private String stepsToRepro;
+        // 甘特图 — v2.9.3
+        private LocalDate planStartDate;
+        private LocalDate planEndDate;
+        private String dependencies;
         private String status;
         // STORY 专属
         private String userRole;
@@ -111,6 +119,10 @@ public class IssueDTO {
         private Integer storyPoints;
         private String severity;
         private String stepsToRepro;
+        // 甘特图 — v2.9.3
+        private LocalDate planStartDate;
+        private LocalDate planEndDate;
+        private String dependencies;
         private List<IssueLabelVO> labels;
         private LocalDateTime createdAt;
         private LocalDateTime updatedAt;

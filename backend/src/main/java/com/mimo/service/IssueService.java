@@ -81,6 +81,10 @@ public class IssueService {
         issue.setStoryPoints(request.getStoryPoints());
         issue.setSeverity(request.getSeverity());
         issue.setStepsToRepro(request.getStepsToRepro());
+        // 甘特图 — v2.9.3
+        issue.setPlanStartDate(request.getPlanStartDate());
+        issue.setPlanEndDate(request.getPlanEndDate());
+        issue.setDependencies(request.getDependencies());
         // STORY fields
         issue.setUserRole(request.getUserRole());
         issue.setUserGoal(request.getUserGoal());
@@ -173,6 +177,9 @@ public class IssueService {
         if (request.getStoryPoints() != null) issue.setStoryPoints(request.getStoryPoints());
         if (request.getSeverity() != null) issue.setSeverity(request.getSeverity());
         if (request.getStepsToRepro() != null) issue.setStepsToRepro(request.getStepsToRepro());
+        if (request.getPlanStartDate() != null) issue.setPlanStartDate(request.getPlanStartDate());
+        if (request.getPlanEndDate() != null) issue.setPlanEndDate(request.getPlanEndDate());
+        if (request.getDependencies() != null) issue.setDependencies(request.getDependencies());
         if (request.getStatus() != null) issue.setStatus(request.getStatus());
         // STORY fields
         if (request.getUserRole() != null) issue.setUserRole(request.getUserRole());
@@ -535,6 +542,10 @@ public class IssueService {
         vo.setStoryPoints(issue.getStoryPoints());
         vo.setSeverity(issue.getSeverity());
         vo.setStepsToRepro(issue.getStepsToRepro());
+        // 甘特图 — v2.9.3
+        vo.setPlanStartDate(issue.getPlanStartDate());
+        vo.setPlanEndDate(issue.getPlanEndDate());
+        vo.setDependencies(issue.getDependencies());
         // STORY fields
         vo.setUserRole(issue.getUserRole());
         vo.setUserGoal(issue.getUserGoal());

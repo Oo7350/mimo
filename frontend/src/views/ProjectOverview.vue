@@ -15,6 +15,9 @@
         </div>
       </div>
       <div class="overview__hero-actions">
+        <el-button @click="$router.push(`/projects/${projectId}/gantt`)">
+          <el-icon><DataLine /></el-icon>甘特图
+        </el-button>
         <el-button @click="showCreateCalendarEvent = true">
           <el-icon><Calendar /></el-icon>新建日程
         </el-button>
@@ -234,6 +237,7 @@ import ReportListView from "./ReportList.vue"
 import EventForm from "./EventForm.vue"
 import { getMyTeams } from "@/api/team"
 import { ElMessage } from "element-plus"
+import { ArrowLeft, DataLine, Calendar, Plus } from "@element-plus/icons-vue"
 
 const route = useRoute()
 const projectId = Number(route.params.id)

@@ -108,6 +108,25 @@
             :members="members"
             :stories="stories"
           />
+
+          <!-- 甘特图字段 — v2.9.3 -->
+          <div class="issue-dialog__gantt-fields">
+            <div class="issue-dialog__gantt-title">
+              <el-icon><DataLine /></el-icon>
+              <span>计划时间（甘特图）</span>
+            </div>
+            <div class="issue-dialog__gantt-row">
+              <el-form-item label="计划起">
+                <el-date-picker v-model="form.planStartDate" type="date" placeholder="开始日期" value-format="YYYY-MM-DD" style="width: 100%" />
+              </el-form-item>
+              <el-form-item label="计划止">
+                <el-date-picker v-model="form.planEndDate" type="date" placeholder="结束日期" value-format="YYYY-MM-DD" style="width: 100%" />
+              </el-form-item>
+              <el-form-item label="依赖 Issue ID">
+                <el-input v-model="form.dependencies" placeholder="如 1,5,8 (逗号分隔)" maxlength="200" />
+              </el-form-item>
+            </div>
+          </div>
         </el-form>
       </el-tab-pane>
 
@@ -201,7 +220,7 @@ import AiTaskSplitter from "./AiTaskSplitter.vue"
 import CommentSection from "./shared/CommentSection.vue"
 import WorkLogTab from "./WorkLogTab.vue"
 import { useUserStore } from "@/store/user"
-import { Notebook, Check, WarningFilled, Upload, Document, Download, Delete, MagicStick } from "@element-plus/icons-vue"
+import { Notebook, Check, WarningFilled, Upload, Document, Download, Delete, MagicStick, DataLine } from "@element-plus/icons-vue"
 import type { IssueCard, AcceptanceCriterion } from "@/types"
 
 const props = defineProps<{
@@ -259,6 +278,10 @@ const form = reactive<any>({
   columnId: null, assigneeId: null, storyPoints: null,
   dueDate: null, description: "", severity: null, stepsToRepro: null,
   labels: [], sprintId: null,
+  // 甘特图 — v2.9.3
+  planStartDate: null,
+  planEndDate: null,
+  dependencies: "",   // 逗号分隔的 Issue ID 字符串, e.g. "1,5,8"
   userRole: "", userGoal: "", businessValue: "",
   acceptanceCriteria: [] as AcceptanceCriterion[], epic: "",
   parentId: null,
@@ -280,6 +303,15 @@ async function loadIssue() {
     severity: issue.severity, stepsToRepro: issue.stepsToRepro,
     labels: (issue.labels || []).map((l: any) => l.label),
     sprintId: issue.sprintId,
+    planStartDate: issue.planStartDate, planEndDate: issue.planEndDate,
+    // 后端返回 JSON 字符串, 转换为 UI 用的逗号分隔
+    dependencies: (() => {
+      if (!issue.dependencies) return ""
+      try {
+        const arr = JSON.parse(issue.dependencies) as number[]
+        return Array.isArray(arr) ? arr.join(",") : ""
+      } catch { return "" }
+    })(),
     userRole: issue.userRole || "", userGoal: issue.userGoal || "",
     businessValue: issue.businessValue || "",
     acceptanceCriteria: issue.acceptanceCriteria || [],
@@ -429,6 +461,7 @@ watch(() => props.visible, async (v) => {
       columnId: null, assigneeId: null, storyPoints: null,
       dueDate: null, description: "", severity: null, stepsToRepro: null,
       labels: [], sprintId: null,
+      planStartDate: null, planEndDate: null, dependencies: "",
       userRole: "", userGoal: "", businessValue: "",
       acceptanceCriteria: [], epic: "", parentId: null,
       bugStatus: null, environment: "",
@@ -517,6 +550,14 @@ async function handleSave() {
       environment: env,
     }
 
+    // 甘特图 — v2.9.3: dependencies 转 JSON 数组
+    if (data.dependencies && typeof data.dependencies === 'string') {
+      const ids = data.dependencies.split(',').map((s: string) => Number(s.trim())).filter((n: number) => !!n)
+      data.dependencies = JSON.stringify(ids)
+    } else {
+      data.dependencies = null
+    }
+
     // BUG 类型：确保 status 和 bugStatus 同步
     if (form.type === 'BUG' && isEdit.value) {
       if (form.status === 'DONE') data.bugStatus = form.bugStatus || 'CLOSED'
@@ -565,6 +606,27 @@ async function handleDelete() {
 <style scoped lang="scss">
 .issue-dialog {
   &__tabs { :deep(.el-tabs__header) { margin-bottom: 12px; } }
+  &__gantt-fields {
+    margin-top: 16px;
+    padding: 14px 16px;
+    background: linear-gradient(135deg, #f5f3ff 0%, #eef2ff 100%);
+    border-radius: 10px;
+    border: 1px solid #e0e7ff;
+  }
+  &__gantt-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #4f46e5;
+    margin-bottom: 10px;
+  }
+  &__gantt-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+  }
   &__type-select { margin-bottom: 12px; }
   &__attachments { margin-top: 0; }
   &__attachments-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }

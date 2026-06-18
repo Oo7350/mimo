@@ -55,6 +55,11 @@ const routes: RouteRecordRaw[] = [
         component: () => import("@/views/SprintView.vue"),
       },
       {
+        path: "projects/:id/gantt",
+        name: "ProjectGantt",
+        component: () => import("@/views/GanttView.vue"),
+      },
+      {
         path: "projects/:id/reports",
         name: "ReportList",
         component: () => import("@/views/ReportList.vue"),
