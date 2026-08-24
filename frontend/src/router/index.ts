@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory, RouteRecordRaw } from "vue-router";
 import { useUserStore } from "@/store/user";
+import { ElMessage } from "element-plus";
 
 const routes: RouteRecordRaw[] = [
   {
@@ -65,6 +66,11 @@ const routes: RouteRecordRaw[] = [
         component: () => import("@/views/ReportList.vue"),
       },
       {
+        path: "projects/:id/workflow",
+        name: "WorkflowDesigner",
+        component: () => import("@/views/WorkflowDesigner.vue"),
+      },
+      {
         path: "projects/:id/storymap",
         name: "StoryMap",
         component: () => import("@/components/issue/story/StoryMap.vue"),
@@ -86,6 +92,21 @@ const routes: RouteRecordRaw[] = [
         component: () => import("@/views/CalendarView.vue"),
       },
       {
+        path: "announcements",
+        name: "Announcements",
+        component: () => import("@/views/Announcements.vue"),
+      },
+      {
+        path: "email/inbox",
+        name: "EmailInbox",
+        component: () => import("@/views/EmailInbox.vue"),
+      },
+      {
+        path: "email/accounts",
+        name: "EmailAccounts",
+        component: () => import("@/views/EmailAccounts.vue"),
+      },
+      {
         path: "admin/levels",
         name: "LevelManage",
         component: () => import("@/views/LevelManage.vue"),
@@ -94,6 +115,30 @@ const routes: RouteRecordRaw[] = [
         path: "admin/approvals",
         name: "ApprovalList",
         component: () => import("@/views/ApprovalList.vue"),
+      },
+      {
+        path: "admin/roles",
+        name: "RoleManage",
+        component: () => import("@/views/RoleManage.vue"),
+        meta: { requiresPermission: "role.manage" },
+      },
+      {
+        path: "admin/audit-logs",
+        name: "AuditLogs",
+        component: () => import("@/views/AuditLogs.vue"),
+        meta: { requiresPermission: "role.manage" },
+      },
+      {
+        path: "admin/webhooks",
+        name: "Webhooks",
+        component: () => import("@/views/Webhooks.vue"),
+        meta: { requiresPermission: "role.manage" },
+      },
+      {
+        path: "admin/email-send-logs",
+        name: "EmailSendLogs",
+        component: () => import("@/views/EmailSendLogs.vue"),
+        meta: { requiresPermission: "role.manage" },
       },
     ],
   },
@@ -108,18 +153,33 @@ const router = createRouter({
   routes,
 });
 
-// 路由守卫 - 认证检查
-router.beforeEach((to, _from, next) => {
+// 路由守卫 - 认证 + 权限检查
+router.beforeEach(async (to, _from, next) => {
   const userStore = useUserStore();
   const requiresAuth = to.meta.requiresAuth !== false;
 
   if (requiresAuth && !userStore.token) {
     next({ name: "Login", query: { redirect: to.fullPath } });
-  } else if (!requiresAuth && userStore.token) {
-    next({ name: "Dashboard" });
-  } else {
-    next();
+    return;
   }
+  if (!requiresAuth && userStore.token) {
+    next({ name: "Dashboard" });
+    return;
+  }
+
+  // 权限码检查
+  if (to.meta.requiresPermission) {
+    const { usePermissionStore } = await import("@/store/permission");
+    const permStore = usePermissionStore();
+    if (!permStore.loaded) await permStore.fetch();
+    const code = to.meta.requiresPermission as string;
+    if (!permStore.has(code)) {
+      ElMessage.error("无访问权限：" + code);
+      next({ name: "Dashboard" });
+      return;
+    }
+  }
+  next();
 });
 
 export default router;

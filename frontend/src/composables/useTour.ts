@@ -1,6 +1,7 @@
 import { driver } from 'driver.js'
 import type { DriveStep } from 'driver.js'
 import { ref } from 'vue'
+import router from '@/router'
 
 const TOUR_KEY = 'mimo_tour_completed'
 
@@ -44,10 +45,14 @@ export function useTour() {
         title: 'Sprint 迭代',
         description: '创建 Sprint 来规划迭代周期，使用燃尽图跟踪团队进度',
         side: 'bottom',
-        onNextClick: () => {
-          // navigate to sprint page if not there
-          const sprintBtn = document.querySelector('.board__header-right .el-button:first-child')
-          if (sprintBtn) (sprintBtn as HTMLElement).click()
+        onNextClick: (_el, _step, opts) => {
+          // driver.js 1.x：定义了 onNextClick 必须显式销毁，否则"完成"按钮看似无反应
+          opts.driver.destroy()
+          // 引导结束后跳转到当前项目的 Sprint 页面
+          const projectId = router.currentRoute.value.params.id
+          if (projectId) {
+            router.push(`/projects/${projectId}/sprints`)
+          }
         },
       },
     },

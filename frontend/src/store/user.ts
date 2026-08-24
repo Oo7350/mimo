@@ -3,6 +3,7 @@ import { ref, computed } from "vue";
 import { login as loginApi, register as registerApi, getUserProfile } from "@/api/user";
 import router from "@/router";
 import { ElMessage } from "element-plus";
+import { usePermissionStore } from "./permission";
 
 interface UserInfo {
   id: number;
@@ -26,6 +27,8 @@ export const useUserStore = defineStore("user", () => {
     userInfo.value = res.data.userInfo;
     localStorage.setItem("token", res.data.token);
     ElMessage.success("登录成功");
+    // 拉取权限码
+    usePermissionStore().fetch();
     router.push("/");
   }
 
@@ -40,6 +43,9 @@ export const useUserStore = defineStore("user", () => {
     try {
       const res = await getUserProfile();
       userInfo.value = res.data;
+      // 已登录但权限未加载时，顺便拉权限
+      const permStore = usePermissionStore();
+      if (!permStore.loaded) permStore.fetch();
     } catch { /* token may be expired */ }
   }
 
@@ -47,6 +53,7 @@ export const useUserStore = defineStore("user", () => {
     token.value = "";
     userInfo.value = null;
     localStorage.removeItem("token");
+    usePermissionStore().reset();
     router.push("/login");
   }
 

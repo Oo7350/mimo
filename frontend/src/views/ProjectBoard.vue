@@ -138,7 +138,7 @@
               @end="() => dragOverColumnId = null"
               class="board__column-body"
             >
-              <template #item="{ element, index }">
+              <template #item="{ element }">
                 <div :class="['board__drag-item', { 'is-hidden': !issueMatchesFilter(element) }]">
                   <IssueCard
                     :issue="element"
@@ -152,7 +152,7 @@
 
             <div v-if="filteredIssues(col).length === 0" class="board__column-empty">
               <el-icon :size="28"><Box /></el-icon>
-              <span>鏆傛棤浠诲姟</span>
+              <span>暂无任务</span>
             </div>
           </div>
         </div>
@@ -370,7 +370,7 @@ const views = [
 const typeFilters = [
   { value: '', label: '全部', class: '' },
   { value: 'STORY', label: '故事', class: 'board__type-btn--story' },
-  { value: 'TASK', label: '浠诲姟', class: 'board__type-btn--task' },
+  { value: 'TASK', label: '任务', class: 'board__type-btn--task' },
   { value: 'BUG', label: '缺陷', class: 'board__type-btn--bug' },
 ]
 
@@ -471,7 +471,7 @@ const filterPresets = computed<FilterPreset[]>(() => [
   { name: '全部', apply: () => { clearFilters(); kanbanTab.value = 'tasks' } },
   { name: '缺陷', apply: () => { clearFilters(); filterType.value = 'BUG'; kanbanTab.value = 'bugs' } },
   { name: '故事', apply: () => { clearFilters(); filterType.value = 'STORY'; kanbanTab.value = 'tasks' } },
-  { name: '鎴戠殑', apply: () => { clearFilters(); filterAssignee.value = userStore.username || '' } },
+  { name: '我的', apply: () => { clearFilters(); filterAssignee.value = userStore.username || '' } },
 ])
 
 function clearFilters() {

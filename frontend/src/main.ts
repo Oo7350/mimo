@@ -11,6 +11,7 @@ import "driver.js/dist/driver.css";
 import "./styles/variables.css";
 import "./styles/global.css";
 import { useAppStore } from "./store/app";
+import permissionDirective from "./directives/permission";
 
 const app = createApp(App);
 
@@ -22,6 +23,9 @@ for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
 app.use(createPinia());
 app.use(router);
 app.use(ElementPlus, { locale: zhCn });
+
+// 全局指令
+app.directive("permission", permissionDirective);
 
 useAppStore().initTheme();
 app.mount("#app");

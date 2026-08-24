@@ -18,11 +18,27 @@
         <el-button @click="$router.push(`/projects/${projectId}/gantt`)">
           <el-icon><DataLine /></el-icon>甘特图
         </el-button>
+        <el-button @click="$router.push(`/projects/${projectId}/workflow`)">
+          <el-icon><Setting /></el-icon>工作流
+        </el-button>
         <el-button @click="showCreateCalendarEvent = true">
           <el-icon><Calendar /></el-icon>新建日程
         </el-button>
         <el-button id="create-task-btn" type="primary" @click="showCreateIssue = true">
           <el-icon><Plus /></el-icon>新建工作项
+        </el-button>
+        <el-dropdown @command="(cmd: string) => onExport(cmd as 'xlsx' | 'csv' | 'json')" style="margin-left: 8px">
+          <el-button>导出<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="xlsx">Excel (.xlsx)</el-dropdown-item>
+              <el-dropdown-item command="csv">CSV (.csv)</el-dropdown-item>
+              <el-dropdown-item command="json">JSON (.json)</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+        <el-button @click="showImportDialog = true">
+          <el-icon><Upload /></el-icon>导入任务
         </el-button>
       </div>
     </div>
@@ -202,6 +218,32 @@
       </el-tab-pane>
     </el-tabs>
 
+    <!-- v2.13.4：批量导入任务弹窗 -->
+    <el-dialog v-model="showImportDialog" title="批量导入任务" width="520px">
+      <el-alert type="info" :closable="false" style="margin-bottom: 12px">
+        支持 .xlsx / .csv 文件。表头需包含：标题（必填）、类型、优先级、指派人ID、截止日期（YYYY-MM-DD）、故事点、严重性。
+        <a href="javascript:void(0)" @click="downloadTemplate">下载模板</a>
+      </el-alert>
+      <el-upload
+        drag
+        :auto-upload="false"
+        :limit="1"
+        :on-change="onFileChange"
+        :on-exceed="() => ElMessage.warning('只能上传 1 个文件')"
+        accept=".xlsx,.csv"
+      >
+        <el-icon class="el-icon--upload"><Upload /></el-icon>
+        <div class="el-upload__text">将文件拖到此处，或<em>点击上传</em></div>
+        <template #tip>
+          <div class="el-upload__tip">{{ importFile?.name || '尚未选择文件' }}</div>
+        </template>
+      </el-upload>
+      <template #footer>
+        <el-button @click="showImportDialog = false">取消</el-button>
+        <el-button type="primary" :loading="importing" @click="doImport">开始导入</el-button>
+      </template>
+    </el-dialog>
+
     <IssueDetailDialog
       v-model:visible="showCreateIssue"
       :project-id="projectId"
@@ -237,7 +279,8 @@ import ReportListView from "./ReportList.vue"
 import EventForm from "./EventForm.vue"
 import { getMyTeams } from "@/api/team"
 import { ElMessage } from "element-plus"
-import { ArrowLeft, DataLine, Calendar, Plus } from "@element-plus/icons-vue"
+import { ArrowLeft, DataLine, Calendar, Plus, Setting, ArrowDown, Upload } from "@element-plus/icons-vue"
+import { exportIssues, importIssues } from "@/api/dataPort"
 
 const route = useRoute()
 const projectId = Number(route.params.id)
@@ -479,6 +522,57 @@ function onTabChange(name: string | number) {
 
 function onIssueCreated() { fetchData().then(() => nextTick(renderCharts)) }
 function onCalendarEventSaved() { ElMessage.success('日程已创建，可在日历中查看') }
+
+// v2.13.4：数据导入导出
+const showImportDialog = ref(false)
+const importing = ref(false)
+const importFile = ref<File | null>(null)
+
+async function onExport(format: 'xlsx' | 'csv' | 'json') {
+  try {
+    await exportIssues(Number(projectId), format)
+    ElMessage.success(`已导出 ${format.toUpperCase()} 文件`)
+  } catch (e: any) {
+    ElMessage.error('导出失败：' + (e?.message || ''))
+  }
+}
+
+function onFileChange(file: any) {
+  importFile.value = file.raw
+}
+
+function downloadTemplate() {
+  const csv = '\uFEFF标题,类型,优先级,指派人ID,截止日期,故事点,严重性\n示例任务,TASK,MEDIUM,,2026-09-01,5,'
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = 'issues-template.csv'
+  a.click()
+  URL.revokeObjectURL(a.href)
+}
+
+async function doImport() {
+  if (!importFile.value) {
+    ElMessage.warning('请先选择文件')
+    return
+  }
+  importing.value = true
+  try {
+    const res = await importIssues(Number(projectId), importFile.value)
+    const d = res.data || res
+    ElMessage.success(`导入完成：成功 ${d.success} 条，失败 ${d.failed} 条（共 ${d.total} 条）`)
+    if (d.failed > 0 && d.errors?.length) {
+      console.warn('导入失败详情：', d.errors)
+    }
+    showImportDialog.value = false
+    importFile.value = null
+    onIssueCreated()
+  } catch (e: any) {
+    ElMessage.error('导入失败：' + (e?.message || ''))
+  } finally {
+    importing.value = false
+  }
+}
 
 onMounted(() => {
   fetchData().then(() => nextTick(renderCharts))

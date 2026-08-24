@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "lint": "eslint src --ext .vue,.ts,.tsx --fix",
+    "format": "prettier --write \"src/**/*.{vue,ts,tsx,css,scss}\""
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.1",
@@ -27,7 +29,13 @@
   "devDependencies": {
     "@types/node": "^20.11.19",
     "@types/sockjs-client": "^1.5.4",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
     "@vitejs/plugin-vue": "^5.0.4",
+    "eslint": "^8.57.1",
+    "eslint-config-prettier": "^9.1.2",
+    "eslint-plugin-vue": "^9.33.0",
+    "prettier": "^3.9.6",
     "sass": "^1.71.1",
     "typescript": "^5.4.2",
     "vite": "^5.2.0",

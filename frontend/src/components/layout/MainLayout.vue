@@ -132,14 +132,48 @@
               <el-icon><Calendar /></el-icon>
               <span>日历</span>
             </el-menu-item>
+            <el-menu-item index="/announcements">
+              <el-icon><BellFilled /></el-icon>
+              <span>公告</span>
+            </el-menu-item>
+            <el-sub-menu index="email">
+              <template #title>
+                <el-icon><Message /></el-icon>
+                <span>邮箱</span>
+              </template>
+              <el-menu-item index="/email/inbox">
+                <el-icon><Inbox /></el-icon>
+                <span>收件箱</span>
+              </el-menu-item>
+              <el-menu-item index="/email/accounts">
+                <el-icon><Connection /></el-icon>
+                <span>邮箱绑定</span>
+              </el-menu-item>
+            </el-sub-menu>
             <template v-if="userStore.userInfo?.role === 'ROLE_ADMIN'">
               <el-menu-item index="/admin/levels">
                 <el-icon><Medal /></el-icon>
                 <span>等级管理</span>
               </el-menu-item>
+              <el-menu-item index="/admin/roles">
+                <el-icon><Lock /></el-icon>
+                <span>角色权限</span>
+              </el-menu-item>
               <el-menu-item index="/admin/approvals">
                 <el-icon><Checked /></el-icon>
                 <span>审批管理</span>
+              </el-menu-item>
+              <el-menu-item index="/admin/audit-logs">
+                <el-icon><Document /></el-icon>
+                <span>操作审计</span>
+              </el-menu-item>
+              <el-menu-item index="/admin/webhooks">
+                <el-icon><Connection /></el-icon>
+                <span>Webhook 集成</span>
+              </el-menu-item>
+              <el-menu-item index="/admin/email-send-logs">
+                <el-icon><Message /></el-icon>
+                <span>邮件发送日志</span>
               </el-menu-item>
             </template>
           </el-menu>
@@ -180,7 +214,7 @@ import { useTour } from '@/composables/useTour'
 import { useNotifications } from '@/composables/useNotifications'
 import { useWebSocket } from '@/composables/useWebSocket'
 import { useCommandPalette } from '@/composables/useCommandPalette'
-import { Moon, Sunny, Medal, Checked } from '@element-plus/icons-vue'
+import { Moon, Sunny, Medal, Checked, Document, Connection, Message } from '@element-plus/icons-vue'
 import { formatRelativeTime } from '@/utils/constants'
 
 const route = useRoute()
