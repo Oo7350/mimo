@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-> **最新版本**：v2.13.6（2026-08-21）— 邮件通知收尾（发送日志 + 模板化） + 第三方 Webhook 集成 + 数据导入导出 + 操作审计日志。详见末尾"版本变更记录"。
+> **最新版本**：v2.13.7（2026-08-24）— Wiki 文档系统（项目级知识库：树形目录 / Markdown 编辑 / 版本历史回滚 / 全文检索 / 附件）。详见末尾"版本变更记录"。
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -90,7 +90,7 @@ Single backend + RBAC with two roles: `ROLE_ADMIN` (team/project admin) and `ROL
 | `controller/` | 16 REST controllers under `/api/*` (including **`AiController`**, ApprovalController, UserLevelController) |
 | `service/` | 15 service classes including `WebSocketService`, `ChatService`, **`ApprovalService`**, **`UserLevelService`** |
 | `mapper/` | MyBatis-Plus `BaseMapper` interfaces (no XML, all queries via `LambdaQueryWrapper`) |
-| `entity/` | 18 entity classes mapped to database tables (including ApprovalRequest, UserLevel) |
+| `entity/` | 21 entity classes mapped to database tables (including ApprovalRequest, UserLevel, **WikiPage/WikiVersion/WikiAttachment**) |
 | `dto/` | Request/response DTOs per domain |
 
 ### Frontend Layout
@@ -100,7 +100,7 @@ Single backend + RBAC with two roles: `ROLE_ADMIN` (team/project admin) and `ROL
 | `api/` | `request.ts` (Axios instance + interceptors) + per-domain API modules + **`ai.ts`** (DeepSeek API: chatStream/polish/priority/parse-issue/suggest-tasks/estimate-story-points) |
 | `store/` | Pinia stores — `user.ts` (auth/role), `app.ts` (sidebar, current project, **dark mode**) |
 | `router/` | Vue Router with navigation guard for auth + redirect |
-| `views/` | 11 page components (Dashboard, ProjectOverview, ProjectBoard, ReportList, **LevelManage**, etc.) |
+| `views/` | 12 page components (Dashboard, ProjectOverview, ProjectBoard, ReportList, **LevelManage**, **Wiki**, etc.) |
 | `components/layout/` | `MainLayout.vue`, `AuthLayout.vue` (split login/register), `BreadcrumbNav.vue` |
 | `components/issue/` | `IssueDetailDialog.vue`, `IssueCard.vue` (hover quick actions), type-specific cards/dialogs, **`AiIssueCreator.vue`** (AI对话式创建), **`AiTaskSplitter.vue`** (Story拆分) |
 | `components/common/` | `StatCard.vue`, `SkeletonLoader.vue`, `PageHeader.vue`, **`CommandPalette.vue`**, `AssigneeAvatar.vue`, **`UserBadge.vue`**, **`AiChatPanel.vue`** (全局AI助手悬浮窗) |
@@ -120,7 +120,7 @@ Single backend + RBAC with two roles: `ROLE_ADMIN` (team/project admin) and `ROL
 
 ### Database
 
-18 MySQL tables (InnoDB, utf8mb4): `users`, `teams`, `team_members`, `projects`, `project_members`, `board_columns`, `issues`, `issue_labels`, `attachments`, `sprints`, `burndown_snapshots`, `reports`, `activity_logs`, `comments`, `notifications`, `chat_messages`, **`approval_requests`**, **`user_levels`**.
+21 MySQL tables (InnoDB, utf8mb4): `users`, `teams`, `team_members`, `projects`, `project_members`, `board_columns`, `issues`, `issue_labels`, `attachments`, `sprints`, `burndown_snapshots`, `reports`, `activity_logs`, `comments`, `notifications`, `chat_messages`, **`approval_requests`**, **`user_levels`**, **`wiki_pages`**, **`wiki_versions`**, **`wiki_attachments`**.
 
 - Schema at `backend/src/main/resources/db/init.sql`
 - Seed data: 3 users (admin/zhangsan/lisi, password `123456`), 1 team, 3 team members
@@ -365,6 +365,39 @@ Phase 2 §4.2: Replace single-string `User.role` with a three-layer RBAC model (
 **Files modified (4)**:
 - Backend: `PermissionMapper.java`, `RoleService.java`, `RoleController.java`, `RoleDTO.java`
 - Frontend: `api/role.ts`（新增 `UserRoleAssignmentVO` + `listUserAssignments`）、`views/RoleManage.vue`（新增 Tab + 函数）
+
+### v2.13.7 — Wiki 文档系统（项目级知识库）(2026-08-24)
+
+项目级知识沉淀模块，对标 v3.0 路线图 §6「Wiki 知识库」的 MVP：三级层次中的两级（页面 + 子页面树形目录）+ Markdown 编辑 + 版本历史 + 全文检索 + 附件。
+
+**一、V19 数据库迁移**（[V19__wiki_pages.sql](file:///e:/桌面/Mimo/backend/mimo-app/src/main/resources/db/migration/V19__wiki_pages.sql)）：
+- `wiki_pages`：页面主表（project_id / parent_id / title / slug 保留 / content LONGTEXT / content_html 缓存位 / author_id / editor_id / version / sort_order / is_pinned / view_count），索引覆盖 project+parent 树查询与 author/updated 检索
+- `wiki_versions`：版本快照表（page_id / version / title+content 快照 / editor_id / change_summary），每次编辑前将旧内容入历史
+- `wiki_attachments`：附件元数据表（page_id / file_name / file_path / file_size / mime_type / uploader_id）
+
+**二、后端**（[WikiService.java](file:///e:/桌面/Mimo/backend/mimo-app/src/main/java/com/mimo/service/WikiService.java)，[WikiController.java](file:///e:/桌面/Mimo/backend/mimo-app/src/main/java/com/mimo/controller/WikiController.java)，[WikiDTO.java](file:///e:/桌面/Mimo/backend/mimo-app/src/main/java/com/mimo/dto/WikiDTO.java)）：
+- 树形目录 `GET /api/wiki/tree`：Mapper 原生 SQL 排除 LONGTEXT 字段轻量拉取，批量补作者名，两遍组树
+- 页面 CRUD：创建自动排 sort_order；更新前保存当前版本快照 → version+1；删除递归清子页面 + 版本 + 附件
+- 版本历史：列表 / 单版本详情 / 回滚（回滚本身也算一次编辑，先快照再恢复目标版本）
+- 全文检索 `GET /api/wiki/search`：title + content LIKE（兼容 MySQL 5.x，后续可换 FULLTEXT）
+- 附件：multipart 上传（UUID 重命名防覆盖）/ 列表 / 流式下载 / 删除（连物理文件）
+- 权限：项目所属团队成员可读写删（`TeamService.isTeamMember`），系统管理员直通；未认证/非成员 401/403
+- 附件存储绝对路径解析（`Paths.get(uploadDir).toAbsolutePath()`），避免 Tomcat CWD 漂移导致 FileNotFoundException
+
+**三、前端**（[Wiki.vue](file:///e:/桌面/Mimo/frontend/src/views/Wiki.vue)，[api/wiki.ts](file:///e:/桌面/Mimo/frontend/src/api/wiki.ts)）：
+- 双栏布局：左侧目录树（el-tree 全展开 + 节点 hover 新建子页/删除 + 搜索切换）+ 右侧内容区
+- 查看模式：marked 渲染（复用 markdown.ts XSS 过滤）+ 元信息（版本/作者/浏览量）+ 附件列表
+- 编辑模式：标题 + Markdown 正文 + 变更摘要，保存后刷新树与版本
+- 版本历史 drawer：版本列表 → 预览 → 一键回滚（二次确认）
+- 路由 `/projects/:id/wiki` + ProjectOverview hero「知识库」按钮（Notebook 图标）
+
+**四、验证结果**：
+- V19 三张表迁移成功；后端 `mvn compile` BUILD SUCCESS
+- 16 项 API 回归全 PASS：创建/子页面/树(轻量)/详情(浏览量+1)/更新(version+1)/快照/版本详情/回滚(version=3)/搜索/未认证拒绝/级联删除/附件上传列表下载删除
+- 前端 `vue-tsc --noEmit` + `vite build` 通过
+
+**Files created (6)**: `WikiDTO.java`, `WikiService.java`, `WikiController.java`, `api/wiki.ts`, `views/Wiki.vue`
+**Files modified (3)**: `router/index.ts`, `ProjectOverview.vue`, `CLAUDE.md`
 
 ### v2.13.6 — 邮件通知收尾（发送日志 + 模板化）(2026-08-21)
 
