@@ -3,6 +3,7 @@ frontend/node_modules/
 
 # Build output
 backend/target/
+backend/**/target/
 frontend/dist/
 
 # IDE
@@ -41,3 +42,11 @@ st2/allure-results/
 # OS
 .DS_Store
 Thumbs.db
+
+# Debug / temp artifacts (JWT tokens, netstat dumps, SQL logs, import test)
+backend/tmp.token
+token.txt
+login.json
+check.txt
+log_tail.txt
+backend/import-test.csv
