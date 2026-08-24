@@ -1,0 +1,73 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: mimo-backend
+
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/mimo?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${MIMO_DB_USERNAME:mimo}
+    password: ${MIMO_DB_PASSWORD:}
+
+  redis:
+    host: localhost
+    port: 6379
+    password:
+
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Shanghai
+    default-property-inclusion: non_null
+
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 20MB
+
+  # 一次性迁移: 由 MigrationRunner 在启动时显式执行 (替代 spring.sql.init, 兼容性更好)
+  # V8 工时表 + V9 甘特图字段
+
+mybatis-plus:
+  mapper-locations: classpath:mapper/*.xml
+  type-aliases-package: com.mimo.entity
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    db-config:
+      id-type: auto
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+jwt:
+  secret: ${JWT_SECRET:}
+  expiration: ${JWT_EXPIRATION:86400000}  # 24 hours in ms
+
+deepseek:
+  api-key: ${DEEPSEEK_API_KEY:}
+  base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com/chat/completions}
+
+mimo:
+  upload:
+    dir: ${MIMO_UPLOAD_DIR:./uploads}
+
+ai:
+  provider: ${AI_PROVIDER:deepseek}
+  model: ${AI_MODEL:deepseek-chat}
+  temperature: ${AI_TEMPERATURE:0.7}
+  max-tokens: ${AI_MAX_TOKENS:4096}
+  daily-limit-per-user: ${AI_DAILY_LIMIT:100}
+
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
