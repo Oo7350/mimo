@@ -21,6 +21,9 @@
         <el-button @click="$router.push(`/projects/${projectId}/workflow`)">
           <el-icon><Setting /></el-icon>工作流
         </el-button>
+        <el-button @click="$router.push(`/projects/${projectId}/wiki`)">
+          <el-icon><Notebook /></el-icon>知识库
+        </el-button>
         <el-button @click="showCreateCalendarEvent = true">
           <el-icon><Calendar /></el-icon>新建日程
         </el-button>
@@ -279,7 +282,7 @@ import ReportListView from "./ReportList.vue"
 import EventForm from "./EventForm.vue"
 import { getMyTeams } from "@/api/team"
 import { ElMessage } from "element-plus"
-import { ArrowLeft, DataLine, Calendar, Plus, Setting, ArrowDown, Upload } from "@element-plus/icons-vue"
+import { ArrowLeft, DataLine, Calendar, Plus, Setting, ArrowDown, Upload, Notebook } from "@element-plus/icons-vue"
 import { exportIssues, importIssues } from "@/api/dataPort"
 
 const route = useRoute()

@@ -71,6 +71,11 @@ const routes: RouteRecordRaw[] = [
         component: () => import("@/views/WorkflowDesigner.vue"),
       },
       {
+        path: "projects/:id/wiki",
+        name: "ProjectWiki",
+        component: () => import("@/views/Wiki.vue"),
+      },
+      {
         path: "projects/:id/storymap",
         name: "StoryMap",
         component: () => import("@/components/issue/story/StoryMap.vue"),
