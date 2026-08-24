@@ -51,6 +51,16 @@ public class WikiController {
         return Result.successMessage("页面已删除");
     }
 
+    /** 移动页面（拖拽排序）：body { parentId?, targetId, position: before|after|inner } */
+    @PutMapping("/pages/{id}/move")
+    public Result<WikiDTO.PageVO> move(@PathVariable Long id,
+                                       @RequestParam(required = false) Long parentId,
+                                       @RequestParam(required = false) Long targetId,
+                                       @RequestParam(defaultValue = "inner") String position,
+                                       Authentication auth) {
+        return Result.success(wikiService.movePage(id, parentId, targetId, position, getUserId(auth)));
+    }
+
     /** 全文检索（标题 + 正文 LIKE） */
     @GetMapping("/search")
     public Result<List<WikiDTO.PageVO>> search(@RequestParam Long projectId, @RequestParam String q,
@@ -92,8 +102,9 @@ public class WikiController {
 
     @GetMapping("/attachments/{attachmentId}/download")
     public org.springframework.http.ResponseEntity<byte[]> download(@PathVariable Long attachmentId,
-                                                                    Authentication auth) {
-        java.nio.file.Path f = wikiService.getAttachmentFile(attachmentId, getUserId(auth));
+                                                                    Authentication auth,
+                                                                    @RequestParam(required = false) String token) {
+        java.nio.file.Path f = wikiService.getAttachmentFile(attachmentId, resolveUserId(auth, token));
         try {
             byte[] data = java.nio.file.Files.readAllBytes(f);
             String fileName = f.getFileName().toString();
@@ -116,6 +127,24 @@ public class WikiController {
     private Long getUserId(Authentication auth) {
         Object p = auth.getPrincipal();
         if (p instanceof Number) return ((Number) p).longValue();
+        throw new BusinessException(ResultCode.UNAUTHORIZED, "未登录或登录状态异常");
+    }
+
+    /** 优先取 header 认证，其次支持 ?token= query（供 <img> 等无法携带 header 的场景） */
+    private Long resolveUserId(Authentication auth, String token) {
+        if (auth != null && auth.getPrincipal() instanceof Number) {
+            return ((Number) auth.getPrincipal()).longValue();
+        }
+        if (token != null && !token.isBlank()) {
+            try {
+                io.jsonwebtoken.Claims claims = wikiService.getJwtClaims(token);
+                if (claims != null && claims.get("userId") instanceof Number) {
+                    return ((Number) claims.get("userId")).longValue();
+                }
+            } catch (Exception ignored) {
+                // 无效 token 走统一 401
+            }
+        }
         throw new BusinessException(ResultCode.UNAUTHORIZED, "未登录或登录状态异常");
     }
 }

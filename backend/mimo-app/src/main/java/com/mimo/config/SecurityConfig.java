@@ -41,6 +41,8 @@ public class SecurityConfig {
                 .antMatchers("/api/auth/register", "/api/auth/login").permitAll()
                 // WebSocket
                 .antMatchers("/api/ws/**").permitAll()
+                // Wiki 附件下载（支持 ?token= query 供 <img> 场景，controller 内部校验 JWT）
+                .antMatchers("/api/wiki/attachments/*/download").permitAll()
                 // 其余需要认证
                 .anyRequest().authenticated()
             .and()

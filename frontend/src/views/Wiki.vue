@@ -32,7 +32,10 @@
           :expand-on-click-node="false"
           :props="{ label: 'title', children: 'children' }"
           highlight-current
+          draggable
+          :allow-drop="allowDrop"
           @node-click="handleNodeClick"
+          @node-drop="handleNodeDrop"
         >
           <template #default="{ data }">
             <div class="wiki__tree-node" @contextmenu.prevent.stop="openContextMenu($event, data)">
@@ -121,7 +124,8 @@
             v-model="editForm.content"
             type="textarea"
             :rows="18"
-            placeholder="使用 Markdown 编写内容... 支持标题、列表、引用、表格、代码块"
+            placeholder="使用 Markdown 编写内容... 支持标题、列表、引用、表格、代码块；可直接粘贴图片自动上传"
+            @paste="handlePaste"
           />
           <el-input v-model="editForm.changeSummary" placeholder="变更摘要（可选，会记录在版本历史中）" size="small" />
           <div class="wiki__editor-actions">
@@ -174,6 +178,11 @@
         <div class="markdown-body" v-html="renderMarkdown(currentVersion.content)"></div>
       </div>
       <div v-else class="wiki__versions">
+        <div class="wiki__diff-open-row">
+          <el-button size="small" text type="primary" :disabled="versions.length === 0" @click="openDiffDialog">
+            <el-icon><DataAnalysis /></el-icon>版本对比
+          </el-button>
+        </div>
         <div v-for="v in versions" :key="v.id" class="wiki__version-item" @click="previewVersion(v)">
           <div class="wiki__version-item-title">v{{ v.version }} · {{ v.title }}</div>
           <div class="wiki__version-item-meta">
@@ -184,6 +193,27 @@
         <el-empty v-if="versions.length === 0" description="暂无历史版本" :image-size="60" />
       </div>
     </el-drawer>
+
+    <!-- 版本对比弹窗 -->
+    <el-dialog v-model="diffDialogVisible" title="版本对比" width="760px" destroy-on-close>
+      <div class="wiki__diff-toolbar">
+        <el-select v-model="diffFrom" size="small" style="width: 240px" @change="loadDiffContents">
+          <el-option label="当前内容" :value="0" />
+          <el-option v-for="v in versions" :key="'f' + v.version" :label="`v${v.version}${v.changeSummary ? ' · ' + v.changeSummary : ''}`" :value="v.version" />
+        </el-select>
+        <span class="wiki__diff-arrow">→</span>
+        <el-select v-model="diffTo" size="small" style="width: 240px" @change="loadDiffContents">
+          <el-option v-for="v in versions" :key="'t' + v.version" :label="`v${v.version}${v.changeSummary ? ' · ' + v.changeSummary : ''}`" :value="v.version" />
+        </el-select>
+      </div>
+      <div class="wiki__diff-view">
+        <div v-for="(line, idx) in diffResult" :key="idx" :class="['wiki__diff-line', line.type]">
+          <span class="wiki__diff-sign">{{ line.type === "added" ? "+" : line.type === "removed" ? "-" : " " }}</span>
+          <span class="wiki__diff-text">{{ line.text || " " }}</span>
+        </div>
+        <el-empty v-if="diffResult.length === 0" description="无内容差异" :image-size="60" />
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -203,6 +233,7 @@ import {
   Paperclip,
   Check,
   ArrowLeft,
+  DataAnalysis,
 } from "@element-plus/icons-vue"
 import {
   getWikiTree,
@@ -218,12 +249,14 @@ import {
   uploadWikiAttachment,
   deleteWikiAttachment,
   downloadWikiAttachment,
+  moveWikiPage,
   type WikiTreeVO,
   type WikiPageVO,
   type WikiVersionVO,
   type WikiAttachmentVO,
 } from "@/api/wiki"
 import { renderMarkdown } from "@/utils/markdown"
+import { diffLines } from "@/utils/diff"
 
 const route = useRoute()
 const projectId = Number(route.params.id)
@@ -272,6 +305,31 @@ async function loadTree() {
 
 async function handleNodeClick(data: WikiTreeVO) {
   await openPage(data.id)
+}
+
+function allowDrop(_dragging: unknown, _dropNode: unknown, type: string) {
+  // Element Plus 已阻止拖入自身及后代（循环），其余位置全部允许
+  return type !== "none"
+}
+
+async function handleNodeDrop(
+  draggingNode: { data: WikiTreeVO },
+  dropNode: { data: WikiTreeVO },
+  dropType: string
+) {
+  if (dropType === "none") return
+  try {
+    await moveWikiPage(draggingNode.data.id, {
+      parentId: dropType === "inner" ? dropNode.data.id : dropNode.data.parentId,
+      targetId: dropNode.data.id,
+      position: dropType as "before" | "after" | "inner",
+    })
+    ElMessage.success("目录已更新")
+  } catch {
+    // 失败时恢复原始树
+  } finally {
+    await loadTree()
+  }
 }
 
 async function openPage(id: number) {
@@ -385,6 +443,39 @@ function clearSearch() {
 
 // ============ 版本历史 ============
 
+const diffDialogVisible = ref(false)
+const diffFrom = ref<number>(0)
+const diffTo = ref<number | null>(null)
+const diffFromContent = ref("")
+const diffToContent = ref("")
+const diffResult = computed(() => diffLines(diffFromContent.value, diffToContent.value))
+
+async function openDiffDialog() {
+  diffDialogVisible.value = true
+  // 默认对比：最近两个版本（无则当前内容 vs 单版本）
+  if (versions.value.length >= 2) {
+    diffFrom.value = versions.value[1].version
+    diffTo.value = versions.value[0].version
+  } else {
+    diffFrom.value = 0
+    diffTo.value = versions.value[0]?.version ?? null
+  }
+  await loadDiffContents()
+}
+
+async function loadDiffContents() {
+  if (!currentPage.value) return
+  diffFromContent.value =
+    diffFrom.value === 0
+      ? currentPage.value.content ?? ""
+      : (await getWikiVersion(currentPage.value.id, diffFrom.value as number)).data.content ?? ""
+  if (diffTo.value == null) {
+    diffToContent.value = ""
+  } else {
+    diffToContent.value = (await getWikiVersion(currentPage.value.id, diffTo.value)).data.content ?? ""
+  }
+}
+
 async function openVersionsDrawer() {
   if (!currentPage.value) return
   currentVersion.value = null
@@ -417,6 +508,28 @@ async function handleRestore(v: WikiVersionVO) {
 }
 
 // ============ 附件 ============
+
+/** 编辑区粘贴图片：自动上传为附件并插入 markdown 图片链接 */
+async function handlePaste(e: ClipboardEvent) {
+  const files = e.clipboardData?.files
+  if (!files || files.length === 0) return
+  const img = Array.from(files).find(f => f.type.startsWith("image/"))
+  if (!img) return
+  e.preventDefault()
+  if (!currentPage.value) return
+  const pageId = currentPage.value.id
+  ElMessage.info("正在上传图片...")
+  const att = (await uploadWikiAttachment(pageId, img)).data
+  const token = localStorage.getItem("token") || ""
+  const md = `
+![${att.fileName}](/api/wiki/attachments/${att.id}/download?token=${token})
+`
+  const ta = e.target as HTMLTextAreaElement
+  const start = ta.selectionStart ?? editForm.value.content.length
+  ta.setRangeText(md, start, ta.selectionEnd ?? start, "end")
+  editForm.value.content = ta.value
+  ElMessage.success("图片已插入")
+}
 
 async function handleUpload(e: Event) {
   const input = e.target as HTMLInputElement
@@ -728,5 +841,66 @@ onMounted(async () => {
 
 .markdown-body :deep(img) {
   max-width: 100%;
+}
+
+/* 版本对比 */
+.wiki__diff-open-row {
+  margin-bottom: 8px;
+}
+
+.wiki__diff-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.wiki__diff-arrow {
+  color: var(--el-text-color-secondary);
+}
+
+.wiki__diff-view {
+  max-height: 460px;
+  overflow-y: auto;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 6px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.wiki__diff-line {
+  display: flex;
+  padding: 1px 10px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.wiki__diff-line.added {
+  background: rgba(103, 194, 58, 0.12);
+}
+
+.wiki__diff-line.removed {
+  background: rgba(245, 108, 108, 0.12);
+}
+
+.wiki__diff-sign {
+  width: 16px;
+  flex-shrink: 0;
+  color: var(--el-text-color-secondary);
+  user-select: none;
+}
+
+.wiki__diff-line.added .wiki__diff-sign {
+  color: var(--el-color-success);
+}
+
+.wiki__diff-line.removed .wiki__diff-sign {
+  color: var(--el-color-danger);
+}
+
+.wiki__diff-text {
+  flex: 1;
+  color: var(--el-text-color-primary);
 }
 </style>

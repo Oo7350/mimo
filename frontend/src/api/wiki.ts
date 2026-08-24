@@ -93,6 +93,10 @@ export function searchWiki(projectId: number, q: string) {
   return request.get<WikiPageVO[]>(`/wiki/search?projectId=${projectId}&q=${encodeURIComponent(q)}`)
 }
 
+export function moveWikiPage(id: number, params: { parentId?: number | null; targetId?: number | null; position: "before" | "after" | "inner" }) {
+  return request.put<WikiPageVO>(`/wiki/pages/${id}/move`, null, { params })
+}
+
 export function getWikiVersions(pageId: number) {
   return request.get<WikiVersionVO[]>(`/wiki/pages/${pageId}/versions`)
 }

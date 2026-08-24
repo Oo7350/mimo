@@ -1,6 +1,7 @@
 package com.mimo.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.mimo.common.BusinessException;
 import com.mimo.common.ResultCode;
 import com.mimo.dto.WikiDTO;
@@ -49,6 +50,7 @@ public class WikiService {
     private final ProjectMapper projectMapper;
     private final UserMapper userMapper;
     private final TeamService teamService;
+    private final com.mimo.util.JwtUtil jwtUtil;
 
     @Value("${mimo.upload.dir:./uploads}")
     private String uploadDir;
@@ -166,6 +168,76 @@ public class WikiService {
         deleteAttachmentFiles(p.getId());
         wikiAttachmentMapper.delete(new LambdaQueryWrapper<WikiAttachment>().eq(WikiAttachment::getPageId, p.getId()));
         wikiPageMapper.deleteById(p.getId());
+    }
+
+    /**
+     * 移动页面：position = before/after（参照兄弟 targetId）/ inner（作为 targetId 的子节点，追加到末尾）
+     * 重新压实新父级下所有兄弟的 sort_order（0..n-1），避免空洞
+     */
+    @Transactional
+    public WikiDTO.PageVO movePage(Long id, Long parentId, Long targetId, String position, Long userId) {
+        WikiPage p = mustGet(id);
+        requireMember(p.getProjectId(), userId);
+        if (targetId != null && targetId.equals(id)) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "不能移动到自身");
+        }
+        String pos = position == null ? "inner" : position;
+        if (!"before".equals(pos) && !"after".equals(pos) && !"inner".equals(pos)) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "无效的移动位置: " + position);
+        }
+
+        // 目标父级：inner -> targetId 本身；before/after -> targetId 的父级
+        Long newParentId;
+        if ("inner".equals(pos)) {
+            if (targetId == null) {
+                throw new BusinessException(ResultCode.BAD_REQUEST, "inner 移动需要指定目标父节点");
+            }
+            WikiPage target = mustGet(targetId);
+            requireProject(target.getProjectId());
+            newParentId = target.getId();
+        } else {
+            if (targetId == null) {
+                throw new BusinessException(ResultCode.BAD_REQUEST, "before/after 移动需要指定参照节点");
+            }
+            WikiPage target = mustGet(targetId);
+            if (target.getParentId() == null) {
+                newParentId = null;
+            } else {
+                newParentId = target.getParentId();
+            }
+        }
+
+        // 加载新父级全部兄弟（含自身则先移除）
+        List<WikiPage> siblings = wikiPageMapper.selectList(new LambdaQueryWrapper<WikiPage>()
+                .eq(WikiPage::getProjectId, p.getProjectId())
+                .eq(newParentId != null, WikiPage::getParentId, newParentId)
+                .isNull(newParentId == null, WikiPage::getParentId)
+                .orderByAsc(WikiPage::getSortOrder).orderByAsc(WikiPage::getId));
+        siblings.removeIf(sib -> sib.getId().equals(id));
+
+        // 计算插入位置
+        int insertIndex = siblings.size();
+        if (!"inner".equals(pos)) {
+            for (int i = 0; i < siblings.size(); i++) {
+                if (siblings.get(i).getId().equals(targetId)) {
+                    insertIndex = "before".equals(pos) ? i : i + 1;
+                    break;
+                }
+            }
+        }
+        if (insertIndex < 0) insertIndex = 0;
+        if (insertIndex > siblings.size()) insertIndex = siblings.size();
+
+        siblings.add(insertIndex, p);
+        // 压实 sort_order 并落库（用 LambdaUpdateWrapper 显式 set，parentId=null 移回根级时 updateById 会忽略 null 字段）
+        for (int i = 0; i < siblings.size(); i++) {
+            WikiPage sib = siblings.get(i);
+            wikiPageMapper.update(null, new LambdaUpdateWrapper<WikiPage>()
+                    .eq(WikiPage::getId, sib.getId())
+                    .set(WikiPage::getParentId, newParentId)
+                    .set(WikiPage::getSortOrder, i));
+        }
+        return toPageVO(p, null, null);
     }
 
     // ============ 版本历史 ============
@@ -339,6 +411,15 @@ public class WikiService {
         if (user != null && "ROLE_ADMIN".equals(user.getRole())) return;
         if (!teamService.isTeamMember(project.getTeamId(), userId)) {
             throw new BusinessException(ResultCode.FORBIDDEN, "无权访问该项目知识库");
+        }
+    }
+
+    /** 供 Controller 解析 ?token= query 中的 JWT（图片 <img> 场景） */
+    public io.jsonwebtoken.Claims getJwtClaims(String token) {
+        try {
+            return jwtUtil.parseToken(token);
+        } catch (Exception e) {
+            return null;
         }
     }
 

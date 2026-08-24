@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-> **最新版本**：v2.13.7（2026-08-24）— Wiki 文档系统（项目级知识库：树形目录 / Markdown 编辑 / 版本历史回滚 / 全文检索 / 附件）。详见末尾"版本变更记录"。
+> **最新版本**：v2.13.8（2026-08-24）— Wiki 增强：目录拖拽排序 / 版本 Diff 对比 / 图片粘贴上传。详见末尾"版本变更记录"。
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -365,6 +365,33 @@ Phase 2 §4.2: Replace single-string `User.role` with a three-layer RBAC model (
 **Files modified (4)**:
 - Backend: `PermissionMapper.java`, `RoleService.java`, `RoleController.java`, `RoleDTO.java`
 - Frontend: `api/role.ts`（新增 `UserRoleAssignmentVO` + `listUserAssignments`）、`views/RoleManage.vue`（新增 Tab + 函数）
+
+### v2.13.8 — Wiki 增强：目录拖拽排序 + 版本 Diff 对比 + 图片粘贴上传 (2026-08-24)
+
+v2.13.7 Wiki 首版的体验补强，落地完善计划 §4.3 标注的三项差距。
+
+**一、目录拖拽排序**（[WikiService.java](file:///e:/桌面/Mimo/backend/mimo-app/src/main/java/com/mimo/service/WikiService.java) `movePage`，[WikiController.java](file:///e:/桌面/Mimo/backend/mimo-app/src/main/java/com/mimo/controller/WikiController.java) `PUT /api/wiki/pages/{id}/move`）：
+- 参数：`targetId` + `position`（`before`/`after`/`inner`），inner 时为目标节点的子节点追加到末尾，before/after 参照兄弟节点
+- 逻辑：加载新父级全部兄弟 → 从列表移除自身 → 按位置插入 → 压实 `sort_order` 0..n-1 全量落库
+- **坑**：MyBatis-Plus `updateById` 默认忽略 null 字段，`parentId=null`（移回根级）不生效 → 改用 `LambdaUpdateWrapper.set()` 显式更新
+- 前端：[Wiki.vue](file:///e:/桌面/Mimo/frontend/src/views/Wiki.vue) el-tree 加 `draggable` + `allow-drop` + `@node-drop`，拖拽后调用 move API 重载树
+
+**二、版本 Diff 对比**（[utils/diff.ts](file:///e:/桌面/Mimo/frontend/src/utils/diff.ts)）：
+- LCS 行级 diff 算法（自底向上 DP + 回溯），零依赖
+- 版本历史抽屉新增「版本对比」弹窗：A（可选"当前内容"）→ B 两个下拉选版本，实时渲染 diff（+ 绿 / - 红 / 空行），无差异时提示
+
+**三、图片粘贴上传**：
+- 后端：`GET /api/wiki/attachments/{id}/download` 新增可选 `?token=` query 认证（`<img>` 无法携带 Authorization header），SecurityConfig 放行该路径，controller 内 `resolveUserId` 优先 header、其次解析 query token；无效 token 返回 code=401
+- 前端：编辑区 textarea `@paste` 监听剪贴板图片 → 自动上传为附件 → 在光标处插入 `![文件名](/api/wiki/attachments/{id}/download?token=...)`
+- 说明：token 进 URL 会被服务器日志记录，仅适合内部部署场景（团队工具可接受）
+
+**四、验证结果**：
+- move 7 项场景全 PASS（before/after/inner/移回根级/子级↔根级往返/移动到自身拒绝）
+- token 下载：好 token 200 文件内容 / 无 token、假 token 均返回 `{"code":401}`（业务 code，HTTP 200 为 Result 惯例）
+- 原 16 项回归全 PASS；前端 vue-tsc + vite build 通过
+
+**Files created (1)**: `utils/diff.ts`
+**Files modified (6)**: `WikiService.java`, `WikiController.java`, `SecurityConfig.java`, `api/wiki.ts`, `views/Wiki.vue`, `CLAUDE.md`
 
 ### v2.13.7 — Wiki 文档系统（项目级知识库）(2026-08-24)
 
