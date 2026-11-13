@@ -15,6 +15,9 @@
         </div>
       </div>
       <div class="overview__hero-actions">
+        <el-button @click="$router.push(`/projects/${projectId}/analytics`)">
+          <el-icon><TrendCharts /></el-icon>交付分析
+        </el-button>
         <el-button @click="$router.push(`/projects/${projectId}/gantt`)">
           <el-icon><DataLine /></el-icon>甘特图
         </el-button>

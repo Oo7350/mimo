@@ -143,7 +143,7 @@
       <el-form label-width="70px">
         <el-form-item label="父页面">
           <el-select v-model="createForm.parentId" clearable placeholder="无（顶级页面）" style="width: 100%">
-            <el-option v-for="n in flatTree" :key="n.id" :label="'　'.repeat(depthMap[n.id] ?? 0) + n.title" :value="n.id" />
+            <el-option v-for="n in flatTree" :key="n.id" :label="'\u3000'.repeat(depthMap[n.id] ?? 0) + n.title" :value="n.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="标题">
@@ -218,7 +218,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from "vue"
+import { ref, computed, onMounted } from "vue"
 import { useRoute } from "vue-router"
 import { ElMessage, ElMessageBox } from "element-plus"
 import {
@@ -575,6 +575,10 @@ function formatSize(bytes?: number) {
 
 onMounted(async () => {
   await loadTree()
+  const pageId = Number(route.query.page)
+  if (Number.isFinite(pageId) && pageId > 0) {
+    await openPage(pageId)
+  }
 })
 </script>
 

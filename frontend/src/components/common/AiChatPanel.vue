@@ -40,6 +40,28 @@
         </div>
       </div>
 
+      <div v-if="!isMinimized" class="ai-chat-panel__mode">
+        <button :class="{ active: mode === 'chat' }" @click.stop="mode = 'chat'">
+          通用对话
+        </button>
+        <button
+          :class="{ active: mode === 'knowledge' }"
+          :disabled="!projectId"
+          :title="projectId ? '使用当前项目 Wiki、Issue 和评论回答' : '进入项目页面后可用'"
+          @click.stop="mode = 'knowledge'"
+        >
+          项目知识库
+        </button>
+        <button
+          v-if="mode === 'knowledge'"
+          class="ai-chat-panel__rebuild"
+          :disabled="indexing"
+          @click.stop="rebuildKnowledgeIndex"
+        >
+          {{ indexing ? '索引中…' : '重建索引' }}
+        </button>
+      </div>
+
       <!-- 最小化状态 -->
       <div v-if="isMinimized" class="ai-chat-panel__mini" @click="isMinimized = false">
         <span>AI 助手</span>
@@ -71,6 +93,22 @@
                 <span></span><span></span><span></span>
               </div>
               <div v-else class="ai-chat-panel__msg-text" v-html="renderMarkdown(msg.content)"></div>
+              <div v-if="msg.citations?.length" class="ai-chat-panel__citations">
+                <div class="ai-chat-panel__citations-title">
+                  引用来源
+                  <span v-if="msg.aiAvailable === false">· AI 不可用，以下为检索原文</span>
+                </div>
+                <button
+                  v-for="citation in msg.citations"
+                  :key="`${citation.sourceType}-${citation.sourceId}-${citation.citationNo}`"
+                  class="ai-chat-panel__citation"
+                  @click="openSource(citation)"
+                >
+                  <span>[{{ citation.citationNo }}]</span>
+                  <b>{{ citation.title }}</b>
+                  <small>{{ sourceTypeLabel(citation.sourceType) }}</small>
+                </button>
+              </div>
               <div v-if="msg.role === 'assistant' && !msg.loading" class="ai-chat-panel__msg-actions">
                 <button title="复制" @click="copyText(msg.content)"><DocumentCopy /></button>
                 <button title="重新生成" @click="regenerate(i)"><Refresh /></button>
@@ -87,7 +125,11 @@
           v-model="inputText"
           type="textarea"
           :rows="1"
-          placeholder="输入消息... (Enter发送, Shift+Enter换行)"
+          :placeholder="
+            mode === 'knowledge'
+              ? '询问当前项目 Wiki、Issue 或评论...'
+              : '输入消息... (Enter发送, Shift+Enter换行)'
+          "
           resize="none"
           :disabled="streaming"
           @keydown.enter.exact.prevent="handleSend"
@@ -109,12 +151,20 @@
 
 <script setup lang="ts">
 import { ref, computed, nextTick, watch, onMounted, onBeforeUnmount } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
   ChatDotRound, Minus, Close, DocumentCopy, Refresh, Promotion
 } from '@element-plus/icons-vue'
 import { chatStream, getAiUsage } from '@/api/ai'
+import {
+  askProjectKnowledge,
+  rebuildProjectKnowledgeIndex,
+  type RagCitation,
+} from '@/api/rag'
 
+const route = useRoute()
+const router = useRouter()
 const isOpen = ref(false)
 const isMinimized = ref(false)
 const inputText = ref('')
@@ -122,7 +172,15 @@ const streaming = ref(false)
 const messagesRef = ref<HTMLElement | null>(null)
 const providerName = ref('DeepSeek')
 const unreadCount = ref(0)
+const mode = ref<'chat' | 'knowledge'>('chat')
+const indexing = ref(false)
 let abortController: AbortController | null = null
+
+const projectId = computed(() => {
+  if (!route.path.startsWith('/projects/')) return null
+  const id = Number(route.params.id)
+  return Number.isFinite(id) && id > 0 ? id : null
+})
 
 // ====== 可拖动：位置持久化 ======
 const STORAGE_KEY = 'ai-panel-pos'
@@ -271,10 +329,17 @@ watch(isOpen, (v) => {
   if (v) unreadCount.value = 0
 })
 
+watch(projectId, (id, previousId) => {
+  if (!id || (previousId != null && previousId !== id)) mode.value = 'chat'
+})
+
 interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
   loading?: boolean
+  citations?: RagCitation[]
+  aiAvailable?: boolean
+  evidenceSufficient?: boolean
 }
 const messages = ref<ChatMessage[]>([])
 
@@ -299,6 +364,11 @@ function scrollToBottom() {
 async function handleSend() {
   const text = inputText.value.trim()
   if (!text || streaming.value) return
+
+  if (mode.value === 'knowledge' && projectId.value) {
+    await handleKnowledgeSend(text)
+    return
+  }
 
   // 终止上一个未完成的请求，避免 ERR_ABORTED 噪音
   if (abortController) {
@@ -349,6 +419,61 @@ async function handleSend() {
       }
     }
   )
+}
+
+async function handleKnowledgeSend(text: string) {
+  messages.value.push({ role: 'user', content: text })
+  inputText.value = ''
+  const aiIndex = messages.value.length
+  messages.value.push({ role: 'assistant', content: '', loading: true })
+  streaming.value = true
+  scrollToBottom()
+  try {
+    const response = await askProjectKnowledge({
+      projectId: projectId.value!,
+      question: text,
+      topK: 5,
+    })
+    const msg = messages.value[aiIndex]
+    if (msg) {
+      msg.content = response.data.answer
+      msg.citations = response.data.citations || []
+      msg.aiAvailable = response.data.aiAvailable
+      msg.evidenceSufficient = response.data.evidenceSufficient
+      msg.loading = false
+    }
+  } catch (error: any) {
+    const msg = messages.value[aiIndex]
+    if (msg) {
+      msg.content = `(知识库检索失败: ${error?.response?.data?.message || error?.message || '请求失败'})`
+      msg.loading = false
+    }
+  } finally {
+    streaming.value = false
+    scrollToBottom()
+  }
+}
+
+async function rebuildKnowledgeIndex() {
+  if (!projectId.value || indexing.value) return
+  indexing.value = true
+  try {
+    const response = await rebuildProjectKnowledgeIndex(projectId.value)
+    ElMessage.success(`知识索引已重建：${response.data.totalChunks} 个文本片段`)
+  } catch (error: any) {
+    ElMessage.error(error?.response?.data?.message || error?.message || '索引重建失败')
+  } finally {
+    indexing.value = false
+  }
+}
+
+function openSource(citation: RagCitation) {
+  if (!citation.sourceUrl) return
+  router.push(citation.sourceUrl)
+}
+
+function sourceTypeLabel(type: string) {
+  return { WIKI: 'Wiki', ISSUE: '工作项', COMMENT: '评论' }[type] || type
 }
 
 function handleClose() {
@@ -474,6 +599,36 @@ function renderMarkdown(text: string): string {
 .ai-chat-panel__header-actions {
   display: flex;
   gap: 4px;
+}
+.ai-chat-panel__mode {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border-color, #f0f0f0);
+  flex-shrink: 0;
+}
+.ai-chat-panel__mode button {
+  border: 0;
+  border-radius: 6px;
+  padding: 4px 8px;
+  background: transparent;
+  color: var(--text-secondary, #909399);
+  font-size: 11px;
+  cursor: pointer;
+}
+.ai-chat-panel__mode button.active {
+  background: rgba(99,102,241,0.1);
+  color: #6366f1;
+  font-weight: 600;
+}
+.ai-chat-panel__mode button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.ai-chat-panel__mode .ai-chat-panel__rebuild {
+  margin-left: auto;
+  color: var(--text-muted, #94a3b8);
 }
 .ai-chat-panel__icon-btn {
   font-size: 16px;
@@ -616,6 +771,49 @@ function renderMarkdown(text: string): string {
   padding: 2px;
 }
 .ai-chat-panel__msg-actions button:hover { color: #6366f1; }
+.ai-chat-panel__citations {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px dashed rgba(99,102,241,0.22);
+}
+.ai-chat-panel__citations-title {
+  color: var(--text-muted, #94a3b8);
+  font-size: 10px;
+}
+.ai-chat-panel__citation {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  padding: 4px 5px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #6366f1;
+  text-align: left;
+  cursor: pointer;
+}
+.ai-chat-panel__citation:hover {
+  background: rgba(99,102,241,0.08);
+}
+.ai-chat-panel__citation span,
+.ai-chat-panel__citation small {
+  flex: 0 0 auto;
+  color: var(--text-muted, #94a3b8);
+  font-size: 10px;
+}
+.ai-chat-panel__citation b {
+  min-width: 0;
+  overflow: hidden;
+  color: #6366f1;
+  font-size: 11px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* 打字动画 */
 .ai-chat-panel__typing {

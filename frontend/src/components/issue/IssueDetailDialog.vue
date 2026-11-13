@@ -86,6 +86,15 @@
           </div>
 
           <!-- Type-specific form fields -->
+          <el-alert
+            v-if="isEdit && changeGoverned"
+            type="warning"
+            :closable="false"
+            show-icon
+            title="该工作项已进入 Sprint"
+            description="标题、描述、优先级、排期、故事点和验收标准等需求字段需通过「版本与变更」提交审批。状态和负责人仍可直接调整。"
+            style="margin-bottom: 14px"
+          />
           <StoryDialog
             v-if="form.type === 'STORY'"
             :form="form"
@@ -177,6 +186,21 @@
       <el-tab-pane v-if="isEdit && issueId" label="工时" name="worklog">
         <WorkLogTab :issue-id="issueId" :current-user-id="currentUserId" />
       </el-tab-pane>
+
+      <!-- Tab 5: Version and change governance -->
+      <el-tab-pane v-if="isEdit && issueId" label="版本与变更" name="governance">
+        <IssueVersionPanel
+          :issue-id="issueId"
+          :project-id="projectId"
+          :issue="form"
+          @updated="handleGovernanceUpdated"
+        />
+      </el-tab-pane>
+
+      <!-- Tab 6: Task review loop -->
+      <el-tab-pane v-if="isEdit && issueId" label="验收" name="reviews">
+        <IssueReviewPanel :issue-id="issueId" @updated="handleGovernanceUpdated" />
+      </el-tab-pane>
     </el-tabs>
 
     <template #footer>
@@ -219,6 +243,8 @@ import TaskDialog from "./task/TaskDialog.vue"
 import AiTaskSplitter from "./AiTaskSplitter.vue"
 import CommentSection from "./shared/CommentSection.vue"
 import WorkLogTab from "./WorkLogTab.vue"
+import IssueVersionPanel from "./governance/IssueVersionPanel.vue"
+import IssueReviewPanel from "./governance/IssueReviewPanel.vue"
 import { useUserStore } from "@/store/user"
 import { Notebook, Check, WarningFilled, Upload, Document, Download, Delete, MagicStick, DataLine } from "@element-plus/icons-vue"
 import type { IssueCard, AcceptanceCriterion } from "@/types"
@@ -251,6 +277,9 @@ const comments = ref<any[]>([])
 const commentsLoading = ref(false)
 
 const isEdit = computed(() => props.mode === "edit")
+const changeGoverned = computed(() =>
+  isEdit.value && Boolean(form.sprintId) && form.status !== "DONE"
+)
 
 const dialogTitle = computed(() => {
   if (isEdit.value) {
@@ -501,6 +530,11 @@ function onStatusChange(newStatus: string) {
 
 // ---- Acceptance Criteria handlers ----
 async function onAcAdd(text: string) {
+  if (changeGoverned.value) {
+    activeTab.value = "governance"
+    ElMessage.warning("请通过变更申请修改验收标准")
+    return
+  }
   if (isEdit.value && form.id) {
     const res = await addAcceptanceCriteria(form.id, { text })
     form.acceptanceCriteria = res.data
@@ -512,6 +546,11 @@ async function onAcAdd(text: string) {
 }
 
 async function onAcToggle(criteriaId: string, done: boolean) {
+  if (changeGoverned.value) {
+    activeTab.value = "governance"
+    ElMessage.warning("请通过变更申请修改验收标准")
+    return
+  }
   if (isEdit.value && form.id) {
     const res = await updateAcceptanceCriteria(form.id, criteriaId, { done })
     form.acceptanceCriteria = res.data
@@ -522,6 +561,11 @@ async function onAcToggle(criteriaId: string, done: boolean) {
 }
 
 async function onAcRemove(criteriaId: string) {
+  if (changeGoverned.value) {
+    activeTab.value = "governance"
+    ElMessage.warning("请通过变更申请修改验收标准")
+    return
+  }
   if (isEdit.value && form.id) {
     const res = await deleteAcceptanceCriteria(form.id, criteriaId)
     form.acceptanceCriteria = res.data
@@ -581,6 +625,15 @@ async function handleSave() {
     }
     ElMessage.success(isEdit.value ? "保存成功" : "创建成功")
     emit("update:visible", false)
+  } catch (error: any) {
+    const status = error?.response?.status
+    const message = error?.response?.data?.message || error?.message || "保存失败"
+    if (status === 409 || String(message).includes("变更申请")) {
+      activeTab.value = "governance"
+      ElMessage.warning("该工作项已进入 Sprint，请在「版本与变更」中提交变更申请")
+    } else {
+      ElMessage.error(message)
+    }
   } finally { loading.value = false }
 }
 
@@ -600,6 +653,13 @@ async function handleDelete() {
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.message || e?.message || "删除失败")
   }
+}
+
+async function handleGovernanceUpdated() {
+  if (isEdit.value && props.issueId) {
+    await loadIssue()
+  }
+  emit("updated")
 }
 </script>
 

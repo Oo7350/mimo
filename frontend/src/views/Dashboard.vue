@@ -12,17 +12,20 @@
           />
         </h1>
         <p>
-          <template v-if="overdueCount > 0">
+          <template v-if="workbench?.overdue?.length">
             你有 <strong class="text-danger">{{ overdueCount }}</strong> 项任务已逾期，
           </template>
-          <template v-if="myTasks.length">
-            还有 <strong>{{ myTasks.length }}</strong> 项待办等待处理
+          <template v-if="tasks.length">
+            当前共有 <strong>{{ tasks.length }}</strong> 项个人任务
           </template>
           <template v-else-if="!loading && dashboard?.myProjects?.length">
             当前没有待办任务
           </template>
           <template v-else-if="!loading">
             加入或创建团队，开始第一个项目
+          </template>
+          <template v-if="pendingCount > 0">
+            · <strong>{{ pendingCount }}</strong> 项审批或验收等待你处理
           </template>
         </p>
       </div>
@@ -40,27 +43,27 @@
     <div class="dash-stats">
       <div class="dash-stat">
         <span class="dash-stat__value">
-          <CountUp :to="dashboard?.totalIssues || 0" :duration="1.4" />
+          <CountUp :to="tasks.length" :duration="1.4" />
         </span>
-        <span class="dash-stat__label">总任务</span>
+        <span class="dash-stat__label">我的待办</span>
       </div>
       <div class="dash-stat">
         <span class="dash-stat__value">
-          <CountUp :to="dashboard?.inProgressIssues || 0" :duration="1.4" />
+          <CountUp :to="workbench?.dueToday?.length || 0" :duration="1.4" />
         </span>
-        <span class="dash-stat__label">进行中</span>
+        <span class="dash-stat__label">今日到期</span>
       </div>
       <div class="dash-stat">
         <span class="dash-stat__value">
-          <CountUp :to="dashboard?.doneIssues || 0" :duration="1.4" />
+          <CountUp :to="pendingCount" :duration="1.4" />
         </span>
-        <span class="dash-stat__label">已完成</span>
+        <span class="dash-stat__label">待我处理</span>
       </div>
       <div class="dash-stat">
         <span class="dash-stat__value">
-          <CountUp :to="completionRate" :duration="1.6" />%
+          {{ weeklySummary.workHours }}
         </span>
-        <span class="dash-stat__label">完成率</span>
+        <span class="dash-stat__label">本周工时</span>
       </div>
     </div>
 
@@ -81,22 +84,225 @@
     <div v-if="dashboard?.activeSprints?.length" class="dash-banner">
       当前有 {{ dashboard.activeSprints.length }} 个活跃 Sprint：
       {{ dashboard.activeSprints.map(s => s.name).join('、') }}
-      <el-button size="small" type="primary" link
+      <el-button
+        size="small"
+        type="primary"
+        link
         @click="$router.push(`/projects/${dashboard.activeSprints[0].projectId}/board`)"
-      >查看看板 &rarr;</el-button>
+      >
+        查看看板 &rarr;
+      </el-button>
     </div>
 
-    <!-- 面板区 -->
+    <!-- 个人任务与待办 -->
     <div class="dash-grid">
-      <!-- 我的项目 -->
+      <section class="dash-panel dash-panel--tasks">
+        <header class="dash-panel__hd">
+          <span>我的任务</span>
+          <el-button size="small" type="primary" link @click="$router.push('/projects')">
+            跨项目查看
+          </el-button>
+        </header>
+        <div class="task-tabs">
+          <button
+            v-for="tab in taskTabs"
+            :key="tab.value"
+            :class="['task-tab', { 'task-tab--active': taskTab === tab.value }]"
+            @click="taskTab = tab.value"
+          >
+            {{ tab.label }}
+            <span>{{ tab.count }}</span>
+          </button>
+        </div>
+        <div v-if="workbenchLoading" class="dash-panel__bd">
+          <SkeletonLoader variant="list-item" :count="4" />
+        </div>
+        <el-empty
+          v-else-if="!visibleTasks.length"
+          :description="emptyTaskText"
+          :image-size="56"
+        />
+        <TransitionGroup v-else name="task-list" tag="div" class="dash-panel__bd">
+          <div
+            v-for="task in visibleTasks"
+            :key="task.id"
+            class="dash-row dash-row--task"
+            @click="openTask(task)"
+          >
+            <span class="dash-row__type">{{ typeIcon(task.type) }}</span>
+            <div class="dash-row__info">
+              <strong>{{ task.title }}</strong>
+              <span>
+                {{ task.issueKey }}
+                <template v-if="task.projectName"> · {{ task.projectName }}</template>
+                <template v-if="task.sprintName"> · {{ task.sprintName }}</template>
+                <template v-if="task.dueDate"> · {{ task.dueDate }}</template>
+              </span>
+              <span v-if="task.riskReasons.length" class="risk-reason">
+                {{ task.riskReasons.join('；') }}
+              </span>
+            </div>
+            <el-tag
+              v-if="task.riskLevel !== 'LOW'"
+              size="small"
+              :type="task.riskLevel === 'HIGH' ? 'danger' : 'warning'"
+              effect="plain"
+            >
+              {{ task.riskLevel === 'HIGH' ? '高风险' : '关注' }}
+            </el-tag>
+            <el-tag size="small" :type="priorityType(task.priority)" effect="plain">
+              {{ PRIORITY_LABEL[task.priority] }}
+            </el-tag>
+          </div>
+        </TransitionGroup>
+      </section>
+
+      <section class="dash-panel">
+        <header class="dash-panel__hd">
+          <span>待我处理</span>
+          <el-tag v-if="pendingCount" size="small" type="warning">{{ pendingCount }}</el-tag>
+        </header>
+        <div v-if="workbenchLoading" class="dash-panel__bd">
+          <SkeletonLoader variant="list-item" :count="3" />
+        </div>
+        <el-empty
+          v-else-if="!pendingItems.length"
+          description="暂无待审批或待验收事项"
+          :image-size="56"
+        />
+        <div v-else class="dash-panel__bd">
+          <div
+            v-for="item in pendingItems"
+            :key="`${item.kind}-${item.id}`"
+            class="dash-row"
+            @click="openReview(item)"
+          >
+            <span class="dash-row__type">{{ item.kind === 'CHANGE' ? '审' : '验' }}</span>
+            <div class="dash-row__info">
+              <strong>{{ item.issueTitle }}</strong>
+              <span>
+                {{ item.kind === 'CHANGE' ? '变更审批' : '任务验收' }}
+                · {{ item.issueKey }}
+                <template v-if="item.projectName"> · {{ item.projectName }}</template>
+              </span>
+              <span v-if="item.summary" class="pending-summary">{{ item.summary }}</span>
+            </div>
+            <span class="pending-time">{{ formatTime(item.submittedAt) }}</span>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- 周总结与驳回事项 -->
+    <div class="dash-grid">
+      <section class="dash-panel">
+        <header class="dash-panel__hd">
+          <span>本周总结</span>
+          <span class="week-range">{{ weeklySummary.weekStart }} ~ {{ weeklySummary.weekEnd }}</span>
+        </header>
+        <div class="dash-panel__bd weekly-panel">
+          <div class="weekly-metrics">
+            <div class="weekly-metric">
+              <span>登记工时</span>
+              <b>{{ weeklySummary.workHours }}h</b>
+            </div>
+            <div class="weekly-metric">
+              <span>完成任务</span>
+              <b>{{ weeklySummary.completedTaskCount }}</b>
+            </div>
+            <div class="weekly-metric">
+              <span>Sprint 故事点</span>
+              <b>
+                {{ weeklySummary.activeSprintDoneStoryPoints }}/{{
+                  weeklySummary.activeSprintStoryPoints
+                }}
+              </b>
+            </div>
+          </div>
+          <el-empty
+            v-if="!weeklySummary.activeSprints.length"
+            description="当前没有进行中的 Sprint 投入"
+            :image-size="48"
+          />
+          <div v-else class="sprint-efforts">
+            <div
+              v-for="sprint in weeklySummary.activeSprints"
+              :key="sprint.id"
+              class="sprint-effort"
+              @click="openSprint(sprint.projectId, sprint.id)"
+            >
+              <div class="sprint-effort__head">
+                <strong>{{ sprint.name }}</strong>
+                <span>{{ sprint.projectName }}</span>
+              </div>
+              <div class="sprint-effort__meta">
+                <span>{{ sprint.assignedTaskCount }} 项任务</span>
+                <span>{{ sprint.doneStoryPoints }}/{{ sprint.storyPoints }} 故事点</span>
+                <span>{{ sprint.weekHours }}h</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="dash-panel">
+        <header class="dash-panel__hd">
+          <span>最近被驳回</span>
+          <el-tag v-if="rejectedItems.length" size="small" type="danger">
+            {{ rejectedItems.length }}
+          </el-tag>
+        </header>
+        <div v-if="workbenchLoading" class="dash-panel__bd">
+          <SkeletonLoader variant="list-item" :count="2" />
+        </div>
+        <el-empty
+          v-else-if="!rejectedItems.length"
+          description="没有被驳回的变更或验收"
+          :image-size="56"
+        />
+        <div v-else class="dash-panel__bd">
+          <div
+            v-for="item in rejectedItems"
+            :key="`${item.kind}-${item.id}`"
+            class="dash-row"
+            @click="openRejected(item)"
+          >
+            <span class="dash-row__type dash-row__type--danger">
+              {{ item.kind === 'CHANGE' ? '变' : '验' }}
+            </span>
+            <div class="dash-row__info">
+              <strong>{{ item.issueTitle }}</strong>
+              <span>
+                {{ item.kind === 'CHANGE' ? '变更被驳回' : '验收被打回' }}
+                · {{ item.issueKey }}
+                <template v-if="item.projectName"> · {{ item.projectName }}</template>
+              </span>
+              <span class="rejected-reason">{{ item.reason || '未填写原因' }}</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="dash-grid">
       <section class="dash-panel">
         <header class="dash-panel__hd">
           <span>我的项目</span>
-          <el-button size="small" type="primary" link @click="$router.push('/projects')">查看全部</el-button>
+          <el-button size="small" type="primary" link @click="$router.push('/projects')">
+            查看全部
+          </el-button>
         </header>
-        <div v-if="loading" class="dash-panel__bd"><SkeletonLoader variant="list-item" :count="3" /></div>
-        <el-empty v-else-if="!dashboard?.myProjects?.length" description="暂无项目" :image-size="56">
-          <el-button type="primary" size="small" @click="$router.push('/teams')">前往团队</el-button>
+        <div v-if="loading" class="dash-panel__bd">
+          <SkeletonLoader variant="list-item" :count="3" />
+        </div>
+        <el-empty
+          v-else-if="!dashboard?.myProjects?.length"
+          description="暂无项目"
+          :image-size="56"
+        >
+          <el-button type="primary" size="small" @click="$router.push('/teams')">
+            前往团队
+          </el-button>
         </el-empty>
         <div v-else class="dash-panel__bd">
           <div
@@ -108,171 +314,214 @@
             <span class="dash-row__icon">{{ p.name.charAt(0).toUpperCase() }}</span>
             <div class="dash-row__info">
               <strong>{{ p.name }}</strong>
-              <span>{{ p.key }} · {{ p.teamName }} · {{ p.template === 'SCRUM' ? 'Scrum' : 'Kanban' }}</span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- 我的待办 -->
-      <section class="dash-panel">
-        <header class="dash-panel__hd">
-          <span>我的待办</span>
-          <el-tag v-if="myTasks.length" size="small">{{ myTasks.length }}</el-tag>
-        </header>
-        <div v-if="tasksLoading" class="dash-panel__bd"><SkeletonLoader variant="list-item" :count="3" /></div>
-        <el-empty v-else-if="!myTasks.length" description="暂无待办" :image-size="56" />
-        <TransitionGroup v-else name="task-list" tag="div" class="dash-panel__bd">
-          <div
-            v-for="task in myTasks"
-            :key="task.id"
-            class="dash-row dash-row--task"
-            @click="openTask(task)"
-          >
-            <span class="dash-row__type">{{ typeIcon(task.type) }}</span>
-            <div class="dash-row__info">
-              <strong>{{ task.title }}</strong>
-              <span>{{ task.issueKey }}
-                <template v-if="task.projectId">· {{ getProjectName(task.projectId) }}</template>
-                <template v-if="task.dueDate">
-                  · <em :class="{ 'text-danger': isOverdue(task.dueDate) }">{{ task.dueDate }}</em>
-                </template>
+              <span>
+                {{ p.key }} · {{ p.teamName }} ·
+                {{ p.template === 'SCRUM' ? 'Scrum' : 'Kanban' }}
               </span>
             </div>
-            <el-tag size="small" :type="PRIORITY_COLOR[task.priority]" effect="plain">{{ PRIORITY_LABEL[task.priority] }}</el-tag>
-            <el-button size="small" circle plain @click.stop="completeTask(task)">
-              <el-icon><Check /></el-icon>
-            </el-button>
-          </div>
-        </TransitionGroup>
-      </section>
-    </div>
-
-    <!-- 近期动态 -->
-    <section class="dash-panel dash-panel--full">
-      <header class="dash-panel__hd"><span>近期动态</span></header>
-      <div v-if="loading" class="dash-panel__bd"><SkeletonLoader variant="list-item" :count="4" /></div>
-      <el-empty v-else-if="!dashboard?.recentActivities?.length" description="暂无动态" :image-size="56" />
-      <div v-else class="dash-panel__bd">
-        <div v-for="act in dashboard.recentActivities" :key="act.id" class="dash-row dash-row--act">
-          <span class="dash-row__dot">{{ act.username.charAt(0).toUpperCase() }}</span>
-          <div class="dash-row__info">
-            <strong>{{ act.username }}</strong>
-            <span>{{ act.detail }} · {{ actionLabel(act.action) }} · {{ act.createdAt }}</span>
           </div>
         </div>
-      </div>
-    </section>
+      </section>
+
+      <section class="dash-panel">
+        <header class="dash-panel__hd"><span>近期动态</span></header>
+        <div v-if="loading" class="dash-panel__bd">
+          <SkeletonLoader variant="list-item" :count="3" />
+        </div>
+        <el-empty
+          v-else-if="!dashboard?.recentActivities?.length"
+          description="暂无动态"
+          :image-size="56"
+        />
+        <div v-else class="dash-panel__bd">
+          <div
+            v-for="act in dashboard.recentActivities.slice(0, 6)"
+            :key="act.id"
+            class="dash-row dash-row--act"
+          >
+            <span class="dash-row__dot">{{ act.username.charAt(0).toUpperCase() }}</span>
+            <div class="dash-row__info">
+              <strong>{{ act.username }}</strong>
+              <span>{{ act.detail }} · {{ actionLabel(act.action) }} · {{ act.createdAt }}</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue"
-import { useRouter } from "vue-router"
-import { useUserStore } from "@/store/user"
-import request from "@/api/request"
-import { queryIssues, updateIssue } from "@/api/issue"
-import { ElMessage } from "element-plus"
-import { PRIORITY_LABEL, PRIORITY_COLOR } from "@/utils/constants"
+import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { useUserStore } from '@/store/user'
+import request from '@/api/request'
+import { getMyWorkbench } from '@/api/workbench'
+import { PRIORITY_LABEL } from '@/utils/constants'
 import {
-  Grid, Plus, Folder, List, Odometer, Loading,
-  CircleCheck, TrendCharts, DataAnalysis, Document,
-  UserFilled, ArrowRight, Check, Clock
-} from "@element-plus/icons-vue"
-import type { DashboardData, IssueCard, IssueType } from "@/types"
-import SkeletonLoader from "@/components/common/SkeletonLoader.vue"
-import ShinyText from "@/components/common/ShinyText.vue"
-import CountUp from "@/components/common/CountUp.vue"
-import RippleButton from "@/components/common/RippleButton.vue"
+  Grid,
+  Plus,
+  DataAnalysis,
+  Document,
+  UserFilled,
+} from '@element-plus/icons-vue'
+import type { DashboardData, IssueType } from '@/types'
+import type {
+  PendingWorkbenchReview,
+  RejectedWorkbenchItem,
+  WorkbenchData,
+  WorkbenchTask,
+  WorkbenchWeeklySummary,
+} from '@/types/workbench'
+import SkeletonLoader from '@/components/common/SkeletonLoader.vue'
+import ShinyText from '@/components/common/ShinyText.vue'
+import CountUp from '@/components/common/CountUp.vue'
+import RippleButton from '@/components/common/RippleButton.vue'
+
+type TaskTab = 'all' | 'today' | 'overdue'
 
 const router = useRouter()
 const userStore = useUserStore()
 const dashboard = ref<DashboardData | null>(null)
-const myTasks = ref<IssueCard[]>([])
+const workbench = ref<WorkbenchData | null>(null)
 const loading = ref(true)
-const tasksLoading = ref(true)
+const workbenchLoading = ref(true)
+const taskTab = ref<TaskTab>('all')
 
 const TYPE_ICONS: Record<IssueType, string> = { STORY: 'S', TASK: 'T', BUG: 'B' }
+const EMPTY_WEEKLY: WorkbenchWeeklySummary = {
+  weekStart: '',
+  weekEnd: '',
+  workHours: 0,
+  completedTaskCount: 0,
+  activeSprintCount: 0,
+  activeSprintStoryPoints: 0,
+  activeSprintDoneStoryPoints: 0,
+  activeSprintHours: 0,
+  activeSprints: [],
+}
 
 const quickActions = [
-  { label: '新建任务', icon: 'Plus', route: '/projects' },
-  { label: '看板视图', icon: 'Grid', route: '/projects/board' },
-  { label: 'Sprint', icon: 'DataAnalysis', route: '/projects/sprint' },
-  { label: '报告', icon: 'Document', route: '/reports' },
-  { label: '团队管理', icon: 'UserFilled', route: '/teams' },
+  { label: '项目管理', icon: Plus, route: '/projects' },
+  { label: '看板视图', icon: Grid, route: '/projects' },
+  { label: 'Sprint', icon: DataAnalysis, route: '/projects' },
+  { label: '项目报告', icon: Document, route: '/projects' },
+  { label: '团队管理', icon: UserFilled, route: '/teams' },
 ]
 
-function typeIcon(t: string) { return TYPE_ICONS[t as IssueType] || '?' }
+const tasks = computed(() => workbench.value?.tasks || [])
+const overdueCount = computed(() => workbench.value?.overdue?.length || 0)
+const weeklySummary = computed(() => workbench.value?.weeklySummary || EMPTY_WEEKLY)
+const rejectedItems = computed(() => workbench.value?.rejectedItems || [])
+const pendingItems = computed(() =>
+  [
+    ...(workbench.value?.pendingChangeReviews || []),
+    ...(workbench.value?.pendingTaskReviews || []),
+  ].sort((left, right) => (right.submittedAt || '').localeCompare(left.submittedAt || '')),
+)
+const pendingCount = computed(() => pendingItems.value.length)
+const taskTabs = computed(() => [
+  { label: '全部', value: 'all' as const, count: tasks.value.length },
+  { label: '今日到期', value: 'today' as const, count: workbench.value?.dueToday?.length || 0 },
+  { label: '已逾期', value: 'overdue' as const, count: overdueCount.value },
+])
+const visibleTasks = computed(() => {
+  if (taskTab.value === 'today') return workbench.value?.dueToday || []
+  if (taskTab.value === 'overdue') return workbench.value?.overdue || []
+  return tasks.value
+})
+const emptyTaskText = computed(() => {
+  if (taskTab.value === 'today') return '今天没有到期任务'
+  if (taskTab.value === 'overdue') return '没有逾期任务'
+  return '当前没有分配给你的待办任务'
+})
+
+function typeIcon(type: string) {
+  return TYPE_ICONS[type as IssueType] || '?'
+}
 
 const greeting = computed(() => {
-  const h = new Date().getHours()
-  if (h < 6) return '夜深了'
-  if (h < 12) return '早上好'
-  if (h < 14) return '中午好'
-  if (h < 18) return '下午好'
+  const hour = new Date().getHours()
+  if (hour < 6) return '夜深了'
+  if (hour < 12) return '早上好'
+  if (hour < 14) return '中午好'
+  if (hour < 18) return '下午好'
   return '晚上好'
 })
 
-const completionRate = computed(() => {
-  const total = dashboard.value?.totalIssues || 0
-  const done = dashboard.value?.doneIssues || 0
-  if (total === 0) return 0
-  return Math.round((done / total) * 100)
-})
-
-const overdueCount = computed(() =>
-  myTasks.value.filter(t => t.dueDate && isOverdue(t.dueDate)).length
-)
-
-function getProjectName(projectId: number): string {
-  return dashboard.value?.myProjects?.find(p => p.id === projectId)?.name || ''
-}
-
-function isOverdue(dateStr: string): boolean {
-  if (!dateStr) return false
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  return new Date(dateStr) < today
-}
-
 const ACTION_MAP: Record<string, string> = {
-  CREATE: '创建', UPDATE: '更新', MOVE: '移动',
-  DELETE: '删除', COMMENT: '评论', ASSIGN: '指派',
+  CREATE: '创建',
+  UPDATE: '更新',
+  MOVE: '移动',
+  DELETE: '删除',
+  COMMENT: '评论',
+  ASSIGN: '指派',
 }
-function actionLabel(a: string) { return ACTION_MAP[a] || a }
+
+function actionLabel(action: string) {
+  return ACTION_MAP[action] || action
+}
+
+function priorityType(priority: WorkbenchTask['priority']) {
+  if (priority === 'HIGHEST') return 'danger'
+  if (priority === 'HIGH') return 'warning'
+  if (priority === 'LOW' || priority === 'LOWEST') return 'info'
+  return 'primary'
+}
+
+function formatTime(value?: string) {
+  if (!value) return ''
+  return value.replace('T', ' ').slice(0, 16)
+}
 
 async function fetchDashboard() {
   loading.value = true
-  try { const res = await request.get("/dashboard"); dashboard.value = res.data }
-  catch { /* */ }
-  finally { loading.value = false }
-}
-
-async function fetchMyTasks() {
-  tasksLoading.value = true
   try {
-    const uid = userStore.userInfo?.id
-    if (!uid) return
-    const res = await queryIssues({ assigneeId: uid, status: "TODO", page: 1, size: 50 })
-    myTasks.value = (res.data || []).slice(0, 20)
-  } catch { myTasks.value = [] }
-  finally { tasksLoading.value = false }
+    const response = await request.get('/dashboard')
+    dashboard.value = response.data
+  } catch {
+    dashboard.value = null
+  } finally {
+    loading.value = false
+  }
 }
 
-async function completeTask(task: IssueCard) {
+async function fetchWorkbench() {
+  workbenchLoading.value = true
   try {
-    await updateIssue({ id: task.id, status: "DONE" as any })
-    ElMessage.success(`${task.issueKey} 已完成`)
-    myTasks.value = myTasks.value.filter(t => t.id !== task.id)
-    if (dashboard.value) dashboard.value.doneIssues = (dashboard.value.doneIssues || 0) + 1
-  } catch { /* */ }
+    const response = await getMyWorkbench()
+    workbench.value = response.data
+  } catch {
+    workbench.value = null
+  } finally {
+    workbenchLoading.value = false
+  }
 }
 
-function openTask(task: IssueCard) {
-  router.push(`/projects/${task.projectId || 0}/board?issue=${task.id}`)
+function openIssue(projectId: number, issueId: number) {
+  router.push(`/projects/${projectId}/board?issue=${issueId}`)
 }
 
-onMounted(() => { fetchDashboard(); fetchMyTasks() })
+function openTask(task: WorkbenchTask) {
+  openIssue(task.projectId, task.id)
+}
+
+function openReview(item: PendingWorkbenchReview) {
+  openIssue(item.projectId, item.issueId)
+}
+
+function openRejected(item: RejectedWorkbenchItem) {
+  openIssue(item.projectId, item.issueId)
+}
+
+function openSprint(projectId: number, sprintId: number) {
+  router.push(`/projects/${projectId}/sprints/${sprintId}/burndown`)
+}
+
+onMounted(() => {
+  fetchDashboard()
+  fetchWorkbench()
+})
 </script>
 
 <style scoped lang="scss">
@@ -453,6 +702,46 @@ onMounted(() => { fetchDashboard(); fetchMyTasks() })
   padding: 8px 20px 18px;
 }
 
+.task-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 10px 20px 0;
+}
+
+.task-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+
+  span {
+    min-width: 18px;
+    padding: 1px 5px;
+    border-radius: 999px;
+    background: var(--bg-subtle);
+    font-size: 10px;
+    text-align: center;
+  }
+
+  &:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+
+  &--active {
+    background: var(--bg-subtle);
+    color: var(--text-primary);
+  }
+}
+
 /* --- 行项 --- */
 .dash-row {
   display: flex;
@@ -508,8 +797,111 @@ onMounted(() => { fetchDashboard(); fetchMyTasks() })
   }
 
   &--task .el-tag { flex-shrink: 0; }
-  &--task .el-button { flex-shrink: 0; opacity: 0; transition: opacity 0.15s; }
-  &--task:hover .el-button { opacity: 1; }
+  &--task .el-tag + .el-tag { margin-left: 2px; }
+}
+
+.risk-reason,
+.rejected-reason {
+  color: #c45656 !important;
+}
+
+.pending-summary {
+  max-width: 430px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pending-time,
+.week-range {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.week-range {
+  font-weight: 500;
+}
+
+.dash-row__type--danger {
+  color: #c45656;
+  background: #fff0f0;
+}
+
+.weekly-panel {
+  padding-top: 16px;
+}
+
+.weekly-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.weekly-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  border-radius: 9px;
+  background: var(--bg-subtle);
+
+  span {
+    color: var(--text-muted);
+    font-size: 11px;
+  }
+
+  b {
+    color: var(--text-primary);
+    font-size: 20px;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.sprint-efforts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sprint-effort {
+  padding: 10px 12px;
+  border: 1px solid var(--border-color-light);
+  border-radius: 9px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+
+  &:hover {
+    border-color: var(--border-color);
+    background: var(--bg-hover);
+  }
+
+  &__head,
+  &__meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  &__head {
+    strong {
+      color: var(--text-primary);
+      font-size: 13px;
+    }
+
+    span {
+      color: var(--text-muted);
+      font-size: 11px;
+    }
+  }
+
+  &__meta {
+    margin-top: 7px;
+    color: var(--text-secondary);
+    font-size: 11px;
+  }
 }
 
 /* --- 动画 --- */
@@ -522,5 +914,7 @@ onMounted(() => { fetchDashboard(); fetchMyTasks() })
   .dash-stats { grid-template-columns: repeat(2, 1fr); }
   .dash-grid { grid-template-columns: 1fr; }
   .dash-hero { flex-direction: column; align-items: flex-start; gap: 16px; }
+  .weekly-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .pending-time { display: none; }
 }
 </style>
