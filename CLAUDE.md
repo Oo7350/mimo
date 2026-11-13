@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-> **最新版本**：v2.13.8（2026-08-24）— Wiki 增强：目录拖拽排序 / 版本 Diff 对比 / 图片粘贴上传。详见末尾"版本变更记录"。
+> **最新版本**：v2.15.6（2026-11-13）— 交付分析与 AI 规划/RAG、访问控制加固、核心 Service 单元测试。详见末尾"版本变更记录"。
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -8,8 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Mimo is a lightweight Trello-like project management platform for small teams. It supports team collaboration, kanban task tracking, and progress visualization.
 
-- **Version**: v2.10.0 — Configurable Workflow Engine + Security Hardening + ESLint/Prettier (2026-06-24)
-- **Previous**: v2.9.3 — Gantt Chart + Dependency Visualization (2026-06-18)
+- **Version**: v2.15.6 — Delivery Analytics + AI Sprint Planning + RAG + Access Hardening + Service Tests (2026-11-13)
+- **Previous**: v2.14.0 — Issue Version Governance + Change Approval + Task Review (2026-11-08)
 - **GitHub**: https://github.com/Oo7350/mimo
 - **API docs**: `接口文档.md` (70+ endpoints, Chinese)
 - **User manual**: `操作手册.md` (Chinese)
@@ -175,22 +175,19 @@ Single backend + RBAC with two roles: `ROLE_ADMIN` (team/project admin) and `ROL
 
 This file defines allowed Bash commands for Claude Code in this repo — if you add new toolchains or scripts, update it so Claude Code can execute them.
 
-### Pending AI Features (Phase 0 remaining)
+### AI Features (v2.15)
 
-The following AI enhancements are designed but **not yet implemented**. See `项目功能完善计划.md` §2.2-2.3 for full specs.
+All v2.15 AI roadmap items are implemented; see `项目功能完善计划.md` §2.2–2.3.
 
-**AI Sprint Planning Assistant** (§2.2):
-- `POST /api/ai/suggest-sprint-plan` — analyze Backlog priorities + team capacity + dependencies → recommend task list with rationale & risk alerts
-- `POST /api/ai/analyze-sprint-health` — current progress vs remaining time vs remaining workload → adjustment suggestions (reduce scope / extend / add people)
-- `POST /api/ai/predict-velocity` — historical Sprint completion trend + prediction value
-- Frontend: `SprintPlanningView.vue` (wizard) + `AiSprintAdvisor.vue` (suggestion panel)
+**N5 AI Sprint Planning**:
+- `POST /api/ai/suggest-sprint-plan` — recommend a Sprint task set using Backlog priority, story points, dependencies and historical capacity.
+- `POST /api/sprints/{id}/apply-plan` — apply only the tasks the user explicitly selected.
+- AI output is advisory only and never writes Sprint data automatically; rule-based fallback is used when AI is unavailable.
 
-**AI Report Generation Enhancement** (§2.3):
-- `POST /api/ai/generate-daily-report` — auto-generate from today's activity (completed tasks, work logs, comments, blockers)
-- `POST /api/ai/generate-weekly-report` — weekly summary + next week plan suggestions
-- `POST /api/ai/generate-retrospective` — Sprint retrospective summary (AI distillation)
-- Data sources to integrate: issues, time_logs, comments, Sprint goals
-- Frontend: integrate into existing ReportView with "AI 生成" button
+**D02 AI RAG Project Knowledge Search**:
+- Index project Wiki pages, issue descriptions and comments into `rag_documents` (V22).
+- Answers must cite sources (`[n]` + clickable `sourceUrl`) and must refuse when retrieval finds no evidence.
+- Evaluation: Recall@K, citation correctness and unsupported-answer rate.
 
 ## WebSocket Architecture
 
@@ -204,6 +201,43 @@ The following AI enhancements are designed but **not yet implemented**. See `项
 - **Board Sync Flow**: Drag → `PUT /api/board/issue/move` → backend updates issue + logs + WebSocket broadcast → all board subscribers receive event → optimistic UI update
 
 ## Version History
+
+### v2.15.6 — 访问控制加固 + 核心 Service 单元测试 (2026-11-13)
+
+- 项目访问控制统一到 `ProjectAccessService`：Project / Board / Issue / Comment / Attachment / Gantt / WorkLog / Report 的读取入口校验团队成员或系统管理员。
+- Sprint 查询接口、Team 详情与成员列表补齐成员/管理员校验；审计日志、邮件发送日志、Webhook 配置与投递日志要求系统管理员。
+- 数据导入导出改为校验项目团队成员；Issue 跨项目查询按当前用户可访问项目集合过滤。
+- 变更审批支持清空可空字段（显式处理 MyBatis-Plus null 更新策略）。
+- 后端单元测试 22 → 64 项，`mvn test` 全绿；核心 Service 行覆盖率：Rag 97.3%、SprintHealth 94.4%、DeliveryAnalytics 93.5%、SprintPlanning 91.1%、IssueImpact 89.6%、Board 89.2%、Workflow 81.1%、Workbench 74.2%、ProjectAccess 73.7%。
+- JaCoCo 报告：`backend/mimo-app/target/site/jacoco/index.html`。
+
+### v2.15.0–v2.15.5 — 影响分析 / 工作台 / Sprint 健康度 / Velocity+CFD / AI 规划 / RAG (2026-11-12)
+
+- **N1** `GET /api/issue-change-requests/{id}/impact`：只读影响分析，收集子任务与下游依赖，计算 Sprint、故事点、日期变化与 LOW/MEDIUM/HIGH 风险原因。
+- **N2** `GET /api/workbench/my`：跨项目个人任务、今日/逾期、待审批/待验收、被驳回事项、本周工时、当前 Sprint 投入。
+- **N3** `GET /api/sprints/{id}/health` + `POST /health/ai-summary`：时间/工作进度、剩余点、预计延期、阻塞、健康分与规则建议，AI 解读失败自动回退。
+- **N4** `GET /api/analytics/project/{id}/velocity|cfd` + V21 `delivery_daily_snapshots`：承诺/完成故事点、每日状态快照、项目/Sprint/日期筛选的累积流图。
+- **N5** `POST /api/ai/suggest-sprint-plan` + `POST /api/sprints/{id}/apply-plan`：基于优先级、截止日期、依赖与历史 Velocity 的可解释推荐，AI 不可用时规则回退，仅应用用户显式勾选的 issueIds。
+- **D02** `POST /api/ai/rag/index/{projectId}` + `/rag/ask` + `/rag/evaluate` + V22 `rag_documents`：Wiki/Issue/评论索引、中文友好 BM25 检索、引用约束回答、无证据拒答、Recall@K 评测。
+
+### v2.14.0 — Issue 版本治理 + 变更审批 + 任务验收 (2026-11-08)
+
+Phase 2.1 P0 落地：工作项从创建到完成具备版本、变更和验收闭环。
+
+**Backend**:
+- V20 迁移新增 `issue_versions` / `issue_change_requests` / `issue_reviews`。
+- Issue 创建自动生成 v1；直接编辑自动递增版本。
+- 已进入 Sprint 的 Issue 禁止直接修改需求字段，必须提交变更申请。
+- 变更申请支持字段 Diff、`baseVersion` 乐观锁、通过/驳回/撤回、禁止自审、通知与审计。
+- 任务验收支持多轮提交、证据链接、通过/打回、禁止自验收；打回后自动回到进行中列。
+- 完成列增加验收门禁：存在未通过的验收轮次时禁止移入完成/关闭列。
+- `WorkflowService` 真正执行 `ASSIGNEE` / `REPORTER` / `ROLE_ADMIN` 转换条件。
+- 修复 Issue Key 生成未包含软删除记录导致的唯一键冲突。
+
+**Frontend**:
+- `IssueDetailDialog` 新增「版本与变更」「验收」页签。
+- 支持版本历史、任意版本 Diff、变更申请、审批/驳回/撤回。
+- 支持提交验收、查看证据和多轮验收记录。
 
 ### v2.10.0 — Configurable Workflow Engine + Security Hardening + ESLint/Prettier (2026-06-24)
 
