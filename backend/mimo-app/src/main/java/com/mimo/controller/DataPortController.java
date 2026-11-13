@@ -6,10 +6,9 @@ import com.mimo.common.Result;
 import com.mimo.common.ResultCode;
 import com.mimo.dto.IssueDTO;
 import com.mimo.entity.Issue;
-import com.mimo.entity.Project;
 import com.mimo.mapper.IssueMapper;
-import com.mimo.mapper.ProjectMapper;
 import com.mimo.service.IssueService;
+import com.mimo.service.ProjectAccessService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.Cell;
@@ -54,8 +53,8 @@ import java.util.Map;
 public class DataPortController {
 
     private final IssueMapper issueMapper;
-    private final ProjectMapper projectMapper;
     private final IssueService issueService;
+    private final ProjectAccessService projectAccessService;
 
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
@@ -310,19 +309,23 @@ public class DataPortController {
     // ===== helpers =====
 
     private void assertProjectMember(Long projectId, Long userId) {
-        Project p = projectMapper.selectById(projectId);
-        if (p == null) throw new BusinessException(ResultCode.PROJECT_NOT_FOUND);
-        // 此处简化：仅校验登录用户，详细的成员校验由 IssueService 内部处理
+        projectAccessService.requireProject(projectId, userId);
     }
 
     private Long getLongPrincipal(Authentication auth) {
-        if (auth == null || !auth.isAuthenticated()) return null;
-        Object p = auth.getPrincipal();
-        if (p instanceof Long l) return l;
-        if (p instanceof String s) {
-            try { return Long.parseLong(s); } catch (NumberFormatException e) { return null; }
+        if (auth == null || !auth.isAuthenticated()) {
+            throw new BusinessException(ResultCode.UNAUTHORIZED, "未登录或登录状态异常");
         }
-        return null;
+        Object p = auth.getPrincipal();
+        if (p instanceof Number number) return number.longValue();
+        if (p instanceof String s) {
+            try {
+                return Long.parseLong(s);
+            } catch (NumberFormatException e) {
+                throw new BusinessException(ResultCode.UNAUTHORIZED, "登录状态异常");
+            }
+        }
+        throw new BusinessException(ResultCode.UNAUTHORIZED, "登录状态异常");
     }
 
     private String s(String v) { return v == null ? "" : v; }

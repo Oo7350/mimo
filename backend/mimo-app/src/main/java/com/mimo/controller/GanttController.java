@@ -4,8 +4,11 @@ import com.mimo.common.Result;
 import com.mimo.dto.IssueDTO;
 import com.mimo.entity.Issue;
 import com.mimo.mapper.IssueMapper;
-import com.mimo.service.ProjectService;
+import com.mimo.service.ProjectAccessService;
 import lombok.RequiredArgsConstructor;
+import com.mimo.common.BusinessException;
+import com.mimo.common.ResultCode;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -22,11 +25,16 @@ import java.util.List;
 public class GanttController {
 
     private final IssueMapper issueMapper;
-    private final ProjectService projectService;
+    private final ProjectAccessService projectAccessService;
 
     @GetMapping("/project/{projectId}")
-    public Result<List<IssueDTO.IssueVO>> listByProject(@PathVariable Long projectId) {
-        projectService.getById(projectId);
+    public Result<List<IssueDTO.IssueVO>> listByProject(@PathVariable Long projectId,
+                                                        Authentication auth) {
+        Object principal = auth.getPrincipal();
+        if (!(principal instanceof Number)) {
+            throw new BusinessException(ResultCode.UNAUTHORIZED, "未登录或登录状态异常");
+        }
+        projectAccessService.requireProject(projectId, ((Number) principal).longValue());
         List<Issue> issues = issueMapper.selectGanttByProject(projectId);
         // 字段映射由前端根据需要自行处理；返回轻量 VO 仅含甘特图必要字段
         List<IssueDTO.IssueVO> vos = new java.util.ArrayList<>(issues.size());

@@ -31,6 +31,8 @@ public class BoardService {
     private final NotificationService notificationService;
     private final WebSocketService webSocketService;
     private final WorkflowService workflowService;
+    private final IssueReviewService issueReviewService;
+    private final DeliveryAnalyticsService deliveryAnalyticsService;
 
     public BoardVO getBoard(Long projectId) {
         List<BoardColumn> columns = boardColumnMapper.selectList(
@@ -129,7 +131,7 @@ public class BoardService {
         Long oldColumnId = issue.getColumnId();
 
         // 工作流校验：如果项目定义了该类型的工作流，检查转换是否合法
-        workflowService.validateTransition(issue.getProjectId(), issue.getType(), oldColumnId, targetColumnId);
+        workflowService.validateTransition(issue, oldColumnId, targetColumnId, operatorId);
 
         issue.setColumnId(targetColumnId);
         issue.setSortOrder(sortOrder);
@@ -137,6 +139,9 @@ public class BoardService {
         // 同步 status 字段（STORY/TASK）和 bugStatus 字段（BUG）
         BoardColumn targetCol = boardColumnMapper.selectById(targetColumnId);
         if (targetCol != null) {
+            if (isTerminalColumn(targetCol)) {
+                enforceReviewGate(issue);
+            }
             if ("BUG".equals(issue.getType())) {
                 // BUG 类型：根据目标列名映射 bugStatus
                 String newBugStatus = columnToBugStatus(targetCol.getName());
@@ -161,7 +166,30 @@ public class BoardService {
 
         issueMapper.updateById(issue);
         logMoveActivity(issue, oldColumnId, targetCol, operatorId);
+        try {
+            deliveryAnalyticsService.refreshTodaySnapshot(issue.getProjectId());
+        } catch (Exception e) {
+            log.warn("刷新交付分析快照失败, projectId={}", issue.getProjectId(), e);
+        }
         broadcastMove(issue.getProjectId(), issueId, targetColumnId, sortOrder);
+    }
+
+    private boolean isTerminalColumn(BoardColumn column) {
+        String name = column.getName() == null ? "" : column.getName().toLowerCase();
+        return name.contains("完成") || name.contains("done") || name.contains("关闭")
+                || name.contains("closed");
+    }
+
+    /**
+     * Backward compatible review gate: issues without a review record retain old behavior.
+     * Once a review is submitted, the latest round must be approved before reaching a terminal column.
+     */
+    private void enforceReviewGate(Issue issue) {
+        IssueReview latest = issueReviewService.latest(issue.getId());
+        if (latest != null && !"APPROVED".equals(latest.getStatus())) {
+            throw new BusinessException(ResultCode.CONFLICT,
+                    "最新验收轮次尚未通过，不能将任务移到完成列");
+        }
     }
 
     private void logMoveActivity(Issue issue, Long oldColumnId, BoardColumn targetCol, Long operatorId) {

@@ -11,6 +11,7 @@ import com.mimo.mapper.BoardColumnMapper;
 import com.mimo.mapper.ProjectMapper;
 import com.mimo.service.BoardService;
 import com.mimo.service.TeamService;
+import com.mimo.service.ProjectAccessService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -26,9 +27,11 @@ public class BoardController {
     private final ProjectMapper projectMapper;
     private final BoardColumnMapper boardColumnMapper;
     private final TeamService teamService;
+    private final ProjectAccessService projectAccessService;
 
     @GetMapping("/{projectId}")
-    public Result<BoardVO> getBoard(@PathVariable Long projectId) {
+    public Result<BoardVO> getBoard(@PathVariable Long projectId, Authentication auth) {
+        projectAccessService.requireProject(projectId, getLongPrincipal(auth));
         return Result.success(boardService.getBoard(projectId));
     }
 
@@ -69,6 +72,7 @@ public class BoardController {
     @PutMapping("/issue/move")
     public Result<Void> moveIssue(@Valid @RequestBody MoveRequest request, Authentication auth) {
         Long userId = getLongPrincipal(auth);
+        projectAccessService.requireIssue(request.getIssueId(), userId);
         boardService.moveIssue(request.getIssueId(), request.getTargetColumnId(), request.getSortOrder(), userId);
         return Result.successMessage("移动成功");
     }

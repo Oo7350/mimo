@@ -4,11 +4,14 @@ import com.mimo.common.Result;
 import com.mimo.common.BusinessException;
 import com.mimo.common.ResultCode;
 import com.mimo.dto.SprintDTO.*;
+import com.mimo.dto.SprintHealthDTO.AiSummaryVO;
+import com.mimo.dto.SprintHealthDTO.SprintHealthVO;
 import com.mimo.entity.Project;
 import com.mimo.entity.Sprint;
 import com.mimo.mapper.ProjectMapper;
 import com.mimo.mapper.SprintMapper;
 import com.mimo.service.SprintService;
+import com.mimo.service.SprintHealthService;
 import com.mimo.service.TeamService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
@@ -23,6 +26,7 @@ import java.util.List;
 public class SprintController {
 
     private final SprintService sprintService;
+    private final SprintHealthService sprintHealthService;
     private final SprintMapper sprintMapper;
     private final ProjectMapper projectMapper;
     private final TeamService teamService;
@@ -35,12 +39,14 @@ public class SprintController {
     }
 
     @GetMapping("/{id}")
-    public Result<SprintVO> getById(@PathVariable Long id) {
+    public Result<SprintVO> getById(@PathVariable Long id, Authentication auth) {
+        assertTeamMemberBySprint(id, getLongPrincipal(auth));
         return Result.success(sprintService.getById(id));
     }
 
     @GetMapping("/project/{projectId}")
-    public Result<List<SprintVO>> listByProject(@PathVariable Long projectId) {
+    public Result<List<SprintVO>> listByProject(@PathVariable Long projectId, Authentication auth) {
+        assertTeamMemberByProject(projectId, getLongPrincipal(auth));
         return Result.success(sprintService.listByProject(projectId));
     }
 
@@ -61,7 +67,8 @@ public class SprintController {
     }
 
     @GetMapping("/{id}/burndown")
-    public Result<BurndownVO> burndown(@PathVariable Long id) {
+    public Result<BurndownVO> burndown(@PathVariable Long id, Authentication auth) {
+        assertTeamMemberBySprint(id, getLongPrincipal(auth));
         return Result.success(sprintService.getBurndown(id));
     }
 
@@ -103,8 +110,23 @@ public class SprintController {
     }
 
     @GetMapping("/{id}/stats")
-    public Result<SprintStatsVO> getStats(@PathVariable Long id) {
+    public Result<SprintStatsVO> getStats(@PathVariable Long id, Authentication auth) {
+        assertTeamMemberBySprint(id, getLongPrincipal(auth));
         return Result.success(sprintService.getSprintStats(id));
+    }
+
+    @GetMapping("/{id}/health")
+    public Result<SprintHealthVO> getHealth(@PathVariable Long id, Authentication auth) {
+        Long userId = getLongPrincipal(auth);
+        assertTeamMemberBySprint(id, userId);
+        return Result.success(sprintHealthService.getHealth(id));
+    }
+
+    @PostMapping("/{id}/health/ai-summary")
+    public Result<AiSummaryVO> getHealthAiSummary(@PathVariable Long id, Authentication auth) {
+        Long userId = getLongPrincipal(auth);
+        assertTeamMemberBySprint(id, userId);
+        return Result.success(sprintHealthService.getAiSummary(id, userId));
     }
 
     // ---- helpers ----
@@ -118,7 +140,8 @@ public class SprintController {
     private void assertTeamMemberByProject(Long projectId, Long userId) {
         Project project = projectMapper.selectById(projectId);
         if (project == null) throw new BusinessException(ResultCode.PROJECT_NOT_FOUND);
-        if (!teamService.isTeamMember(project.getTeamId(), userId)) {
+        if (!teamService.isTeamMember(project.getTeamId(), userId)
+                && !teamService.isTeamAdmin(project.getTeamId(), userId)) {
             throw new BusinessException(ResultCode.FORBIDDEN, "无权操作此项目的Sprint");
         }
     }

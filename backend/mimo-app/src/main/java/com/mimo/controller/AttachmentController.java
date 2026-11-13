@@ -6,6 +6,7 @@ import com.mimo.common.ResultCode;
 import com.mimo.dto.AttachmentDTO.AttachmentVO;
 import com.mimo.entity.Attachment;
 import com.mimo.service.AttachmentService;
+import com.mimo.service.ProjectAccessService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
@@ -27,6 +28,7 @@ import java.util.List;
 public class AttachmentController {
 
     private final AttachmentService attachmentService;
+    private final ProjectAccessService projectAccessService;
 
     @PostMapping("/upload")
     public Result<AttachmentVO> upload(
@@ -38,13 +40,20 @@ public class AttachmentController {
     }
 
     @GetMapping("/issue/{issueId}")
-    public Result<List<AttachmentVO>> listByIssue(@PathVariable Long issueId) {
+    public Result<List<AttachmentVO>> listByIssue(@PathVariable Long issueId,
+                                                  Authentication auth) {
+        projectAccessService.requireIssue(issueId, getLongPrincipal(auth));
         return Result.success(attachmentService.listByIssue(issueId));
     }
 
     @GetMapping("/{id}/download")
-    public ResponseEntity<Resource> download(@PathVariable Long id) {
+    public ResponseEntity<Resource> download(@PathVariable Long id, Authentication auth) {
+        Long userId = getLongPrincipal(auth);
         Attachment attachment = attachmentService.getById(id);
+        if (attachment == null) {
+            throw new BusinessException(ResultCode.NOT_FOUND, "附件不存在");
+        }
+        projectAccessService.requireIssue(attachment.getIssueId(), userId);
         Path path = Paths.get(attachment.getFilePath());
         Resource resource = new FileSystemResource(path);
         return ResponseEntity.ok()
@@ -61,6 +70,7 @@ public class AttachmentController {
         if (attachment == null) {
             throw new BusinessException(ResultCode.PROJECT_NOT_FOUND, "附件不存在");
         }
+        projectAccessService.requireIssue(attachment.getIssueId(), userId);
         // 仅上传者可删除
         if (!attachment.getUploaderId().equals(userId)) {
             throw new BusinessException(ResultCode.FORBIDDEN, "只能删除自己上传的附件");

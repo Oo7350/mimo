@@ -5,6 +5,7 @@ import com.mimo.common.BusinessException;
 import com.mimo.common.ResultCode;
 import com.mimo.dto.WorkLogDTO.*;
 import com.mimo.service.WorkLogService;
+import com.mimo.service.ProjectAccessService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -18,6 +19,7 @@ import java.util.List;
 public class WorkLogController {
 
     private final WorkLogService workLogService;
+    private final ProjectAccessService projectAccessService;
 
     @PostMapping
     public Result<WorkLogVO> create(@Valid @RequestBody CreateRequest request, Authentication auth) {
@@ -39,7 +41,9 @@ public class WorkLogController {
     }
 
     @GetMapping("/issue/{issueId}/sum")
-    public Result<java.math.BigDecimal> sumByIssue(@PathVariable Long issueId) {
+    public Result<java.math.BigDecimal> sumByIssue(@PathVariable Long issueId,
+                                                   Authentication auth) {
+        projectAccessService.requireIssue(issueId, getLongPrincipal(auth));
         return Result.success(workLogService.sumByIssue(issueId));
     }
 

@@ -7,8 +7,14 @@ import com.mimo.common.ResultCode;
 import com.mimo.dto.WorkflowDTO.*;
 import com.mimo.entity.BoardColumn;
 import com.mimo.entity.Issue;
+import com.mimo.entity.Project;
+import com.mimo.entity.TeamMember;
+import com.mimo.entity.User;
 import com.mimo.entity.Workflow;
 import com.mimo.mapper.BoardColumnMapper;
+import com.mimo.mapper.ProjectMapper;
+import com.mimo.mapper.TeamMemberMapper;
+import com.mimo.mapper.UserMapper;
 import com.mimo.mapper.WorkflowMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,6 +34,9 @@ public class WorkflowService {
 
     private final WorkflowMapper workflowMapper;
     private final BoardColumnMapper boardColumnMapper;
+    private final ProjectMapper projectMapper;
+    private final TeamMemberMapper teamMemberMapper;
+    private final UserMapper userMapper;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     // ========== CRUD ==========
@@ -118,8 +127,9 @@ public class WorkflowService {
      * 验证状态转换是否合法
      * @return true 如果转换允许；false 或抛异常如果不允许
      */
-    public boolean validateTransition(Long projectId, String issueType,
-                                     Long fromColumnId, Long toColumnId) {
+    public boolean validateTransition(Issue issue, Long fromColumnId, Long toColumnId, Long operatorId) {
+        Long projectId = issue.getProjectId();
+        String issueType = issue.getType();
         WorkflowVO wf = getActiveWorkflow(projectId, issueType);
         if (wf == null) {
             // 无工作流定义 → 允许所有转换（保持向后兼容）
@@ -132,18 +142,33 @@ public class WorkflowService {
         }
 
         // 查找匹配的转换规则
-        boolean found = wf.getConfig().getTransitions().stream()
-                .anyMatch(t -> Objects.equals(t.getFromColumnId(), fromColumnId)
-                        && Objects.equals(t.getToColumnId(), toColumnId));
+        WorkflowTransition transition = wf.getConfig().getTransitions().stream()
+                .filter(t -> Objects.equals(t.getFromColumnId(), fromColumnId)
+                        && Objects.equals(t.getToColumnId(), toColumnId))
+                .findFirst().orElse(null);
 
-        if (!found) {
+        if (transition == null) {
             String fromName = getColumnName(projectId, fromColumnId);
             String toName = getColumnName(projectId, toColumnId);
             throw new BusinessException(ResultCode.BAD_REQUEST,
                     "工作流不允许从「" + fromName + "」转换到「" + toName + "」");
         }
 
+        if (transition.getConditions() != null && !transition.getConditions().isEmpty()
+                && !matchesAnyCondition(transition.getConditions(), issue, operatorId)) {
+            throw new BusinessException(ResultCode.FORBIDDEN,
+                    "当前用户不满足该状态转换的条件");
+        }
+
         return true;
+    }
+
+    public boolean validateTransition(Long projectId, String issueType,
+                                      Long fromColumnId, Long toColumnId) {
+        Issue issue = new Issue();
+        issue.setProjectId(projectId);
+        issue.setType(issueType);
+        return validateTransition(issue, fromColumnId, toColumnId, null);
     }
 
     /**
@@ -307,5 +332,39 @@ public class WorkflowService {
         if (columnId == null) return "未知";
         BoardColumn col = boardColumnMapper.selectById(columnId);
         return col != null ? col.getName() : "未知";
+    }
+
+    private boolean matchesAnyCondition(List<String> conditions, Issue issue, Long operatorId) {
+        if (operatorId == null) return conditions.isEmpty();
+        for (String raw : conditions) {
+            if (raw == null) continue;
+            String condition = raw.trim().toUpperCase(Locale.ROOT);
+            switch (condition) {
+                case "ASSIGNEE":
+                    if (Objects.equals(issue.getAssigneeId(), operatorId)) return true;
+                    break;
+                case "REPORTER":
+                    if (Objects.equals(issue.getReporterId(), operatorId)) return true;
+                    break;
+                case "ROLE_ADMIN":
+                    if (isProjectAdmin(issue.getProjectId(), operatorId)) return true;
+                    break;
+                default:
+                    log.warn("忽略未知工作流条件: {}", raw);
+            }
+        }
+        return false;
+    }
+
+    private boolean isProjectAdmin(Long projectId, Long userId) {
+        User user = userMapper.selectById(userId);
+        if (user != null && "ROLE_ADMIN".equals(user.getRole())) return true;
+        Project project = projectMapper.selectById(projectId);
+        if (project == null) return false;
+        if (Objects.equals(project.getOwnerId(), userId)) return true;
+        return teamMemberMapper.selectOne(new LambdaQueryWrapper<TeamMember>()
+                .eq(TeamMember::getTeamId, project.getTeamId())
+                .eq(TeamMember::getUserId, userId)
+                .eq(TeamMember::getRole, "ROLE_ADMIN")) != null;
     }
 }

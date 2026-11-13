@@ -8,6 +8,7 @@ import com.mimo.dto.CommentDTO.*;
 import com.mimo.entity.Comment;
 import com.mimo.mapper.CommentMapper;
 import com.mimo.service.CommentService;
+import com.mimo.service.ProjectAccessService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -22,6 +23,7 @@ public class CommentController {
 
     private final CommentService commentService;
     private final CommentMapper commentMapper;
+    private final ProjectAccessService projectAccessService;
 
     @PostMapping
     @AuditLog(targetType = "'COMMENT'", targetId = "#request.issueId", action = "'CREATE'", detail = "'添加评论到任务#' + #request.issueId")
@@ -31,7 +33,8 @@ public class CommentController {
     }
 
     @GetMapping("/issue/{issueId}")
-    public Result<List<CommentVO>> listByIssue(@PathVariable Long issueId) {
+    public Result<List<CommentVO>> listByIssue(@PathVariable Long issueId, Authentication auth) {
+        projectAccessService.requireIssue(issueId, getLongPrincipal(auth));
         return Result.success(commentService.listByIssue(issueId));
     }
 

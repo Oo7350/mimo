@@ -22,4 +22,15 @@ public interface IssueMapper extends BaseMapper<Issue> {
         ORDER BY plan_start_date ASC, id ASC
     """)
     List<Issue> selectGanttByProject(Long projectId);
+
+    /**
+     * Include soft-deleted rows because uk_issue_key still reserves their keys.
+     */
+    @Select("""
+        SELECT COALESCE(MAX(CAST(SUBSTRING(issue_key, CHAR_LENGTH(#{prefix}) + 1) AS UNSIGNED)), 0)
+        FROM issues
+        WHERE project_id = #{projectId}
+          AND issue_key LIKE CONCAT(#{prefix}, '%')
+    """)
+    Integer selectMaxIssueKeySequence(Long projectId, String prefix);
 }

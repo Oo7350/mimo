@@ -8,6 +8,7 @@ import com.mimo.dto.ProjectDTO.*;
 import com.mimo.entity.Project;
 import com.mimo.mapper.ProjectMapper;
 import com.mimo.service.ProjectService;
+import com.mimo.service.ProjectAccessService;
 import com.mimo.service.TeamService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
@@ -24,6 +25,7 @@ public class ProjectController {
     private final ProjectService projectService;
     private final TeamService teamService;
     private final ProjectMapper projectMapper;
+    private final ProjectAccessService projectAccessService;
 
     @PostMapping
     @AuditLog(targetType = "'PROJECT'", targetId = "#request.teamId", action = "'CREATE'", detail = "'创建项目: ' + #request.name")
@@ -37,12 +39,14 @@ public class ProjectController {
     }
 
     @GetMapping("/{id}")
-    public Result<ProjectVO> getById(@PathVariable Long id) {
+    public Result<ProjectVO> getById(@PathVariable Long id, Authentication auth) {
+        projectAccessService.requireProject(id, getLongPrincipal(auth));
         return Result.success(projectService.getById(id));
     }
 
     @GetMapping("/team/{teamId}")
-    public Result<List<ProjectVO>> listByTeam(@PathVariable Long teamId) {
+    public Result<List<ProjectVO>> listByTeam(@PathVariable Long teamId, Authentication auth) {
+        projectAccessService.requireTeam(teamId, getLongPrincipal(auth));
         return Result.success(projectService.listByTeam(teamId));
     }
 

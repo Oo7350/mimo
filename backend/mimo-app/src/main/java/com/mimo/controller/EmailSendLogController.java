@@ -4,11 +4,15 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mimo.common.Result;
+import com.mimo.common.BusinessException;
+import com.mimo.common.ResultCode;
 import com.mimo.entity.EmailSendLog;
 import com.mimo.mapper.EmailSendLogMapper;
+import com.mimo.service.ProjectAccessService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.StringUtils;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -29,6 +33,7 @@ import java.util.Map;
 public class EmailSendLogController {
 
     private final EmailSendLogMapper emailSendLogMapper;
+    private final ProjectAccessService projectAccessService;
 
     @GetMapping
     public Result<IPage<EmailSendLog>> list(
@@ -38,8 +43,10 @@ public class EmailSendLogController {
             @RequestParam(required = false) String notifyType,
             @RequestParam(required = false) Integer success,
             @RequestParam(required = false) String startTime,
-            @RequestParam(required = false) String endTime
+            @RequestParam(required = false) String endTime,
+            Authentication auth
     ) {
+        assertAdmin(auth);
         size = Math.min(size, 100);
         QueryWrapper<EmailSendLog> qw = new QueryWrapper<EmailSendLog>().orderByDesc("created_at");
         if (userId != null) qw.eq("user_id", userId);
@@ -55,8 +62,10 @@ public class EmailSendLogController {
     @GetMapping("/stats")
     public Result<Map<String, Object>> stats(
             @RequestParam(required = false) String startTime,
-            @RequestParam(required = false) String endTime
+            @RequestParam(required = false) String endTime,
+            Authentication auth
     ) {
+        assertAdmin(auth);
         QueryWrapper<EmailSendLog> qw = new QueryWrapper<>();
         if (StringUtils.hasText(startTime)) qw.ge("created_at", startTime);
         if (StringUtils.hasText(endTime)) qw.le("created_at", endTime);
@@ -73,5 +82,13 @@ public class EmailSendLogController {
         stats.put("failed", failed);
         stats.put("deliveryRate", total > 0 ? (ok * 100.0 / total) : 0.0);
         return Result.success(stats);
+    }
+
+    private void assertAdmin(Authentication auth) {
+        Object principal = auth.getPrincipal();
+        Long userId = principal instanceof Number ? ((Number) principal).longValue() : null;
+        if (userId == null || !projectAccessService.isSystemAdmin(userId)) {
+            throw new BusinessException(ResultCode.FORBIDDEN, "仅系统管理员可查看邮件发送日志");
+        }
     }
 }

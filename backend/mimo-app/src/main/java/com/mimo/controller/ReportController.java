@@ -8,6 +8,7 @@ import com.mimo.dto.StatsDTO.*;
 import com.mimo.entity.Report;
 import com.mimo.mapper.ReportMapper;
 import com.mimo.service.ReportService;
+import com.mimo.service.ProjectAccessService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -22,6 +23,7 @@ public class ReportController {
 
     private final ReportService reportService;
     private final ReportMapper reportMapper;
+    private final ProjectAccessService projectAccessService;
 
     @PostMapping("/generate")
     public Result<ReportVO> generateDraft(@Valid @RequestBody CreateRequest request, Authentication auth) {
@@ -60,7 +62,8 @@ public class ReportController {
     }
 
     @GetMapping("/stats/{projectId}")
-    public Result<StatsVO> getStats(@PathVariable Long projectId) {
+    public Result<StatsVO> getStats(@PathVariable Long projectId, Authentication auth) {
+        projectAccessService.requireProject(projectId, getLongPrincipal(auth));
         return Result.success(reportService.getProjectStats(projectId));
     }
 

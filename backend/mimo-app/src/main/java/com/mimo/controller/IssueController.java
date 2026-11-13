@@ -12,6 +12,8 @@ import com.mimo.mapper.ProjectMapper;
 import com.mimo.service.IssueService;
 import com.mimo.service.TeamService;
 import com.mimo.service.WebhookDispatcherService;
+import com.mimo.service.ProjectAccessService;
+import com.mimo.service.ProjectService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -29,11 +31,14 @@ public class IssueController {
     private final ProjectMapper projectMapper;
     private final TeamService teamService;
     private final WebhookDispatcherService webhookDispatcher;
+    private final ProjectAccessService projectAccessService;
+    private final ProjectService projectService;
 
     @PostMapping
     @AuditLog(targetType = "'ISSUE'", targetId = "#request.projectId", action = "'CREATE'", detail = "'创建任务: ' + #request.title")
     public Result<IssueVO> create(@Valid @RequestBody CreateRequest request, Authentication auth) {
         Long userId = getLongPrincipal(auth);
+        projectAccessService.requireProject(request.getProjectId(), userId);
         IssueVO vo = issueService.create(request, userId);
         Project p = projectMapper.selectById(request.getProjectId());
         Long teamId = p == null ? null : p.getTeamId();
@@ -42,7 +47,8 @@ public class IssueController {
     }
 
     @GetMapping("/{id}")
-    public Result<IssueVO> getById(@PathVariable Long id) {
+    public Result<IssueVO> getById(@PathVariable Long id, Authentication auth) {
+        projectAccessService.requireIssue(id, getLongPrincipal(auth));
         return Result.success(issueService.getById(id));
     }
 
@@ -50,6 +56,7 @@ public class IssueController {
     @AuditLog(targetType = "'ISSUE'", targetId = "#request.id", action = "'UPDATE'", detail = "'更新任务#' + #request.id")
     public Result<Void> update(@Valid @RequestBody UpdateRequest request, Authentication auth) {
         Long userId = getLongPrincipal(auth);
+        projectAccessService.requireIssue(request.getId(), userId);
         issueService.update(request, userId);
         Issue i = issueMapper.selectById(request.getId());
         if (i != null) {
@@ -64,6 +71,7 @@ public class IssueController {
     @AuditLog(targetType = "'ISSUE'", targetId = "#id", action = "'DELETE'", detail = "'删除任务#' + #id")
     public Result<Void> delete(@PathVariable Long id, Authentication auth) {
         Long userId = getLongPrincipal(auth);
+        projectAccessService.requireIssue(id, userId);
         Issue issue = issueMapper.selectById(id);
         issueService.delete(id, userId);
         if (issue != null) {
@@ -76,8 +84,15 @@ public class IssueController {
     }
 
     @PostMapping("/query")
-    public Result<List<IssueVO>> query(@RequestBody QueryRequest request) {
-        return Result.success(issueService.query(request));
+    public Result<List<IssueVO>> query(@RequestBody QueryRequest request, Authentication auth) {
+        Long userId = getLongPrincipal(auth);
+        if (request.getProjectId() != null) {
+            projectAccessService.requireProject(request.getProjectId(), userId);
+        }
+        List<Long> projectIds = projectService.listByUser(userId).stream()
+                .map(com.mimo.dto.ProjectDTO.ProjectVO::getId)
+                .toList();
+        return Result.success(issueService.query(request, projectIds));
     }
 
     // ---- BUG status management ----
@@ -86,6 +101,7 @@ public class IssueController {
     public Result<Void> updateBugStatus(@PathVariable Long id, @Valid @RequestBody BugStatusRequest request, Authentication auth) {
         Long userId = getLongPrincipal(auth);
         request.setIssueId(id);
+        projectAccessService.requireIssue(id, userId);
         issueService.updateBugStatus(request);
         return Result.successMessage("缺陷状态更新成功");
     }

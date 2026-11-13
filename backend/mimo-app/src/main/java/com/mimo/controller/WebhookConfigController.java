@@ -12,8 +12,10 @@ import com.mimo.entity.WebhookDeliveryLog;
 import com.mimo.mapper.WebhookConfigMapper;
 import com.mimo.mapper.WebhookDeliveryLogMapper;
 import com.mimo.service.WebhookDispatcherService;
+import com.mimo.service.ProjectAccessService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -34,6 +36,7 @@ public class WebhookConfigController {
     private final WebhookConfigMapper webhookConfigMapper;
     private final WebhookDeliveryLogMapper deliveryLogMapper;
     private final WebhookDispatcherService dispatcher;
+    private final ProjectAccessService projectAccessService;
 
     @GetMapping
     public Result<IPage<WebhookConfig>> list(
@@ -41,7 +44,9 @@ public class WebhookConfigController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) Long projectId,
             @RequestParam(required = false) Long teamId,
-            @RequestParam(required = false, defaultValue = "false") Boolean includeDisabled) {
+            @RequestParam(required = false, defaultValue = "false") Boolean includeDisabled,
+            Authentication auth) {
+        assertAdmin(auth);
         QueryWrapper<WebhookConfig> qw = new QueryWrapper<WebhookConfig>().orderByDesc("created_at");
         if (projectId != null) qw.eq("project_id", projectId);
         if (teamId != null) qw.eq("team_id", teamId);
@@ -53,7 +58,8 @@ public class WebhookConfigController {
     }
 
     @GetMapping("/{id}")
-    public Result<WebhookConfig> getById(@PathVariable Long id) {
+    public Result<WebhookConfig> getById(@PathVariable Long id, Authentication auth) {
+        assertAdmin(auth);
         WebhookConfig c = webhookConfigMapper.selectById(id);
         if (c == null) throw new BusinessException(ResultCode.NOT_FOUND, "Webhook 不存在");
         return Result.success(c);
@@ -62,6 +68,7 @@ public class WebhookConfigController {
     @PostMapping
     @AuditLog(targetType = "'WEBHOOK'", targetId = "#result.data.id", action = "'CREATE'", detail = "'创建 Webhook: ' + #req.name")
     public Result<WebhookConfig> create(@RequestBody WebhookConfig req, org.springframework.security.core.Authentication auth) {
+        assertAdmin(auth);
         validateWebhook(req);
         req.setId(null);
         req.setCreatedBy(getUserId(auth));
@@ -73,7 +80,9 @@ public class WebhookConfigController {
 
     @PutMapping("/{id}")
     @AuditLog(targetType = "'WEBHOOK'", targetId = "#id", action = "'UPDATE'", detail = "'更新 Webhook'")
-    public Result<WebhookConfig> update(@PathVariable Long id, @RequestBody WebhookConfig req) {
+    public Result<WebhookConfig> update(@PathVariable Long id, @RequestBody WebhookConfig req,
+                                        Authentication auth) {
+        assertAdmin(auth);
         WebhookConfig existing = webhookConfigMapper.selectById(id);
         if (existing == null) throw new BusinessException(ResultCode.NOT_FOUND, "Webhook 不存在");
         validateWebhook(req);
@@ -85,7 +94,8 @@ public class WebhookConfigController {
 
     @DeleteMapping("/{id}")
     @AuditLog(targetType = "'WEBHOOK'", targetId = "#id", action = "'DELETE'", detail = "'删除 Webhook'")
-    public Result<Void> delete(@PathVariable Long id) {
+    public Result<Void> delete(@PathVariable Long id, Authentication auth) {
+        assertAdmin(auth);
         WebhookConfig existing = webhookConfigMapper.selectById(id);
         if (existing == null) throw new BusinessException(ResultCode.NOT_FOUND, "Webhook 不存在");
         webhookConfigMapper.deleteById(id);
@@ -94,7 +104,8 @@ public class WebhookConfigController {
 
     @PostMapping("/{id}/test")
     @AuditLog(targetType = "'WEBHOOK'", targetId = "#id", action = "'TEST'", detail = "'触发 Webhook 测试投递'")
-    public Result<Map<String, Object>> test(@PathVariable Long id) {
+    public Result<Map<String, Object>> test(@PathVariable Long id, Authentication auth) {
+        assertAdmin(auth);
         WebhookConfig hook = webhookConfigMapper.selectById(id);
         if (hook == null) throw new BusinessException(ResultCode.NOT_FOUND, "Webhook 不存在");
         Map<String, Object> payload = new HashMap<>();
@@ -128,7 +139,9 @@ public class WebhookConfigController {
     public Result<IPage<WebhookDeliveryLog>> deliveries(
             @PathVariable Long id,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "20") int size,
+            Authentication auth) {
+        assertAdmin(auth);
         QueryWrapper<WebhookDeliveryLog> qw = new QueryWrapper<WebhookDeliveryLog>()
                 .eq("webhook_id", id)
                 .orderByDesc("created_at");
@@ -153,5 +166,12 @@ public class WebhookConfigController {
             try { return Long.parseLong(s); } catch (NumberFormatException e) { return null; }
         }
         return null;
+    }
+
+    private void assertAdmin(Authentication auth) {
+        Long userId = getUserId(auth);
+        if (userId == null || !projectAccessService.isSystemAdmin(userId)) {
+            throw new BusinessException(ResultCode.FORBIDDEN, "仅系统管理员可管理 Webhook");
+        }
     }
 }

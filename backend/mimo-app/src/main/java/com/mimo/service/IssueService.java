@@ -1,7 +1,9 @@
 package com.mimo.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mimo.common.BusinessException;
 import com.mimo.common.ResultCode;
 import com.mimo.dto.IssueDTO;
@@ -33,6 +35,11 @@ public class IssueService {
     private final NotificationService notificationService;
     private final WebSocketService webSocketService;
     private final NotificationMapper notificationMapper;
+    private final IssueVersionService issueVersionService;
+    private final IssueVersionMapper issueVersionMapper;
+    private final IssueChangeRequestMapper issueChangeRequestMapper;
+    private final IssueReviewMapper issueReviewMapper;
+    private final ObjectMapper objectMapper;
 
     // ---- BUG status transition rules ----
     private static final Map<String, Set<String>> BUG_TRANSITIONS = Map.of(
@@ -52,17 +59,8 @@ public class IssueService {
 
         // Generate issue key — 查询当前项目最大编号，避免并发冲突和软删除计数错误
         String keyPrefix = project.getKey() + "-";
-        Issue maxKeyIssue = issueMapper.selectOne(
-            new LambdaQueryWrapper<Issue>()
-                .eq(Issue::getProjectId, request.getProjectId())
-                .likeRight(Issue::getIssueKey, keyPrefix)
-                .orderByDesc(Issue::getId)
-                .last("LIMIT 1"));
-        int nextNum = 1;
-        if (maxKeyIssue != null && maxKeyIssue.getIssueKey() != null) {
-            String numStr = maxKeyIssue.getIssueKey().substring(keyPrefix.length());
-            try { nextNum = Integer.parseInt(numStr) + 1; } catch (NumberFormatException e) { log.warn("解析issueKey编号失败: {}", maxKeyIssue.getIssueKey()); }
-        }
+        Integer maxSequence = issueMapper.selectMaxIssueKeySequence(request.getProjectId(), keyPrefix);
+        int nextNum = (maxSequence == null ? 0 : maxSequence) + 1;
         String key = project.getKey() + "-" + nextNum;
 
         Issue issue = new Issue();
@@ -89,6 +87,7 @@ public class IssueService {
         issue.setUserRole(request.getUserRole());
         issue.setUserGoal(request.getUserGoal());
         issue.setBusinessValue(request.getBusinessValue());
+        issue.setAcceptanceCriteria(IssueDTO.toJson(request.getAcceptanceCriteria()));
         issue.setEpic(request.getEpic());
         issue.setParentId(request.getParentId());
         // BUG fields
@@ -117,6 +116,7 @@ public class IssueService {
         }
 
         issueMapper.insert(issue);
+        issueVersionService.recordCurrent(issue, reporterId, "CREATE", "创建初始版本");
 
         // Activity log
         User reporter = userMapper.selectById(reporterId);
@@ -159,8 +159,32 @@ public class IssueService {
 
     @Transactional
     public void update(UpdateRequest request, Long operatorId) {
+        updateInternal(request, operatorId, false, "DIRECT_EDIT", "直接编辑");
+    }
+
+    @Transactional
+    public void applyApprovedChange(Long issueId, Map<String, Object> proposedChanges,
+                                    Long reviewerId, String changeReason) {
+        UpdateRequest request = objectMapper.convertValue(proposedChanges, UpdateRequest.class);
+        request.setId(issueId);
+        request.setClearFields(proposedChanges.entrySet().stream()
+                .filter(entry -> entry.getValue() == null)
+                .map(Map.Entry::getKey)
+                .collect(Collectors.toSet()));
+        updateInternal(request, reviewerId, true, "CHANGE_APPROVED",
+                changeReason == null || changeReason.isBlank() ? "变更申请已通过" : changeReason);
+    }
+
+    private void updateInternal(UpdateRequest request, Long operatorId, boolean allowGovernedChanges,
+                                String versionSource, String changeSummary) {
         Issue issue = issueMapper.selectById(request.getId());
         if (issue == null) throw new BusinessException(ResultCode.ISSUE_NOT_FOUND);
+        issueVersionService.ensureInitialSnapshot(issue, operatorId);
+
+        if (!allowGovernedChanges && requiresChangeApproval(issue) && hasGovernedChanges(request, issue)) {
+            throw new BusinessException(ResultCode.CONFLICT,
+                    "该工作项已进入 Sprint，请提交变更申请后再修改需求字段");
+        }
 
         Long oldAssigneeId = issue.getAssigneeId();
         String oldStatus = issue.getStatus();
@@ -185,6 +209,9 @@ public class IssueService {
         if (request.getUserRole() != null) issue.setUserRole(request.getUserRole());
         if (request.getUserGoal() != null) issue.setUserGoal(request.getUserGoal());
         if (request.getBusinessValue() != null) issue.setBusinessValue(request.getBusinessValue());
+        if (request.getAcceptanceCriteria() != null) {
+            issue.setAcceptanceCriteria(IssueDTO.toJson(request.getAcceptanceCriteria()));
+        }
         if (request.getEpic() != null) issue.setEpic(request.getEpic());
         if (request.getParentId() != null) {
             Issue parent = issueMapper.selectById(request.getParentId());
@@ -204,7 +231,30 @@ public class IssueService {
         if (request.getFoundVersion() != null) issue.setFoundVersion(request.getFoundVersion());
         if (request.getFixedVersion() != null) issue.setFixedVersion(request.getFixedVersion());
 
-        issueMapper.updateById(issue);
+        Set<String> clearFields = request.getClearFields() == null
+                ? Collections.emptySet() : request.getClearFields();
+        if (clearFields.contains("description")) issue.setDescription(null);
+        if (clearFields.contains("dueDate")) issue.setDueDate(null);
+        if (clearFields.contains("storyPoints")) issue.setStoryPoints(null);
+        if (clearFields.contains("sprintId")) issue.setSprintId(null);
+        if (clearFields.contains("severity")) issue.setSeverity(null);
+        if (clearFields.contains("stepsToRepro")) issue.setStepsToRepro(null);
+        if (clearFields.contains("planStartDate")) issue.setPlanStartDate(null);
+        if (clearFields.contains("planEndDate")) issue.setPlanEndDate(null);
+        if (clearFields.contains("dependencies")) issue.setDependencies(null);
+        if (clearFields.contains("acceptanceCriteria")) issue.setAcceptanceCriteria(null);
+        if (clearFields.contains("userRole")) issue.setUserRole(null);
+        if (clearFields.contains("userGoal")) issue.setUserGoal(null);
+        if (clearFields.contains("businessValue")) issue.setBusinessValue(null);
+        if (clearFields.contains("epic")) issue.setEpic(null);
+        if (clearFields.contains("environment")) issue.setEnvironment(null);
+        if (clearFields.contains("expectedResult")) issue.setExpectedResult(null);
+        if (clearFields.contains("actualResult")) issue.setActualResult(null);
+        if (clearFields.contains("foundVersion")) issue.setFoundVersion(null);
+        if (clearFields.contains("fixedVersion")) issue.setFixedVersion(null);
+
+        updateWithClearedFields(issue, clearFields);
+        issueVersionService.recordCurrent(issue, operatorId, versionSource, changeSummary);
 
         // Notifications
         if (operatorId != null) {
@@ -291,6 +341,62 @@ public class IssueService {
         }
     }
 
+    private void updateWithClearedFields(Issue issue, Set<String> clearFields) {
+        if (clearFields.isEmpty()) {
+            issueMapper.updateById(issue);
+            return;
+        }
+        LambdaUpdateWrapper<Issue> update = new LambdaUpdateWrapper<Issue>()
+                .eq(Issue::getId, issue.getId());
+        if (clearFields.contains("description")) update.set(Issue::getDescription, null);
+        if (clearFields.contains("dueDate")) update.set(Issue::getDueDate, null);
+        if (clearFields.contains("storyPoints")) update.set(Issue::getStoryPoints, null);
+        if (clearFields.contains("sprintId")) update.set(Issue::getSprintId, null);
+        if (clearFields.contains("severity")) update.set(Issue::getSeverity, null);
+        if (clearFields.contains("stepsToRepro")) update.set(Issue::getStepsToRepro, null);
+        if (clearFields.contains("planStartDate")) update.set(Issue::getPlanStartDate, null);
+        if (clearFields.contains("planEndDate")) update.set(Issue::getPlanEndDate, null);
+        if (clearFields.contains("dependencies")) update.set(Issue::getDependencies, null);
+        if (clearFields.contains("acceptanceCriteria")) {
+            update.set(Issue::getAcceptanceCriteria, null);
+        }
+        if (clearFields.contains("userRole")) update.set(Issue::getUserRole, null);
+        if (clearFields.contains("userGoal")) update.set(Issue::getUserGoal, null);
+        if (clearFields.contains("businessValue")) update.set(Issue::getBusinessValue, null);
+        if (clearFields.contains("epic")) update.set(Issue::getEpic, null);
+        if (clearFields.contains("environment")) update.set(Issue::getEnvironment, null);
+        if (clearFields.contains("expectedResult")) update.set(Issue::getExpectedResult, null);
+        if (clearFields.contains("actualResult")) update.set(Issue::getActualResult, null);
+        if (clearFields.contains("foundVersion")) update.set(Issue::getFoundVersion, null);
+        if (clearFields.contains("fixedVersion")) update.set(Issue::getFixedVersion, null);
+        issueMapper.update(issue, update);
+    }
+
+    private boolean requiresChangeApproval(Issue issue) {
+        return issue.getSprintId() != null && !"DONE".equals(issue.getStatus());
+    }
+
+    private boolean hasGovernedChanges(UpdateRequest request, Issue issue) {
+        return changed(request.getTitle(), issue.getTitle())
+                || changed(request.getDescription(), issue.getDescription())
+                || changed(request.getPriority(), issue.getPriority())
+                || changed(request.getDueDate(), issue.getDueDate())
+                || changed(request.getStoryPoints(), issue.getStoryPoints())
+                || changed(request.getSprintId(), issue.getSprintId())
+                || changed(request.getPlanStartDate(), issue.getPlanStartDate())
+                || changed(request.getPlanEndDate(), issue.getPlanEndDate())
+                || changed(request.getDependencies(), issue.getDependencies())
+                || changed(request.getUserRole(), issue.getUserRole())
+                || changed(request.getUserGoal(), issue.getUserGoal())
+                || changed(request.getBusinessValue(), issue.getBusinessValue())
+                || changed(request.getAcceptanceCriteria(),
+                        IssueDTO.parseAcceptanceCriteria(issue.getAcceptanceCriteria()));
+    }
+
+    private boolean changed(Object requested, Object current) {
+        return requested != null && !Objects.equals(requested, current);
+    }
+
     @Transactional
     public void delete(Long issueId, Long operatorId) {
         Issue issue = issueMapper.selectById(issueId);
@@ -324,6 +430,15 @@ public class IssueService {
             issueLabelMapper.delete(new LambdaQueryWrapper<IssueLabel>()
                 .eq(IssueLabel::getIssueId, issueId));
         } catch (Exception e) { log.error("删除任务{}关联标签失败", issueId, e); }
+
+        try {
+            issueVersionMapper.delete(new LambdaQueryWrapper<IssueVersion>()
+                    .eq(IssueVersion::getIssueId, issueId));
+            issueChangeRequestMapper.delete(new LambdaQueryWrapper<IssueChangeRequest>()
+                    .eq(IssueChangeRequest::getIssueId, issueId));
+            issueReviewMapper.delete(new LambdaQueryWrapper<IssueReview>()
+                    .eq(IssueReview::getIssueId, issueId));
+        } catch (Exception e) { log.error("删除任务{}治理记录失败", issueId, e); }
 
         // 清理相关通知
         try {
@@ -360,7 +475,13 @@ public class IssueService {
     }
 
     public List<IssueVO> query(QueryRequest request) {
+        return query(request, null);
+    }
+
+    public List<IssueVO> query(QueryRequest request, Collection<Long> allowedProjectIds) {
+        if (allowedProjectIds != null && allowedProjectIds.isEmpty()) return List.of();
         LambdaQueryWrapper<Issue> qw = new LambdaQueryWrapper<>();
+        if (allowedProjectIds != null) qw.in(Issue::getProjectId, allowedProjectIds);
         if (request.getProjectId() != null) qw.eq(Issue::getProjectId, request.getProjectId());
         if (request.getSprintId() != null) qw.eq(Issue::getSprintId, request.getSprintId());
         if (request.getAssigneeId() != null) qw.eq(Issue::getAssigneeId, request.getAssigneeId());
@@ -407,6 +528,7 @@ public class IssueService {
         Issue issue = issueMapper.selectById(issueId);
         if (issue == null) throw new BusinessException(ResultCode.ISSUE_NOT_FOUND);
         if (!"STORY".equals(issue.getType())) throw new BusinessException(ResultCode.BAD_REQUEST, "只有故事(STORY)才能添加验收标准");
+        assertAcceptanceCriteriaDirectEdit(issue);
 
         List<AcceptanceCriterion> list = IssueDTO.parseAcceptanceCriteria(issue.getAcceptanceCriteria());
         AcceptanceCriterion ac = new AcceptanceCriterion();
@@ -417,6 +539,7 @@ public class IssueService {
 
         issue.setAcceptanceCriteria(IssueDTO.toJson(list));
         issueMapper.updateById(issue);
+        issueVersionService.recordCurrent(issue, issue.getReporterId(), "ACCEPTANCE_CRITERIA", "添加验收标准");
         return list;
     }
 
@@ -424,6 +547,7 @@ public class IssueService {
     public List<AcceptanceCriterion> updateAcceptanceCriteria(Long issueId, String criteriaId, AcceptanceCriterion update) {
         Issue issue = issueMapper.selectById(issueId);
         if (issue == null) throw new BusinessException(ResultCode.ISSUE_NOT_FOUND);
+        assertAcceptanceCriteriaDirectEdit(issue);
 
         List<AcceptanceCriterion> list = IssueDTO.parseAcceptanceCriteria(issue.getAcceptanceCriteria());
         for (int i = 0; i < list.size(); i++) {
@@ -436,6 +560,7 @@ public class IssueService {
 
         issue.setAcceptanceCriteria(IssueDTO.toJson(list));
         issueMapper.updateById(issue);
+        issueVersionService.recordCurrent(issue, issue.getReporterId(), "ACCEPTANCE_CRITERIA", "更新验收标准");
         return list;
     }
 
@@ -443,13 +568,22 @@ public class IssueService {
     public List<AcceptanceCriterion> deleteAcceptanceCriteria(Long issueId, String criteriaId) {
         Issue issue = issueMapper.selectById(issueId);
         if (issue == null) throw new BusinessException(ResultCode.ISSUE_NOT_FOUND);
+        assertAcceptanceCriteriaDirectEdit(issue);
 
         List<AcceptanceCriterion> list = IssueDTO.parseAcceptanceCriteria(issue.getAcceptanceCriteria());
         list.removeIf(c -> c.getId().equals(criteriaId));
 
         issue.setAcceptanceCriteria(IssueDTO.toJson(list));
         issueMapper.updateById(issue);
+        issueVersionService.recordCurrent(issue, issue.getReporterId(), "ACCEPTANCE_CRITERIA", "删除验收标准");
         return list;
+    }
+
+    private void assertAcceptanceCriteriaDirectEdit(Issue issue) {
+        if (requiresChangeApproval(issue)) {
+            throw new BusinessException(ResultCode.CONFLICT,
+                    "该工作项已进入 Sprint，请通过变更申请修改验收标准");
+        }
     }
 
     // ---- toVO helper ----

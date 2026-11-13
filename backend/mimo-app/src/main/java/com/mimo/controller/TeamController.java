@@ -28,7 +28,8 @@ public class TeamController {
     }
 
     @GetMapping("/{id}")
-    public Result<TeamVO> getById(@PathVariable Long id) {
+    public Result<TeamVO> getById(@PathVariable Long id, Authentication auth) {
+        assertCanReadTeam(id, getLongPrincipal(auth));
         return Result.success(teamService.getById(id));
     }
 
@@ -46,7 +47,8 @@ public class TeamController {
     }
 
     @GetMapping("/{id}/members")
-    public Result<List<MemberVO>> listMembers(@PathVariable Long id) {
+    public Result<List<MemberVO>> listMembers(@PathVariable Long id, Authentication auth) {
+        assertCanReadTeam(id, getLongPrincipal(auth));
         return Result.success(teamService.listMembers(id));
     }
 
@@ -115,5 +117,12 @@ public class TeamController {
         Object p = auth.getPrincipal();
         if (p instanceof Number) return ((Number) p).longValue();
         throw new BusinessException(ResultCode.UNAUTHORIZED, "未登录或登录状态异常");
+    }
+
+    private void assertCanReadTeam(Long teamId, Long userId) {
+        if (!teamService.isTeamMember(teamId, userId)
+                && !teamService.isTeamAdmin(teamId, userId)) {
+            throw new BusinessException(ResultCode.FORBIDDEN, "无权查看该团队");
+        }
     }
 }

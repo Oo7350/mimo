@@ -4,11 +4,15 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mimo.common.Result;
+import com.mimo.common.BusinessException;
+import com.mimo.common.ResultCode;
 import com.mimo.entity.ActivityLog;
 import com.mimo.mapper.ActivityLogMapper;
+import com.mimo.service.ProjectAccessService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.StringUtils;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -28,6 +32,7 @@ import java.util.List;
 public class AuditLogController {
 
     private final ActivityLogMapper activityLogMapper;
+    private final ProjectAccessService projectAccessService;
 
     /**
      * 分页查询审计日志
@@ -42,8 +47,10 @@ public class AuditLogController {
             @RequestParam(required = false) Long targetId,
             @RequestParam(required = false) String requestId,
             @RequestParam(required = false) String startTime,
-            @RequestParam(required = false) String endTime
+            @RequestParam(required = false) String endTime,
+            Authentication auth
     ) {
+        assertAdmin(auth);
         size = Math.min(size, 100);
         QueryWrapper<ActivityLog> qw = new QueryWrapper<ActivityLog>().orderByDesc("created_at");
         if (userId != null) qw.eq("user_id", userId);
@@ -64,8 +71,17 @@ public class AuditLogController {
     public Result<List<ActivityLog>> listByTarget(
             @RequestParam String targetType,
             @RequestParam Long targetId,
-            @RequestParam(defaultValue = "50") int limit
+            @RequestParam(defaultValue = "50") int limit,
+            Authentication auth
     ) {
+        Long userId = userId(auth);
+        if ("ISSUE".equalsIgnoreCase(targetType)) {
+            projectAccessService.requireIssue(targetId, userId);
+        } else if ("PROJECT".equalsIgnoreCase(targetType)) {
+            projectAccessService.requireProject(targetId, userId);
+        } else {
+            assertAdmin(auth);
+        }
         limit = Math.min(limit, 200);
         List<ActivityLog> list = activityLogMapper.selectList(
                 new QueryWrapper<ActivityLog>()
@@ -74,5 +90,17 @@ public class AuditLogController {
                         .orderByDesc("created_at")
                         .last("LIMIT " + limit));
         return Result.success(list);
+    }
+
+    private void assertAdmin(Authentication auth) {
+        if (!projectAccessService.isSystemAdmin(userId(auth))) {
+            throw new BusinessException(ResultCode.FORBIDDEN, "仅系统管理员可查看全量审计日志");
+        }
+    }
+
+    private Long userId(Authentication auth) {
+        Object principal = auth.getPrincipal();
+        if (principal instanceof Number) return ((Number) principal).longValue();
+        throw new BusinessException(ResultCode.UNAUTHORIZED, "未登录或登录状态异常");
     }
 }

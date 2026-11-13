@@ -1,5 +1,6 @@
 package com.mimo.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -10,6 +11,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 public class IssueDTO {
 
@@ -41,6 +43,7 @@ public class IssueDTO {
         private String userRole;
         private String userGoal;
         private String businessValue;
+        private List<AcceptanceCriterion> acceptanceCriteria;
         private String epic;
         private Long parentId;
         // BUG 专属
@@ -75,6 +78,7 @@ public class IssueDTO {
         private String userRole;
         private String userGoal;
         private String businessValue;
+        private List<AcceptanceCriterion> acceptanceCriteria;
         private String epic;
         private Long parentId;
         // BUG 专属
@@ -84,6 +88,8 @@ public class IssueDTO {
         private String actualResult;
         private String foundVersion;
         private String fixedVersion;
+        @JsonIgnore
+        private Set<String> clearFields = Set.of();
     }
 
     @Data
