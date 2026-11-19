@@ -35,7 +35,13 @@ Mimo is a lightweight Trello-like project management platform for small teams. I
 
 **Important**: Docker is not installed on this machine. Always use the local MySQL and Redis services. Set `JAVA_HOME=D:\Java\jdk-21` before running Maven (the system default is Java 8).
 
-**GitHub SSH**: Configured to use `ssh.github.com:443` (port 22 blocked by GFW). Push via HTTPS instead.
+**GitHub push**: `github.com` 的 HTTPS/SSH 都被网络阻断，需走本机 Clash Verge 代理（mixed port `7897`，系统代理 `127.0.0.1:7897`）：
+
+```bash
+git -c http.proxy=http://127.0.0.1:7897 -c https.proxy=http://127.0.0.1:7897 push origin master
+```
+
+若 7897 未监听，先启动 `C:\Program Files\Clash Verge\clash-verge.exe` 再推送。本机 `~/.ssh/id_rsa` 未在 GitHub 注册，暂不能用 SSH 推送；`~/.ssh/config` 里的 `github.com → ssh.github.com:443` 映射保留待用。
 
 ## Commands
 
