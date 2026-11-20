@@ -44,6 +44,12 @@ public class Issue {
     private String actualResult;
     private String foundVersion;
     private String fixedVersion;
+    // 进行中计时（v2.16.0）：进入进行中记录开始时间，离开时把时长累加进 seconds
+    // 注意：停止计时要把 started_at 置空，而 MyBatis-Plus 默认忽略 null 字段，
+    // 所以这里必须用 updateStrategy = IGNORED，否则"停止计时"永远落不了库。
+    @TableField(updateStrategy = FieldStrategy.IGNORED)
+    private LocalDateTime inProgressStartedAt;
+    private Long inProgressSeconds;
     // Timestamps
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;

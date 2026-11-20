@@ -132,6 +132,9 @@ public class IssueDTO {
         private List<IssueLabelVO> labels;
         private LocalDateTime createdAt;
         private LocalDateTime updatedAt;
+        // 进行中计时（v2.16.0）：startedAt 非空表示正在计时；seconds 是此前累计的秒数
+        private LocalDateTime inProgressStartedAt;
+        private Long inProgressSeconds;
         // STORY 专属
         private String userRole;
         private String userGoal;

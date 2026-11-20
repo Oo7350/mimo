@@ -10,11 +10,13 @@ import com.mimo.dto.IssueDTO.IssueVO;
 import com.mimo.dto.IssueDTO.IssueLabelVO;
 import com.mimo.entity.*;
 import com.mimo.mapper.*;
+import com.mimo.util.IssueTimerUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -134,6 +136,7 @@ public class BoardService {
         if (issue == null) throw new BusinessException(ResultCode.ISSUE_NOT_FOUND);
 
         Long oldColumnId = issue.getColumnId();
+        String oldStatus = issue.getStatus();
 
         // 工作流校验：如果项目定义了该类型的工作流，检查转换是否合法
         workflowService.validateTransition(issue, oldColumnId, targetColumnId, operatorId);
@@ -168,6 +171,9 @@ public class BoardService {
                 issue.setStatus(newStatus);
             }
         }
+
+        // 进行中自动计时：进入进行中开始计时，离开时把本轮时长累加进 inProgressSeconds
+        IssueTimerUtil.apply(issue, oldStatus);
 
         issueMapper.updateById(issue);
         logMoveActivity(issue, oldColumnId, targetCol, operatorId);
@@ -301,6 +307,9 @@ public class BoardService {
         vo.setPriority(issue.getPriority());
         vo.setStatus(issue.getStatus());
         vo.setColumnId(issue.getColumnId());
+        // 进行中计时字段，前端据此实时渲染计时器
+        vo.setInProgressStartedAt(issue.getInProgressStartedAt());
+        vo.setInProgressSeconds(issue.getInProgressSeconds());
         vo.setSprintId(issue.getSprintId());
         vo.setDueDate(issue.getDueDate());
         vo.setSortOrder(issue.getSortOrder());

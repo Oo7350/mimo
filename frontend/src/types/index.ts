@@ -59,6 +59,10 @@ export interface IssueCard {
   dueDate?: string
   reporterId?: number
   reporterName?: string
+  /** 进行中自动计时：非空表示正在计时（本轮开始时间） */
+  inProgressStartedAt?: string | null
+  /** 进行中自动计时：此前累计的秒数（不含正在跑的这一轮） */
+  inProgressSeconds?: number
   sprintId?: number
   projectId?: number
   description?: string

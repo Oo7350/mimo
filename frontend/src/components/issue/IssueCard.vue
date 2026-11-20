@@ -9,6 +9,14 @@
     <BugCard v-else-if="issue.type === 'BUG'" :issue="issue" />
     <TaskCard v-else :issue="issue" />
 
+    <!-- 进行中计时：只要任务停在「进行中」列就一直走 -->
+    <el-tooltip :content="timerTooltip" placement="left" :show-after="300">
+      <div v-if="isRunning || elapsedSeconds > 0" :class="['issue-card__timer', { 'is-running': isRunning }]">
+        <el-icon :size="11"><Timer /></el-icon>
+        <span>{{ timerDisplay }}</span>
+      </div>
+    </el-tooltip>
+
     <!-- Hover 快捷操作 -->
     <Transition name="actions-fade">
       <div v-if="hovering" class="issue-card__actions" @click.stop @mousedown.stop>
@@ -33,7 +41,8 @@ import type { IssueCard } from '@/types'
 import StoryCard from './story/StoryCard.vue'
 import BugCard from './bug/BugCard.vue'
 import TaskCard from './task/TaskCard.vue'
-import { EditPen, Check } from '@element-plus/icons-vue'
+import { EditPen, Check, Timer } from '@element-plus/icons-vue'
+import { useIssueTimer } from '@/composables/useIssueTimer'
 
 const props = defineProps<{ issue: IssueCard }>()
 defineEmits<{
@@ -41,6 +50,14 @@ defineEmits<{
   edit: [issue: IssueCard]
   complete: [issue: IssueCard]
 }>()
+
+// 进行中自动计时（v2.16.0）
+const {
+  isRunning,
+  elapsedSeconds,
+  display: timerDisplay,
+  tooltip: timerTooltip,
+} = useIssueTimer(() => props.issue)
 
 // BUG 类型用 bugStatus 判断，其他类型用 status 判断
 const isDone = computed(() => {
@@ -52,6 +69,40 @@ const hovering = ref(false)
 </script>
 
 <style scoped lang="scss">
+/* 进行中计时徽标：右下角小胶囊，等宽数字避免秒数跳动时抖动 */
+.issue-card__timer {
+  position: absolute;
+  right: 8px;
+  bottom: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+  pointer-events: none;
+  z-index: 2;
+
+  &.is-running {
+    color: var(--color-primary);
+    background: var(--color-primary-lighter);
+
+    .el-icon {
+      animation: issue-timer-blink 1.6s ease-in-out infinite;
+    }
+  }
+}
+
+@keyframes issue-timer-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
 .issue-card-wrapper {
   position: relative;
   margin-bottom: 10px;

@@ -10,6 +10,7 @@ import com.mimo.dto.IssueDTO;
 import com.mimo.dto.IssueDTO.*;
 import com.mimo.entity.*;
 import com.mimo.mapper.*;
+import com.mimo.util.IssueTimerUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -252,6 +253,9 @@ public class IssueService {
         if (clearFields.contains("actualResult")) issue.setActualResult(null);
         if (clearFields.contains("foundVersion")) issue.setFoundVersion(null);
         if (clearFields.contains("fixedVersion")) issue.setFixedVersion(null);
+
+        // 进行中自动计时：直接编辑把状态改成「进行中」/改出「进行中」时，同步开始/停止计时
+        IssueTimerUtil.apply(issue, oldStatus);
 
         updateWithClearedFields(issue, clearFields);
         issueVersionService.recordCurrent(issue, operatorId, versionSource, changeSummary);
@@ -733,6 +737,9 @@ public class IssueService {
 
         vo.setCreatedAt(issue.getCreatedAt());
         vo.setUpdatedAt(issue.getUpdatedAt());
+        // 进行中计时（v2.16.0）
+        vo.setInProgressStartedAt(issue.getInProgressStartedAt());
+        vo.setInProgressSeconds(issue.getInProgressSeconds());
         return vo;
     }
 
