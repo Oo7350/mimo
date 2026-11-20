@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Mimo is a lightweight Trello-like project management platform for small teams. It supports team collaboration, kanban task tracking, and progress visualization.
 
-- **Version**: v2.15.7 — Frontend Bundle Size Optimization + Board Null-Column Fix (2026-11-20)
+- **Version**: v2.15.8 — Three-layer Navigation (global + project-scoped sidebar) + Broken-link Fixes (2026-11-20)
 - **Previous**: v2.15.6 — Delivery Analytics + AI Sprint Planning + RAG + Access Hardening + Service Tests (2026-11-13)
 - **GitHub**: https://github.com/Oo7350/mimo
 - **API docs**: `接口文档.md` (70+ endpoints, Chinese)
