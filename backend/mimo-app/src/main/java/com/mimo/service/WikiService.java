@@ -57,8 +57,13 @@ public class WikiService {
 
     // ============ 树形目录 ============
 
-    public List<WikiDTO.TreeVO> getTree(Long projectId) {
-        requireProject(projectId);
+    /**
+     * 目录树（轻量）。
+     * 注意：这里必须校验项目成员身份——目录里带标题、作者、更新时间，
+     * 以前只校验"项目存在"，任何登录用户换一个 projectId 就能列出别人项目的知识库结构。
+     */
+    public List<WikiDTO.TreeVO> getTree(Long projectId, Long userId) {
+        requireMember(projectId, userId);
         List<WikiPage> pages = wikiPageMapper.listTreeByProject(projectId);
         Map<Long, String> nameMap = loadUserNames(pages.stream()
                 .map(WikiPage::getAuthorId).collect(Collectors.toSet()));

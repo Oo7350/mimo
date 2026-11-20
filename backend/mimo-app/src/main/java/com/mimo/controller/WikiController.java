@@ -22,10 +22,10 @@ public class WikiController {
 
     private final WikiService wikiService;
 
-    /** 目录树（轻量，不含正文） */
+    /** 目录树（轻量，不含正文）；需要项目成员身份 */
     @GetMapping("/tree")
     public Result<List<WikiDTO.TreeVO>> tree(@RequestParam Long projectId, Authentication auth) {
-        return Result.success(wikiService.getTree(projectId));
+        return Result.success(wikiService.getTree(projectId, getUserId(auth)));
     }
 
     /** 页面详情（含正文，浏览量 +1） */

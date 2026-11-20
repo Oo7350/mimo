@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-> **最新版本**：v2.16.1（2026-11-20）— AI 降级链路修复（无 Key 场景）+ 前端解包修正。详见末尾"版本变更记录"。
+> **最新版本**：v2.16.2（2026-11-20）— Wiki 目录越权修复 + 请求参数校验（400）。详见末尾"版本变更记录"。
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -84,6 +84,7 @@ node e2e/core-flows.mjs http://localhost:5173
 |---|---|---|
 | `e2e/core-flows.mjs` | 创建任务 / 拖拽进进行中（含自动计时）/ 评论 / 附件 / 验收 / 新建 Sprint | 6/6 PASS |
 | `e2e/ai-degrade.mjs` | AI 未配置提示条 / 对话友好说明 / 润色失败不改写正文 | 3/3 PASS |
+| `e2e/authz.mjs` | 外人打 23 个读接口全部 403 / 成员访问正常 / 缺参数 400 | 25/25 PASS |
 
 跑法与三个必踩的坑（driver.js 的 `driver-active` 会锁死全站点击、Element Plus 页签要 `dispatchEvent`、
 vuedraggable 不吃 `locator.dragTo`）见 `e2e/README.md`。
@@ -227,6 +228,21 @@ All v2.15 AI roadmap items are implemented; see `项目功能完善计划.md` §
 - **Board Sync Flow**: Drag → `PUT /api/board/issue/move` → backend updates issue + logs + WebSocket broadcast → all board subscribers receive event → optimistic UI update
 
 ## Version History
+
+### v2.16.2 — Wiki 目录越权修复 + 请求参数校验 (2026-11-20)
+
+KNOWN-017 的"越权场景未验证"补齐后首次运行即发现跨租户泄漏。
+
+- **BUG-076 [High]**：`GET /api/wiki/tree?projectId=` 只校验"项目存在"，不校验项目成员，
+  任何登录用户换个 projectId 就能列出别人项目的知识库目录（标题/作者/时间）。
+  改为 `getTree(projectId, userId)` + `requireMember()`，Controller 传入当前用户。
+- **BUG-077 [Medium]**：`GlobalExceptionHandler` 只接管了少数异常，缺参数、参数类型不对、
+  请求体不是合法 JSON、`@Valid` 失败全部落到兜底分支返回 500「服务器内部错误」。
+  现在分别返回 400 + 具体原因（`缺少必需参数: q` / `参数类型不正确: id`）。
+- **新增用例**：`e2e/authz.mjs`（接口级，25 条断言）——注册一个不在团队里的外人账号，
+  打 23 个项目/团队/Sprint/任务/管理端读接口，全部 403；同时断言成员自己访问仍为 200、
+  缺参数返回 400。另加 `WikiServiceTest` 2 项、`GlobalExceptionHandlerTest` 3 项，
+  后端测试 78 → 83 全绿。
 
 ### v2.16.1 — AI 降级链路修复（无 Key 场景）+ 前端解包修正 (2026-11-20)
 

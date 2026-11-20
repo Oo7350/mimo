@@ -28,6 +28,19 @@
 
 第 3 条是回归 `BUG-072`：曾经润色把「服务未配置」当成结果返回，用户点「应用」直接把描述覆盖掉。
 
+## 越权用例（`authz.mjs`）
+
+接口级、不需要浏览器。注册一个**不属于任何团队**的临时账号（`probe-*`），
+拿它去打 23 个项目 / 团队 / Sprint / 任务 / 管理端读接口：
+
+| 断言 | 期望 |
+|---|---|
+| 每个越权目标 | 401 或 403（返回 200 + code=200 即视为泄漏） |
+| 成员自己读 Wiki 目录 | 200（防止"一刀切"式修复） |
+| 缺少必需参数 | 400 + 具体原因（不能是 500） |
+
+只读，不改任何业务数据（会注册临时账号）。对应 `bug-log.md` KNOWN-017 的越权项与 **BUG-076**。
+
 ## 怎么跑
 
 前置：MySQL :3306、后端 :8080、前端 :5173 都已启动，且库里有项目 id=1（种子数据或自己造）。
@@ -41,8 +54,9 @@ npm i playwright && npx playwright install chromium
 # 2) 跑用例（回到仓库根目录）
 export PLAYWRIGHT_BROWSERS_PATH=<浏览器安装目录>          # Windows: $env:PLAYWRIGHT_BROWSERS_PATH
 export PLAYWRIGHT_MODULE=<上一步目录>/node_modules/playwright  # 让脚本从仓库外解析 playwright
-node e2e/core-flows.mjs http://localhost:5173   # 核心业务链路 6 条
-node e2e/ai-degrade.mjs http://localhost:5173  # AI 未配置场景 3 条
+node e2e/core-flows.mjs http://localhost:5173   # 核心业务链路 6 条（要前端 :5173）
+node e2e/ai-degrade.mjs http://localhost:5173  # AI 未配置场景 3 条（要前端 :5173）
+node e2e/authz.mjs http://localhost:8080/api   # 越权拦截 25 条（只要后端 :8080）
 ```
 
 Playwright 装在仓库外时靠 `PLAYWRIGHT_MODULE` 指过去；直接装在仓库里则不用设，脚本自己会找到。
@@ -62,6 +76,5 @@ Playwright 装在仓库外时靠 `PLAYWRIGHT_MODULE` 指过去；直接装在仓
 
 - 变更审批（申请 → 审批 → 自动执行）
 - Sprint 启动 / 完成 / 未完成任务迁移
-- 越权场景（普通成员访问他人项目应 403）
 - 导出 PDF / 导入 Excel
 - 配置了真实 Key 后的 AI 正常返回路径（RAG 引用质量、AI Sprint 规划）

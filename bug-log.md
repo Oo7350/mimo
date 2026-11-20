@@ -4,6 +4,45 @@
 
 ---
 
+## v2.16.2 — Wiki 目录越权修复 + 请求参数校验 (2026-11-20)
+
+> 触发原因：KNOWN-017 的"越权场景未验证"一直没做。补了一套接口级越权用例
+> （`e2e/authz.mjs`，注册一个不在团队里的外人账号去打 23 个读接口），第一次跑就漏了一个。
+
+### BUG-076: Wiki 目录树未校验项目成员，任何登录用户可列出他人知识库结构 [High]
+
+- **严重程度**: High（跨租户信息泄漏，无需任何特殊权限）
+- **发现版本**: v2.16.2（越权用例首跑）
+- **文件**: `backend/mimo-app/src/main/java/com/mimo/service/WikiService.java`、`controller/WikiController.java`
+- **现象**: `GET /api/wiki/tree?projectId=1` 用一个刚注册、不属于任何团队的外人账号调用，
+  返回 200 与完整目录：页面标题、作者、更新时间、层级结构。
+  同一批对照接口（页面详情 `/wiki/pages/{id}`、版本历史、附件列表）都正确返回 403「无权访问该项目知识库」。
+- **根因**: `getTree(Long projectId)` 只调了 `requireProject(projectId)`（确认项目存在），
+  漏掉了其它 Wiki 接口都在用的 `requireMember(projectId, userId)`；
+  Controller 也没把 `Authentication` 里的 userId 传进来——签名里压根没有 userId，所以"忘了校验"在编译期看不出来。
+- **修复**: `getTree(Long projectId, Long userId)` 内部改调 `requireMember`，Controller 传入 `getUserId(auth)`；
+  成员访问路径实测仍为 200，没有把授权改成一刀切。
+- **验证**: `e2e/authz.mjs` 25 条断言全 PASS（23 个越权目标全部 403、成员读目录 200、缺参数 400）；
+  新增 `WikiServiceTest` 2 项回归（非成员被拦且不再查目录内容、项目不存在报 404）
+
+### BUG-077: 缺少必需参数返回「服务器内部错误」，把调用方错误伪装成服务端崩溃 [Medium]
+
+- **严重程度**: Medium（排障成本高：前端少传一个参数，看起来像后端挂了）
+- **发现版本**: v2.16.2
+- **文件**: `backend/mimo-app/src/main/java/com/mimo/common/GlobalExceptionHandler.java`
+- **现象**: `GET /api/wiki/search?projectId=1`（漏了 `q`）返回
+  `{"code":500,"message":"服务器内部错误"}`，HTTP 也是 200；`GET /api/issues/abc`（id 非数字）同样 500。
+- **根因**: `GlobalExceptionHandler` 只处理了 `BusinessException` / `BindException` / `AccessDeniedException`，
+  `MissingServletRequestParameterException`、`TypeMismatchException`、`HttpMessageNotReadableException`、
+  `MethodArgumentNotValidException` 全部落到兜底的 `Exception` 分支 → 500。
+- **修复**: 四类调用方错误逐一接管，统一返回 400 + 具体原因
+  （`缺少必需参数: q` / `参数类型不正确: id` / `请求体格式不正确，需要合法的 JSON` / 字段校验消息）；
+  路径变量转换失败时 `propertyName` 为 null 的坑用 `MethodArgumentTypeMismatchException.getName()` 单独处理。
+- **验证**: `GlobalExceptionHandlerTest` 3 项；接口实测：
+  缺 `q` → 400「缺少必需参数: q」，`/issues/abc` → 400「参数类型不正确: id」
+
+---
+
 ## v2.16.1 — AI 降级链路修复（无 Key 场景）与前端解包修复 (2026-11-20)
 
 > 触发原因：KNOWN-018「未配置 AI Key 时的用户提示未验证」一直没有实测。按"AI 不可用时
@@ -973,7 +1012,8 @@
 - **已解决（2026-11-20）**: 新增 `e2e/core-flows.mjs`，用真实浏览器 + 接口断言覆盖 6 条链路，
   当前 **6/6 全绿**：创建任务、拖拽进入进行中（含自动计时启动）、发表评论、上传附件、提交验收、新建 Sprint；
   运行结果逐次写入 `e2e/last-run.md`，失败会截图。跑法与踩坑记录见 `e2e/README.md`
-- **仍未覆盖**: 变更审批（申请 → 审批 → 自动执行）、Sprint 启动/完成与未完成任务迁移、越权访问 403、Excel 导入 / PDF 导出、WebSocket 广播一致性
+- **已补充（2026-11-20 / v2.16.2）**: 越权访问 403 已覆盖——`e2e/authz.mjs` 注册一个不在团队里的外人账号，打 23 个项目/团队/Sprint/任务/管理端读接口，全被 403 拦住，同时验证成员自己访问仍为 200；首跑即发现 Wiki 目录泄漏（BUG-076）
+- **仍未覆盖**: 变更审批（申请 → 审批 → 自动执行）、Sprint 启动/完成与未完成任务迁移、Excel 导入 / PDF 导出、WebSocket 广播一致性
 - **风险**: 上述环节坏了仍不会被发现；后端只有 Service 层单测，前端其余页面无自动化
 - **建议**: 按 `e2e/README.md` 的"还没覆盖"清单继续补，最终接进 CI
 
@@ -1021,11 +1061,11 @@
 | 严重程度 | 数量 |
 |---------|------|
 | Critical | 5 |
-| High | 23 |
-| Medium | 17 |
+| High | 24 |
+| Medium | 18 |
 | Low | 10 |
 | **已知未修复** | **17** |
-| **总计** | **73** |
+| **总计** | **75** |
 
 | 模块 | Bug 数量 |
 |------|---------|
@@ -1044,5 +1084,7 @@
 | 交互引导 | 1 |
 | 性能 | 1 |
 | AI 降级/接口 | 4 |
+| 权限越权 | 1 |
+| 后端参数校验 | 1 |
 | 已知未修复 | 17 |
-| **总计** | **73** |
+| **总计** | **75** |
