@@ -233,7 +233,9 @@ const currentDelivery = ref<WebhookDeliveryLog | null>(null)
 
 async function loadProjects() {
   try {
-    const res = await request.get('/projects', { params: { size: 200 } })
+    // 后端没有 GET /api/projects（列表只有 /projects/my 与 /projects/team/{id}），
+    // 之前请求 /projects?size=200 会 405，导致「生效范围=项目」的下拉永远为空
+    const res = await request.get('/projects/my')
     projects.value = res.data?.data?.records || res.data?.data || []
   } catch {
     projects.value = []

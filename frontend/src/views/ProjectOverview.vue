@@ -375,8 +375,8 @@ function progressColor(pct: number) {
 
 async function fetchProjectStats() {
   try {
-    // 使用通用项目统计接口（不依赖 Sprint）
-    const res = await request.get(`/api/reports/stats/${projectId}`)
+    // request 的 baseURL 已经是 /api，这里再写 /api 前缀会变成 /api/api/... → 404
+    const res = await request.get(`/reports/stats/${projectId}`)
     stats.value = res.data
   } catch { /* no data */ }
 }
