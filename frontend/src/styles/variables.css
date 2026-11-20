@@ -48,6 +48,7 @@
   --text-primary: #0f172a;
   --text-regular: #334155;
   --text-secondary: #64748b;
+  --text-muted: #94a3b8;
   --text-placeholder: #cbd5e1;
   --text-sidebar: #6b7280;
   --text-sidebar-active: #ffffff;
@@ -109,31 +110,36 @@
   --color-primary: #818cf8;
   --color-primary-light: #a5b4fc;
   --color-primary-dark: #6366f1;
+  /* 浅紫底：亮色下是淡紫块，暗色下用低透明度的紫，避免出现大片浅色区域 */
+  --color-primary-lighter: rgba(99, 102, 241, 0.16);
 
-  --bg-page: #030304;
+  /* 纯黑（#030304）配近黑卡片会让层次全糊掉、长时间看很累；
+     改成"深蓝灰 + 明显的卡片层次"，卡片与页面的亮度差保持在可辨认范围。 */
+  --bg-page: #0b0d13;
   --bg-page-pattern:
-    radial-gradient(ellipse 800px 600px at 10% 0%, rgba(79, 70, 229, 0.1) 0%, transparent 60%),
-    radial-gradient(ellipse 600px 500px at 90% 100%, rgba(124, 58, 237, 0.06) 0%, transparent 55%);
-  --bg-card: #111114;
-  --bg-column: #0a0a0d;
-  --bg-hover: #1a1a1f;
-  --bg-sidebar: #060608;
-  --bg-sidebar-hover: #12121a;
-  --bg-sidebar-active: rgba(129, 140, 248, 0.15);
+    radial-gradient(ellipse 800px 600px at 10% 0%, rgba(79, 70, 229, 0.14) 0%, transparent 60%),
+    radial-gradient(ellipse 600px 500px at 90% 100%, rgba(124, 58, 237, 0.1) 0%, transparent 55%);
+  --bg-card: #151822;
+  --bg-column: #10131b;
+  --bg-hover: #1e2230;
+  --bg-sidebar: #0a0c12;
+  --bg-sidebar-hover: #171b26;
+  --bg-sidebar-active: rgba(129, 140, 248, 0.18);
 
-  --text-primary: #f1f5f9;
-  --text-regular: #cbd5e1;
-  --text-secondary: #64748b;
-  --text-placeholder: #334155;
-  --text-sidebar: #6b7280;
+  --text-primary: #e8ecf4;
+  --text-regular: #c3cad8;
+  --text-secondary: #94a3b8;
+  --text-muted: #7b8798;
+  --text-placeholder: #4b5566;
+  --text-sidebar: #8b94a6;
   --text-sidebar-active: #ffffff;
 
-  --border-color: #1e293b;
-  --border-color-light: #0f172a;
+  --border-color: #262b38;
+  --border-color-light: #1b1f2a;
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.5), 0 2px 4px rgba(0, 0, 0, 0.35);
-  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.6), 0 4px 8px rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.6), 0 2px 4px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.7), 0 4px 8px rgba(0, 0, 0, 0.5);
   --shadow-xl: 0 20px 60px rgba(0, 0, 0, 0.7), 0 8px 16px rgba(0, 0, 0, 0.45);
   --shadow-dialog: 0 32px 100px rgba(0, 0, 0, 0.8), 0 8px 24px rgba(0, 0, 0, 0.5);
   --shadow-card-hover: 0 16px 48px rgba(129, 140, 248, 0.2), 0 4px 12px rgba(0, 0, 0, 0.4);

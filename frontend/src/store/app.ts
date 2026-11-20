@@ -5,6 +5,9 @@ const STORAGE_KEY = "mimo-theme";
 
 function applyTheme(dark: boolean) {
   document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+  // Element Plus 的暗色主题依赖 <html class="dark"> + theme-chalk/dark/css-vars.css，
+  // 只设 data-theme 的话 el-dialog / el-table / el-calendar 等仍会是浅色。
+  document.documentElement.classList.toggle("dark", dark);
   localStorage.setItem(STORAGE_KEY, dark ? "dark" : "light");
 }
 

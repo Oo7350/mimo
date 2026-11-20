@@ -6,8 +6,8 @@
         <h1>
           <ShinyText
             :text="`${greeting}，${userStore.username}`"
-            color="#0f172a"
-            shine-color="#7c3aed"
+            color="var(--text-primary)"
+            shine-color="var(--color-accent)"
             :speed="3.2"
           />
         </h1>

@@ -669,9 +669,9 @@ async function handleGovernanceUpdated() {
   &__gantt-fields {
     margin-top: 16px;
     padding: 14px 16px;
-    background: linear-gradient(135deg, #f5f3ff 0%, #eef2ff 100%);
+    background: var(--color-primary-lighter);
     border-radius: 10px;
-    border: 1px solid #e0e7ff;
+    border: 1px solid var(--border-color);
   }
   &__gantt-title {
     display: flex;

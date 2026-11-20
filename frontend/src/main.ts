@@ -4,6 +4,8 @@ import * as ElementPlusIconsVue from "@element-plus/icons-vue";
 // Element Plus 组件改为按需引入（见 vite.config.ts 的 unplugin-vue-components）。
 // 这里只保留全量样式：组件 style 由 importStyle:false 关闭，统一由此处加载。
 import "element-plus/dist/index.css";
+// Element Plus 暗色主题变量：需要 <html class="dark"> 才会生效（见 store/app.ts 的 applyTheme）
+import "element-plus/theme-chalk/dark/css-vars.css";
 
 import App from "./App.vue";
 import router from "./router";

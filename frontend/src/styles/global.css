@@ -386,3 +386,39 @@ a:hover { color: var(--color-primary-dark); }
   color: var(--text-primary);
 }
 .stat-pill__label { font-size: 12.5px; color: var(--text-muted); margin-top: 3px; font-weight: 550; }
+
+/* ═══════════════════════════════════════════════════════════
+   暗色模式兜底
+   Element Plus 的暗色变量由 main.ts 引入的 dark/css-vars.css 提供，
+   但它只覆盖组件自身的 token；项目里仍有少量硬编码浅色（表头、斑马纹、
+   日历单元格、空状态插画），这里统一补齐。
+   ═══════════════════════════════════════════════════════════ */
+[data-theme="dark"] .el-card,
+[data-theme="dark"] .el-dialog,
+[data-theme="dark"] .el-drawer,
+[data-theme="dark"] .el-message-box {
+  background-color: var(--bg-card);
+}
+
+[data-theme="dark"] .el-table {
+  --el-table-bg-color: var(--bg-card);
+  --el-table-tr-bg-color: var(--bg-card);
+  --el-table-header-bg-color: #16161c;
+  --el-table-row-hover-bg-color: #1c1c24;
+  --el-table-border-color: var(--border-color);
+}
+
+[data-theme="dark"] .el-table th.el-table__cell { background: #16161c; }
+[data-theme="dark"] .el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell {
+  background: #14141a;
+}
+
+/* 日历里硬编码的浅色单元格（实际类名是 month-cell，不是 cal-cell） */
+[data-theme="dark"] .month-cell { background: var(--bg-card); }
+[data-theme="dark"] .month-cell.other { background: rgba(255, 255, 255, 0.025) !important; }
+[data-theme="dark"] .month-cell.today { background: rgba(64, 158, 255, 0.18) !important; }
+[data-theme="dark"] .month-cell:hover { background: rgba(255, 255, 255, 0.05) !important; }
+[data-theme="dark"] .month-cell .mcell-day { color: var(--text-regular); }
+
+/* 空状态插画在纯黑底上过亮 */
+[data-theme="dark"] .el-empty__image { opacity: 0.5; }

@@ -411,7 +411,8 @@ onUnmounted(()=>{if(notifTimer)clearInterval(notifTimer)})
 </script>
 
 <style scoped lang="scss">
-$primary:#409eff;$border:#e4e7ed;$text:#303133;$text2:#909399;$text3:#c0c4cc;$bg:#f5f7fa;$card:#fff;$r:10px;$sh:0 1px 4px rgba(0,0,0,.06);
+/* 颜色走 CSS 变量，暗色模式才能跟着切换；$primary 保留字面值（有 rgba($primary, .x) 运算） */
+$primary:#409eff;$border:var(--border-color);$text:var(--text-primary);$text2:var(--text-secondary);$text3:var(--text-placeholder);$bg:var(--bg-hover);$card:var(--bg-card);$r:10px;$sh:0 1px 4px rgba(0,0,0,.06);
 
 .calendar-page{display:flex;flex-direction:column;height:100%;padding:16px 20px;overflow:hidden;background:$bg;box-sizing:border-box}
 
@@ -441,7 +442,7 @@ $primary:#409eff;$border:#e4e7ed;$text:#303133;$text2:#909399;$text3:#c0c4cc;$bg
 .today-date-big{font-size:32px;font-weight:800;line-height:1;color:$text;span{font-size:13px;font-weight:500;color:$text2;margin-left:4px}}
 .today-weekday{font-size:12px;color:$text3;margin:4px 0 10px}
 .today-event-list{display:flex;flex-direction:column;gap:4px}
-.today-event-chip{display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:6px;background:$bg;border-left:3px solid transparent;cursor:pointer;transition:background .15s;&:hover{background:darken($bg,3%)}.chip-time{font-size:10px;color:$text3;white-space:nowrap}.chip-title{font-size:11px;font-weight:500;color:$text;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
+.today-event-chip{display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:6px;background:$bg;border-left:3px solid transparent;cursor:pointer;transition:background .15s;&:hover{filter:brightness(1.12)}.chip-time{font-size:10px;color:$text3;white-space:nowrap}.chip-title{font-size:11px;font-weight:500;color:$text;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
 .today-more{font-size:10px;color:$primary;text-align:center;cursor:pointer;padding:2px}
 .today-empty{display:flex;flex-direction:column;align-items:center;gap:4px;padding:16px 0;color:$text3;.el-icon{font-size:24px}span{font-size:11px}}
 
@@ -484,7 +485,7 @@ $primary:#409eff;$border:#e4e7ed;$text:#303133;$text2:#909399;$text3:#c0c4cc;$bg
 .dp-tip{display:flex;align-items:flex-start;gap:8px;padding:10px 12px;background:linear-gradient(135deg,#667eea08,#764ba208);border-radius:8px;border:1px solid #667eea15;.el-icon{color:#e6a23c;font-size:18px;flex-shrink:0;margin-top:1px}strong{font-size:12px;color:$text;display:block;margin-bottom:2px}p{font-size:11px;color:$text2;margin:0;line-height:1.4}}
 .dp-section{flex:1;display:flex;flex-direction:column;&__head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;span{font-size:13px;font-weight:700;color:$text}}}
 .dp-events{display:flex;flex-direction:column;gap:6px}
-.dp-event-card{display:flex;gap:8px;padding:10px 12px;background:$bg;border-radius:8px;cursor:pointer;transition:background .15s;&:hover{background:darken($bg,3%)}.dpec-left{width:3px;border-radius:2px;align-self:stretch}.dpec-body{flex:1;display:flex;flex-direction:column;gap:3px;.dpec-row{display:flex;align-items:center;justify-content:space-between;gap:6px;strong{font-size:12px}}.dpec-meta{display:flex;align-items:center;gap:4px;font-size:10px;color:$text2;.el-icon{font-size:12px}}}}
+.dp-event-card{display:flex;gap:8px;padding:10px 12px;background:$bg;border-radius:8px;cursor:pointer;transition:background .15s;&:hover{filter:brightness(1.12)}.dpec-left{width:3px;border-radius:2px;align-self:stretch}.dpec-body{flex:1;display:flex;flex-direction:column;gap:3px;.dpec-row{display:flex;align-items:center;justify-content:space-between;gap:6px;strong{font-size:12px}}.dpec-meta{display:flex;align-items:center;gap:4px;font-size:10px;color:$text2;.el-icon{font-size:12px}}}}
 .dp-empty{display:flex;flex-direction:column;align-items:center;gap:6px;padding:20px 0;color:$text3;.el-icon{font-size:28px}span{font-size:12px}}
 .dp-actions{display:flex;flex-direction:column;gap:6px;padding-top:10px;border-top:1px solid #f0f0f0;.dp-btn{border-radius:8px;font-weight:500}}
 
