@@ -70,9 +70,20 @@ async function login() {
   await page.fill('input[placeholder="请输入密码"]', "123456");
   await page.getByRole("button", { name: /登\s*录/ }).click();
   await page.waitForTimeout(2200);
+  // 这套用例测的是业务链路，不是引导：先把引导标记成"已看过"，
+  // 否则进看板会自动弹新手引导，遮罩把后续点击全拦住（引导自身的验收在 e2e/tour.mjs）。
+  await page.evaluate(() => {
+    const done = { status: "done", v: 2, at: new Date().toISOString() };
+    localStorage.setItem("mimo_tour_state", JSON.stringify({ welcome: done, board: done, collab: done }));
+    Object.keys(sessionStorage)
+      .filter((k) => k.startsWith("mimo_tour_session"))
+      .forEach((k) => sessionStorage.removeItem(k));
+  });
 }
 
 async function killTour() {
+  // 引导是延迟触发的，先给一点时间再判断
+  await page.waitForTimeout(600);
   // 优先点应用提供的「跳过引导」
   const skip = page.getByText("跳过引导").first();
   if (await skip.count()) {

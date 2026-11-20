@@ -4,6 +4,180 @@
 
 ---
 
+## 历史补录 — 2026-11-20 审计
+
+> 用户要求"系统出现过的 bug 都要登记"。审计方式：把仓库里所有 `fix:` 提交拉出来，
+> 逐条对照 bug-log 的条目，找出**改了代码但没写文档**的 8 个问题（BUG-084~091）。
+> 这些都不是新问题，是当时直接修掉、漏了记录的；细节以对应提交的 diff 为准。
+
+### BUG-084: 移动/删除任务报 500，`Field 'user_id' has no default value` [High]
+
+- **严重程度**: High（看板核心操作直接不可用）
+- **文件**: `BoardController` / `BoardService`、`IssueController` / `IssueService`
+- **现象**: 拖拽移动任务、删除任务返回 500，后端日志为 `Field 'user_id' has no default value`。
+  两次独立踩坑：v2.6.2（删除）、v2.6.4（拖拽移动）。
+- **根因**: 写 `activity_logs` 时 `user_id` 为必填，但 controller → service 链路没把当前用户传下去。
+- **修复**: 两个入口都补 `userId` 透传（提交 `056b3a0`、`9af0c17`）。
+- **教训**: 审计日志类"横切"字段必须由 service 显式接收，不能依赖 `SecurityContext` 隐式取（单测里没有上下文就会炸）。
+
+### BUG-085: `spring.sql.init` 在 Spring Boot 2.7 + MySQL 下不执行迁移，缺表导致接口 500 [High]
+
+- **严重程度**: High（本地/服务器都可能缺表，表现为某个模块整体 500）
+- **文件**: `backend/mimo-app/src/main/java/com/mimo/config/MigrationRunner.java`、`application.yml`
+- **现象**: 本地库 `work_logs` 表一直没被创建，打开看板时 WorkLog 接口 500。
+- **根因**: `spring.sql.init` 在 2.7 上的行为依赖 `schema.sql` 位置与数据源初始化时机，对 MySQL 不可靠；
+  迁移脚本写进 `spring.sql.init.data-locations` 后并没有按预期执行。
+- **修复**: 改为自定义 `MigrationRunner implements ApplicationRunner`，启动时显式按版本号执行 `V*.sql`，
+  重复执行把 `Duplicate column` / `already exists` 视为已执行（提交 `80d5adf`）。
+- **后续**: 这个类后来又修过两次——注释剥离（V17 文件名以注释开头被整条跳过）与连接泄漏（没归还 Hikari 连接）。
+
+### BUG-086: 甘特图接口 404（部署跑的是旧 jar）+ 前端 5xx 拦截器吞掉后端错误信息 [High]
+
+- **严重程度**: High（新功能"写了但没上线"，且错误提示无法排障）
+- **文件**: `backend/pom.xml`、`application.yml`、`frontend/src/api/request.ts`、`IssueDetailDialog.vue`
+- **现象**: 甘特图页面 404；同时 AI 创建任务失败时前端只弹"服务器错误"，看不到后端具体原因。
+- **根因**: ① 部署打包没有显式 `mainClass`，repackage 出来的 jar 不是最新代码，`GanttController` 根本没加载；
+  ② `request.ts` 的 5xx 分支只用了通用文案，丢掉了 `response.data.message`。
+- **修复**: pom 显式指定 mainClass + 启用一次性迁移；拦截器改成 4xx/5xx 都优先展示后端 message（提交 `b36f18b`）。
+
+### BUG-087: 新用户/无项目成员用户的工作台显示全库统计，而不是零数据 [Medium]
+
+- **严重程度**: Medium（新注册用户打开首页就看到别人的任务量，数据口径错误）
+- **文件**: `backend/.../service/DashboardService.java`
+- **现象**: 刚注册、不属于任何项目的账号，工作台统计卡片有数字（把全库记录算进去了）。
+- **根因**: 统计查询没有按"当前用户可访问的项目集合"过滤，直接全表统计。
+- **修复**: 重写 DashboardService，无项目成员关系时返回零数据（提交 `f72e56a`，随后 `be3aefb` 让文案区分
+  "没有项目"与"有项目但没任务"两种空态）。
+- **教训**: 所有聚合接口都要先收敛"可见范围"，再统计。
+
+### BUG-088: 工作台背景不是纯白底（MagnetLines 装饰层压在白底上）[Low]
+
+- **严重程度**: Low（观感问题）
+- **文件**: `frontend/src/views/Dashboard.vue`
+- **现象**: 工作台页面整体偏灰/有网格纹理，与其它页面的纯白卡片不一致。
+- **修复**: 移除 MagnetLines 背景层（提交 `ac88330`）。
+- **备注**: 属于早期"炫技装饰"留下来的，后续统一到设计 token。
+
+### BUG-089: 登录/注册页品牌名与光效不一致（品牌名用发光字抢焦点）[Low]
+
+- **严重程度**: Low（视觉一致性）
+- **文件**: `frontend/src/components/layout/AuthLayout.vue`、`views/Register.vue`
+- **现象**: 登录页 Mimo 品牌名带 ShinyText 流光，比表单还抢眼；注册页表单标题又没有同样的强调，两页观感割裂。
+- **修复**: 品牌名恢复静态深色 `#1a1a2e`，把紫光效果挪到注册页表单标题上，与登录页对齐（提交 `eebac92`、`f71c8df`）。
+
+### BUG-090: 本地 java 进程持有 jar 的 mmap 锁，`mvn clean` 删不掉文件导致部署失败 [Medium]
+
+- **严重程度**: Medium（部署脚本第一次跑必失败，且报错看不出原因）
+- **文件**: `deploy.ps1`
+- **现象**: 后端还在跑的时候执行部署脚本，`mvn clean` 报无法删除 `mimo-app-*.jar`。
+- **根因**: Windows 上运行中的 JVM 对 jar 持有内存映射锁；脚本没有先停旧进程。
+- **修复**: deploy.ps1 增加 0/4 "Kill local Java"阶段（WMI 按 jar 名找进程并 `Stop-Process`），
+  并给 `mvn clean package` 加 3 次重试（提现 Defender/文件系统瞬时占用，提交 `000b9d6`）。
+- **备注**: 本次开发中又踩过一次同样的坑（会话里因为 jar 被占用导致 `mvn package` 失败），说明这个保护是必要的。
+
+### BUG-091: 前端构建/运行时导入错误集合（import 路径、缺失导入）[Low]
+
+- **严重程度**: Low（构建直接红，但一眼可见、修起来快）
+- **文件**: `components/issue/shared/CommentSection.vue`、`components/common/AiChatPanel.vue`、`views/AuthLayout.vue`
+- **现象与修复**:
+  - `CommentSection.vue` 引用 `@/stores`（复数），实际目录是 `@/store` → 构建报模块找不到（提交 `e1c57cb`）
+  - `AiChatPanel.vue` 用了 `computed` 但没从 `vue` 导入 → 运行时 `computed is not defined`（提交 `0bc60e9`）
+  - 同一批 TS 构建错误（8 处）随 `init.html` 粒子动画一起修掉（提交 `0f63ca3`）
+- **教训**: 这些都能被 `vue-tsc` 拦住，所以 `npm run build` 必须进 CI，不能只在发布前手动跑。
+
+---
+
+## v2.17.0 — 新手引导重做 (2026-11-20)
+
+> 触发原因：用户反馈"这个引导太简陋而且有逻辑问题"。
+> 用真实浏览器把旧引导的完整生命周期跑了一遍（自动触发 → 逐步 → 跳过 → 关闭 → 重播），
+> 确认了 4 个逻辑问题，外加 2 个本轮踩到的文档/工具链问题，一并登记。
+
+### BUG-078: 引导第 3 步锚点与文案不符——锚在「创建任务」按钮上讲 Sprint [High]
+
+- **严重程度**: High（引导把人指到错误的位置，比没有引导更糟）
+- **发现版本**: v2.17.0（读代码 + 浏览器逐步确认）
+- **文件**: `frontend/src/composables/useTour.ts`
+- **现象**: 引导共 3 步。第 1 步锚 `#create-task-btn` 讲"创建任务"；第 2 步讲"看板列"（居中气泡 + 手动给第一列加 outline）；
+  第 3 步的 `element` **仍然是 `#create-task-btn`**，文案却是"Sprint 迭代：创建 Sprint 来规划迭代周期，
+  使用燃尽图跟踪团队进度"。用户看到一个高亮的"新建任务"按钮，被告诉这是 Sprint 功能。
+- **根因**: 三步共用同一个选择器，写的时候省事复制粘贴；第 3 步本想讲侧边栏/Sprint 入口却没有对应的稳定选择器。
+- **修复**: 步骤改为"锚点函数 + 找不到就跳过"，重写为 3 个主题共 17 步（欢迎 5 / 看板 6 / 协作 6），
+  每步锚到真实的元素：`#create-task-btn`、`.board__columns`、`.issue-card-wrapper`、`.board__filters`、
+  `.mimo-sidebar__menu`、`.cmd-trigger`、`.ai-chat-panel__trigger`，以及按文案定位的侧边栏菜单项（迭代/交付分析/知识库）。
+- **验证**: `e2e/tour.mjs` 断言看板主题进度为 `1 / 6`，逐步标题与锚点一致（用例 1、6）
+
+### BUG-079: 引导遮罩会锁死整站点击，退出路径不可靠（body 残留 driver-active）[High]
+
+- **严重程度**: High（用户第一反应是"页面卡死了"，直接把新用户劝退）
+- **发现版本**: v2.17.0（浏览器实测）
+- **文件**: `frontend/src/composables/useTour.ts`
+- **现象**: 引导自动弹出后，遮罩拦截全站点击——实测此时点看板卡片无效（`clickable=false`）。
+  driver.js 给 `<body>` 加的 `driver-active` 是 `pointer-events: none` 的来源；
+  只要销毁路径没走到（实例被覆盖、手动删 DOM、路由中途切换），这个类就留在 body 上，
+  引导消失了但整站永远点不动。本项目的 E2E 用例里早就有"必须手工 `body.classList.remove('driver-active')`"的绕行代码，
+  说明这个问题在实际使用中反复出现。
+- **根因**: 只在 `onDestroyed` 里做收尾，没有兜底清理；也没有"已有实例先销毁"的保护。
+- **修复**: 所有退出路径（完成 / 跳过 / Esc / 关闭 / 路由切换）统一走 `safeDestroy()`：
+  销毁实例 → 移除 `.driver-overlay`、`.driver-popover`、`#driver-dummy-element` → 清 `driver-active-element` 等类
+  → 清 body/html 上的 `driver-active`、`driver-fade`、`driver-simple` → 还原 `pointer-events`。
+  路由 `watch` 里调用 `abortTourOnNavigate()`，切换页面不会把遮罩带到新页面。
+- **验证**: `e2e/tour.mjs` 用例 2（跳过后 popover/overlay 均为 0、body 无 driver-active）、
+  用例 4（跳过后卡片可点）、用例 7（Esc 退出后同样干净）
+
+### BUG-080: 引导入口"看过一次就永久消失"，跳过也算完成 [Medium]
+
+- **严重程度**: Medium（新用户想再看一遍时找不到入口）
+- **发现版本**: v2.17.0
+- **文件**: `frontend/src/composables/useTour.ts`、`components/layout/MainLayout.vue`
+- **现象**: 账号菜单里的「功能引导」带 `v-if="!tourDone"`，而 `tourDone` 是 `onMounted` 时
+  从 localStorage 读的一次性快照——引导一结束就再也不更新，条目状态和真实状态脱节；
+  同时 `onDestroyed` 无条件 `markTourCompleted()`，**点「跳过」也被记成完成**，于是入口彻底消失，
+  用户没有任何办法把引导调回来看。
+- **根因**: 引导状态只有一个布尔值，且"跳过"与"完成"没有区分；入口存在性绑在这个布尔上。
+- **修复**: 状态改成按主题记录的 `{ status: 'done'|'skipped', v, at }`（`mimo_tour_state`，带 `TOUR_VERSION`）；
+  跳过只记 `skipped`，不影响下次；菜单入口改为常驻三个主题（快速上手 / 看板实操 / 协作与治理），
+  点任意一个都强制重播（`force: true`）。旧的 `mimo_tour_completed` 标记做了自动迁移。
+- **验证**: `e2e/tour.mjs` 用例 3（跳过后 `status=skipped`）、用例 5（入口常驻）、
+  用例 6（能重播）、用例 9（走完最后一步才记 `done`）
+
+### BUG-081: 引导可从任意页面触发，但内容写死看板 [Medium]
+
+- **严重程度**: Medium（在工作台点「功能引导」，看到的是看板相关的三步文案和居中气泡）
+- **发现版本**: v2.17.0
+- **文件**: `frontend/src/composables/useTour.ts`
+- **现象**: 自动触发只在 `/projects/:id/board` 生效，但同一套步骤也能从账号菜单手动调用；
+  driver.js 对找不到的 `element` 会退化到一个屏幕中央的 0×0 dummy 元素，
+  于是气泡悬空显示"创建任务 / 看板列 / Sprint 迭代"，与当前页面毫无关系。
+- **根因**: 一套步骤不分页面，且没有"锚点不存在时怎么办"的策略。
+- **修复**: 主题化 + 页面守卫：`board` 主题要求路径含 `/board`，`collab` 要求 `/projects/`，
+  不满足时只提示"看板引导需要在项目看板页启动"，不启动也不再把这个主题记成已完成；
+  步骤锚点解析不到就跳过该步，整套都解析不到则提示"当前页面没有可引导的内容"。
+- **验证**: `e2e/tour.mjs` 用例 8（首页点「看板实操」→ popover=0 且提示需要在看板页启动）
+
+### BUG-082: 文档把 SSE 流式对话写成 GET，实现是 POST [Low]
+
+- **严重程度**: Low（照文档接第三方会直接 405）
+- **发现版本**: v2.17.0
+- **文件**: `CLAUDE.md`、`AGENTS.md`
+- **现象**: 两处文档写 `SSE流式对话(GET /api/ai/chat/stream)` / `GET /api/ai/chat/stream (SSE)`，
+  但 `AiController` 是 `@PostMapping("/chat/stream")`——早期为了绕开 URL 长度限制从 GET 改成了 POST，
+  文档没跟上。按文档发 GET 会拿到 405。
+- **修复**: 文档改为 `POST /api/ai/chat/stream`（body 传 `message` / `systemPrompt`），并说明为什么用 POST。
+
+### BUG-083: e2e 运行说明与实际不符，跑一次就弄脏工作区 [Low]
+
+- **严重程度**: Low（第一次照着 README 跑必然失败）
+- **发现版本**: v2.17.0
+- **文件**: `e2e/README.md`、`e2e/core-flows.mjs`
+- **现象**: README 写 `npm i -g playwright` + `node e2e/core-flows.mjs`，但 ESM 的 `import 'playwright'`
+  不会去全局目录找，实际报 `ERR_MODULE_NOT_FOUND`；另外脚本把 `shots-suite/`、`suite-report.md`、
+  临时附件都写进**当前工作目录**（仓库根），跑一次 `git status` 就多出一堆未跟踪文件。
+- **修复**: 支持 `PLAYWRIGHT_MODULE` 指向仓库外的 playwright 包；产物统一落到脚本同目录；
+  新增 `e2e/.gitignore`；README 补上准确的运行命令与环境变量说明。
+
+---
+
 ## v2.16.2 — Wiki 目录越权修复 + 请求参数校验 (2026-11-20)
 
 > 触发原因：KNOWN-017 的"越权场景未验证"一直没做。补了一套接口级越权用例
@@ -1060,31 +1234,34 @@
 
 | 严重程度 | 数量 |
 |---------|------|
-| Critical | 5 |
-| High | 24 |
-| Medium | 18 |
-| Low | 10 |
-| **已知未修复** | **17** |
-| **总计** | **75** |
+| Critical | 6 |
+| High | 36 |
+| Medium | 31 |
+| Low | 18 |
+| **已修复（BUG 条目）** | **91** |
+| **已知未修复（KNOWN 条目）** | **19** |
+| **总计** | **110** |
 
-| 模块 | Bug 数量 |
-|------|---------|
-| 审批系统 | 7 |
-| 权限控制 | 6 |
-| 看板/拖拽 | 7 |
-| 项目管理 | 4 |
-| 通知系统 | 3 |
-| 用户/认证 | 3 |
-| 聊天系统 | 2 |
-| 报表/Sprint | 3 |
-| UI/样式 | 7 |
-| 暗色主题 | 3 |
-| 前端请求/接口 | 2 |
-| 信息架构 | 2 |
-| 交互引导 | 1 |
-| 性能 | 1 |
-| AI 降级/接口 | 4 |
-| 权限越权 | 1 |
-| 后端参数校验 | 1 |
-| 已知未修复 | 17 |
-| **总计** | **75** |
+| 版本段 | BUG 条数 |
+|--------|---------|
+| 历史补录 — 2026-11-20 审计 | 8 |
+| v2.17.0 — 新手引导重做 (2026-11-20) | 6 |
+| v2.16.2 — Wiki 目录越权修复 + 请求参数校验 (2026-11-20) | 2 |
+| v2.16.1 — AI 降级链路修复（无 Key 场景）与前端解包修复 (2026-11-20) | 4 |
+| v2.16.0 — 看板进行中自动计时 (2026-11-20) | 1 |
+| v2.15.8 — 真实使用审计 + 信息架构 + 暗色模式 (2026-11-20) | 14 |
+| v2.9.0 — AI 助手流式对话稳定化 (2026-06-17) | 8 |
+| v2.8.0 — AI Copilot + 粒子动画 + 构建修复 (2026-06-16) | 6 |
+| v2.7.3 — 代码质量加固 (2026-06-15) | 8 |
+| v2.7.2 — 安全加固 (2026-06-14) | 2 |
+| v2.7.2 — 审批通知反馈 + 自动降级容错 (2026-06-14) | 5 |
+| v2.7.1 — 审批权限强化 (2026-06-13) | 4 |
+| v2.7.0 — 团队管理员权限 + 审批系统 (2026-06-12) | 1 |
+| v2.6.0 — 看板 Tab 切换 + 删除/移动修复 (2026-06-12) | 2 |
+| v2.5.0 — 聊天撤回 + 单设备登录 + @提及 (2026-06-11) | 2 |
+| v2.3.1 — 看板拖拽与状态修复 (2026-06-10) | 3 |
+| v2.0.0 — 工作项类型分化 (2026-06-08) | 5 |
+| v1.x — 基础平台 (2026-06-08 之前) | 10 |
+
+> 统计口径：直接按 `### BUG-0NN` / `### KNOWN-0NN` 标题解析，已知未修复 = KNOWN 条目里未标"已解决"的
+> （KNOWN-017 部分解决仍计为未关闭）。数字由 `tools/buglog_stats.py` 生成，改完条目后重跑即可校对，不再手写。

@@ -1,6 +1,6 @@
 # AGENTS.md
 
-> **最新版本**：v2.16.2（2026-11-20）— Wiki 目录越权修复 + 请求参数校验（400）。详见末尾"版本变更记录"。
+> **最新版本**：v2.17.0（2026-11-20）— 新手引导重做：分主题、锚点自解析、干净退出。详见末尾"版本变更记录"。
 
 This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
@@ -72,13 +72,14 @@ PLAYWRIGHT_MODULE=<playwright 包目录> \
 node e2e/core-flows.mjs http://localhost:5173
 ```
 
-两套用例：
+四套用例：
 
 | 脚本 | 覆盖 | 最近结果 |
 |---|---|---|
 | `e2e/core-flows.mjs` | 创建任务 / 拖拽进进行中（含自动计时）/ 评论 / 附件 / 验收 / 新建 Sprint | 6/6 PASS |
 | `e2e/ai-degrade.mjs` | AI 未配置提示条 / 对话友好说明 / 润色失败不改写正文 | 3/3 PASS |
 | `e2e/authz.mjs` | 外人打 23 个读接口全部 403 / 成员访问正常 / 缺参数 400 | 25/25 PASS |
+| `e2e/tour.mjs` | 引导自动触发 / 跳过清理 / 入口常驻与重播 / 错页面提示 | 9/9 PASS |
 
 跑法与三个必踩的坑（driver.js 的 `driver-active` 会锁死全站点击、Element Plus 页签要 `dispatchEvent`、
 vuedraggable 不吃 `locator.dragTo`）见 `e2e/README.md`。
@@ -158,8 +159,8 @@ Single backend + RBAC with two roles: `ROLE_ADMIN` (team/project admin) and `ROL
 - **Task Comments**: Markdown-enabled discussion thread per issue, Ctrl+Enter to send; commenter notification to assignee
 - **Reports**: Daily/weekly report generation with auto-draft content; data dashboard with 3 ECharts charts; one-click PDF export
 - **Sprint**: Quick-start 2-week iteration with auto task assignment; burndown chart with snapshots; member statistics (completion rate, overdue rate, avg time in column); complete-with-migration for undone tasks
-- **AI Assistant (v2.8.0)**: **DeepSeek-powered AI Copilot** — SSE流式对话(`GET /api/ai/chat/stream`)、智能任务创建(自然语言→结构化任务)、Story拆分子任务、润色描述、优先级推荐、故事点估算；全局悬浮窗(AiChatPanel)集成于MainLayout；API Key由后端管理(DEEPSEEK_API_KEY环境变量)
-- **Onboarding Tour**: driver.js guided walkthrough triggered on first board visit
+- **AI Assistant (v2.8.0)**: **DeepSeek-powered AI Copilot** — SSE流式对话(`POST /api/ai/chat/stream`，body 传 message/systemPrompt)、智能任务创建(自然语言→结构化任务)、Story拆分子任务、润色描述、优先级推荐、故事点估算；全局悬浮窗(AiChatPanel)集成于MainLayout；API Key由后端管理(DEEPSEEK_API_KEY环境变量)
+- **Onboarding Tour (v2.17.0)**: driver.js 三主题引导——`welcome`（快速上手）/ `board`（看板实操）/ `collab`（协作与治理），账号菜单常驻入口可重播；每步锚点自解析、找不到就跳过，退出统一清理 `driver-active` 等遮罩状态；状态按主题记在 `mimo_tour_state`（跳过 ≠ 完成）
 - **Chat Recall**: Messages can be recalled within 2 minutes; recalled messages show gray italic text; WS broadcast syncs recall state
 - **Single-Session Login**: Redis-backed token validation — same account login kicks previous session (401 "账号已在其他设备登录")
 - **@Mention**: Type `@` in chat input to trigger member picker; selected username inserted as `@username`; rendered as green highlight in message bubbles
@@ -211,6 +212,25 @@ All v2.15 AI roadmap items are implemented. Future work may replace the lexical 
 - **Board Sync Flow**: Drag → `PUT /api/board/issue/move` → backend updates issue + logs + WebSocket broadcast → all board subscribers receive event → optimistic UI update
 
 ## Version History
+
+### v2.17.0 — 新手引导重做：分主题 + 锚点自解析 + 干净退出 (2026-11-20)
+
+用户反馈"引导太简陋而且有逻辑问题"。用真实浏览器把引导的完整生命周期跑了一遍，
+确认并修掉 4 个逻辑问题（BUG-078~081），另登记 2 个文档/工具链问题（BUG-082~083）。
+
+- **分主题**：`welcome`（快速上手 5 步）/ `board`（看板实操 6 步）/ `collab`（协作与治理 6 步），
+  覆盖顶栏、Ctrl+K、侧边栏、项目切换、AI 助手、看板列/卡片/筛选/计时、Sprint 健康度、交付分析、知识库、验收与变更流程。
+  旧版只有 3 步，且第 3 步锚点在「创建任务」按钮上却讲 Sprint（BUG-078）。
+- **锚点自解析**：每步用选择器或按文案定位真实元素，找不到就跳过该步；整场都没有锚点时提示"当前页面没有可引导的内容"。
+  不再让 driver.js 退化到屏幕中央的 dummy 元素上讲错位置（BUG-081）。
+- **页面守卫**：`board` 要求路径含 `/board`、`collab` 要求 `/projects/`，不满足只提示、不启动、也不记为已完成。
+- **干净退出**：完成 / 跳过 / Esc / 关闭 / 路由切走统一走 `safeDestroy()`，
+  清掉 `driver-active`/`driver-fade`、残留遮罩与 `pointer-events`（BUG-079：以前残留会让整站点不动）。
+- **状态按主题记录**：`mimo_tour_state = { topic: { status: 'done'|'skipped', v, at } }`，
+  跳过不等于完成，入口常驻（账号菜单三个主题都可重播）；旧的 `mimo_tour_completed` 自动迁移（BUG-080）。
+- **自动触发更克制**：按路由选主题、等锚点渲染、同一会话只自动弹一次，路由来回切换不再反复骚扰。
+- **用例**：新增 `e2e/tour.mjs` 9 条断言，覆盖自动触发 / 跳过 / 页面恢复可点 / 入口常驻 / 重播 /
+  Esc 收尾 / 错页面提示 / 走完记 done，当前 9/9 PASS。
 
 ### v2.16.2 — Wiki 目录越权修复 + 请求参数校验 (2026-11-20)
 
@@ -1068,7 +1088,7 @@ Major AI feature upgrade from 2 thin endpoints to a full AI Copilot system.
 2. **DeepSeekProvider** — SSE streaming implementation using Java 11 `HttpClient`, calls `https://api.deepseek.com/chat/completions`
 3. **AiService** — Orchestration layer with usage quota tracking; `chatStreamWithQuota()` wraps provider call
 4. **AiController** — 7 endpoints:
-   - `GET /api/ai/chat/stream` (SSE) — 流式对话，支持systemPrompt自定义
+   - `POST /api/ai/chat/stream` (SSE) — 流式对话，body 传 `message` / `systemPrompt`（POST 是为了避开 URL 长度限制）
    - `POST /api/ai/polish` — 润色描述文本
    - `POST /api/ai/priority` — 推荐任务优先级
    - `POST /api/ai/parse-issue` — 自然语言解析为结构化任务

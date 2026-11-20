@@ -88,7 +88,10 @@
           <template #dropdown>
             <el-dropdown-menu>
               <el-dropdown-item command="profile">个人信息</el-dropdown-item>
-              <el-dropdown-item v-if="!tourDone" command="tour">功能引导</el-dropdown-item>
+              <!-- 引导入口常驻：看过一次也能重看，且分主题，避免在错的页面讲错的东西 -->
+              <el-dropdown-item command="tour:welcome" :divided="false">新手引导 · 快速上手</el-dropdown-item>
+              <el-dropdown-item command="tour:board">新手引导 · 看板实操</el-dropdown-item>
+              <el-dropdown-item command="tour:collab">新手引导 · 协作与治理</el-dropdown-item>
               <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
             </el-dropdown-menu>
           </template>
@@ -155,7 +158,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/store/user'
 import { useAppStore } from '@/store/app'
-import { ElMessageBox, ElNotification } from 'element-plus'
+import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import { getMyProjects } from '@/api/project'
 import { getIssueById } from '@/api/issue'
 import { getNotifications } from '@/api/notification'
@@ -163,7 +166,7 @@ import type { ProjectVO } from '@/types'
 import BreadcrumbNav from './BreadcrumbNav.vue'
 import CommandPalette from '@/components/common/CommandPalette.vue'
 import AiChatPanel from '@/components/common/AiChatPanel.vue'
-import { useTour } from '@/composables/useTour'
+import { useTour, abortTourOnNavigate, type TourTopic } from '@/composables/useTour'
 import { useNotifications } from '@/composables/useNotifications'
 import { useWebSocket } from '@/composables/useWebSocket'
 import { useCommandPalette } from '@/composables/useCommandPalette'
@@ -191,7 +194,7 @@ const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
 const appStore = useAppStore()
-const { startTour, isTourCompleted } = useTour()
+const { startTour, maybeAutoTour } = useTour()
 const { unreadCount, notifications, loading: notifLoading, fetchNotifications, handleMarkRead, handleMarkAllRead } = useNotifications()
 const { connect: wsConnect, disconnect: wsDisconnect } = useWebSocket()
 const { open: openCommandPalette } = useCommandPalette()
@@ -302,7 +305,6 @@ async function handleNotifClick(n: any) {
   router.push('/')
 }
 const myProjects = ref<ProjectVO[]>([])
-const tourDone = ref(localStorage.getItem('mimo_tour_completed') === 'true')
 
 const isProjectPage = computed(() => route.path.includes('/projects/'))
 const currentProjectId = computed(() => {
@@ -320,7 +322,12 @@ function switchProject(projectId: number) {
 
 function handleCommand(command: string) {
   if (command === 'profile') router.push('/profile')
-  else if (command === 'tour') { showNotifications.value = false; startTour() }
+  else if (command.startsWith('tour:')) {
+    showNotifications.value = false
+    const topic = command.slice('tour:'.length) as TourTopic
+    // 启动失败的原因由 startTour 自己提示（页面不匹配 / 没有可引导内容），这里不再补一条
+    startTour(topic, { force: true })
+  }
   else if (command === 'logout') {
     ElMessageBox.confirm('确定退出登录吗？', '提示', {
       confirmButtonText: '确定',
@@ -345,9 +352,8 @@ function handleClickOutside(e: MouseEvent) {
 }
 
 function checkTourTrigger() {
-  if (!isTourCompleted() && route.path.includes('/projects/') && route.path.includes('/board')) {
-    setTimeout(() => startTour(), 600)
-  }
+  // 交给 useTour 决定：按路由选主题、等锚点渲染、同一会话只自动弹一次
+  maybeAutoTour(route.path)
 }
 
 onMounted(() => {
@@ -384,7 +390,10 @@ async function checkApprovalNotifications() {
   } catch { /* ignore */ }
 }
 
-watch(() => route.path, () => checkTourTrigger())
+watch(() => route.path, () => {
+  abortTourOnNavigate()
+  checkTourTrigger()
+})
 </script>
 
 <style scoped lang="scss">

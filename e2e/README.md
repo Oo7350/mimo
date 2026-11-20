@@ -41,6 +41,22 @@
 
 只读，不改任何业务数据（会注册临时账号）。对应 `bug-log.md` KNOWN-017 的越权项与 **BUG-076**。
 
+## 引导用例（`tour.mjs`）
+
+对应 `bug-log.md` 的 **BUG-078~081**。用真实浏览器把引导的完整生命周期走一遍：
+
+| # | 用例 | 断言 |
+|---|---|---|
+| 1 | 进看板自动出现引导 | 有 popover、有「跳过引导」、进度是 `1 / 6` 这种多步（不是旧的 3 步） |
+| 2 | 跳过后无残留遮罩 | popover/overlay 为 0，body 上没有 `driver-active` |
+| 3 | 跳过不算完成 | `mimo_tour_state.board.status === 'skipped'` |
+| 4 | 跳过后页面仍可点击 | 看板卡片能点开（以前这里会整站点不动） |
+| 5 | 引导入口常驻 | 账号菜单里始终有「新手引导 · …」三项 |
+| 6 | 能重播 | 从菜单启动看板引导，popover 正常出现 |
+| 7 | Esc 退出后清理干净 | 无 popover、body 无 `driver-active` |
+| 8 | 错页面启动只给提示 | 在首页点「看板实操」→ 不启动、提示"需要在项目看板页启动" |
+| 9 | 走完记为完成 | 点完最后一步后 `status === 'done'` |
+
 ## 怎么跑
 
 前置：MySQL :3306、后端 :8080、前端 :5173 都已启动，且库里有项目 id=1（种子数据或自己造）。
@@ -57,6 +73,7 @@ export PLAYWRIGHT_MODULE=<上一步目录>/node_modules/playwright  # 让脚本�
 node e2e/core-flows.mjs http://localhost:5173   # 核心业务链路 6 条（要前端 :5173）
 node e2e/ai-degrade.mjs http://localhost:5173  # AI 未配置场景 3 条（要前端 :5173）
 node e2e/authz.mjs http://localhost:8080/api   # 越权拦截 25 条（只要后端 :8080）
+node e2e/tour.mjs http://localhost:5173        # 新手引导 9 条（要前端 :5173）
 ```
 
 Playwright 装在仓库外时靠 `PLAYWRIGHT_MODULE` 指过去；直接装在仓库里则不用设，脚本自己会找到。
