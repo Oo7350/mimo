@@ -4,6 +4,156 @@
 
 ---
 
+## v2.15.8 — 真实使用审计 + 信息架构 + 暗色模式 (2026-11-20)
+
+> 触发原因：用户反馈"很多功能不知道怎么用、很多功能跑不通、暗色模式效果很差"。
+> 用 Playwright 以真实用户身份跑了一遍（25 个页面逐页截图 + 抓 4xx/5xx + 7 条核心流程真填真提交），
+> 以下缺陷全部有可复现证据（失败请求、错误文案、截图），不是推测。
+
+> **本轮审计结论（完成度）**：25 个页面都能打开，但"能打开"不等于"能交付"。
+>
+> - 请求层：2 处断链直接暴露给用户（概览页右上角 404、Webhook 项目下拉 405）
+> - 交互层：2 处首屏即阻断（引导遮罩拦截点击、暗色下弹窗全浅色），另有 4 处硬编码颜色
+> - 信息架构：2 处结构性问题（项目概览无入口、侧边栏 13 项平铺）
+> - 验证覆盖：7 条核心流程里，只有 Wiki 新建 / 报告生成 / 日历事件 / 公告发布 / 导出 PDF / 概览统计 / Webhook 下拉
+>   这 7 个动作拿到了接口级通过证据；**建任务、评论、附件、拖拽、验收、变更审批、Sprint 启停均未闭环验证**（见 KNOWN-017）
+> - 结论：roadmap 上"已完成"的功能数量与"被验证过能用"的功能数量差距明显，后续应以"可演示 + 可自动化验证"为完成标准，而不是接口存在即勾选
+
+### BUG-057: 项目概览统计请求 `/api/api/...` 双前缀导致 404 [High]
+
+- **严重程度**: High（主页面直接报错、统计卡空白）
+- **发现版本**: v2.15.6
+- **文件**: `frontend/src/views/ProjectOverview.vue`
+- **现象**: 进入项目概览，右上角红色 toast `Not Found`；Network 里 `GET /api/api/reports/stats/1` → 404
+- **根因**: axios 实例 `baseURL: '/api'`（`api/request.ts`），而此处又手写 `request.get('/api/reports/stats/' + id)`，两段 `/api` 叠加
+- **修复**: 改为 `/reports/stats/{id}`；并全仓 grep 确认其余 `/api/` 字样只出现在 `SockJS('/api/ws')` 与 AI 的 `fetch('/api/ai/chat/stream')` 这类非 axios 调用里
+- **验证**: 复跑后 `GET /api/reports/stats/1` → 200，页面无错误提示
+
+### BUG-058: Webhook 页项目下拉调用不存在的 `GET /api/projects` 返回 405 [Medium]
+
+- **严重程度**: Medium（功能半残：「生效范围=项目」永远选不到项目）
+- **发现版本**: v2.13.5
+- **文件**: `frontend/src/views/Webhooks.vue`
+- **现象**: 新建/编辑 Webhook 时项目下拉为空；`GET /api/projects?size=200` → 405 Method Not Allowed
+- **根因**: 后端只有 `/projects/my` 与 `/projects/team/{teamId}`，没有列表接口 `/projects`；catch 里又把异常静默吞掉，所以界面只表现为"空下拉"
+- **修复**: 改用 `/projects/my`；保留空数组兜底但不再假装成功
+- **验证**: `/projects/my` → 200，页面无 4xx
+
+### BUG-059: 看板接口遇到 `column_id` 为空的 Issue 抛 NPE 整体 500 [High]
+
+- **严重程度**: High（整个看板不可用）
+- **发现版本**: v2.13.8（潜伏已久，导入数据/直接调 API 创建即可触发）
+- **文件**: `backend/mimo-app/src/main/java/com/mimo/service/BoardService.java`
+- **现象**: `GET /api/board/{projectId}` → 500；后端日志 `java.lang.NullPointerException: element cannot be mapped to a null key`，栈顶在 `BoardService.getBoard` 的 `Collectors.groupingBy`
+- **根因**: `issues.stream().collect(Collectors.groupingBy(Issue::getColumnId))`；通过 Excel/CSV 导入、或直接 POST `/api/issues` 未指定 `columnId` 时该字段为 null，JDK 的 groupingBy 不接受 null key
+- **修复**: 空列任务统一归入首列（项目无列时用哨兵 key 兜底）；列内按 `sortOrder` 排序时对 null 做 `nullsLast` 保护
+- **测试**: 新增 `shouldPutIssuesWithoutColumnIntoFirstColumn`、`shouldReturnEmptyColumnsWhenProjectHasNoBoard`，后端单测 64 → 66 全绿
+
+### BUG-060: 侧边栏引用不存在的 `Inbox` 图标 [Low]
+
+- **严重程度**: Low（每次渲染产生 Vue 告警，菜单项缺图标）
+- **发现版本**: v2.13.0
+- **文件**: `frontend/src/components/layout/MainLayout.vue`
+- **现象**: 控制台每次渲染 `[Vue warn]: Failed to resolve component: Inbox`，收件箱菜单左侧空白
+- **根因**: `@element-plus/icons-vue` 共 294 个图标，没有 `Inbox`，模板却写了 `<Inbox />`
+- **修复**: 改用 `Postcard`
+
+### BUG-061: `el-tag` 传空字符串 `type` + 12 处模板类型不匹配 [Low]
+
+- **严重程度**: Low（控制台告警刷屏，掩盖真实问题；引入 `components.d.ts` 后直接阻断构建）
+- **发现版本**: v2.1 ~ v2.15.6
+- **文件**: `ProjectList.vue`、`TeamDetail.vue`、`CalendarView.vue`、`ReportList.vue`、`BugCard.vue`、`BugTableView.vue`、`AiIssueCreator.vue`、`AcceptanceCriteria.vue`、`CommentSection.vue`、`EventForm.vue`、`RoleManage.vue`、`Wiki.vue`
+- **现象**: 控制台大量 `Invalid prop: validation failed for prop "type". Expected one of [...] got value ""`；启用 unplugin 生成的 `components.d.ts` 后，`vue-tsc` 报 12 处 TS2322/TS2345/TS2367
+- **根因**: 把空字符串当作"默认样式"传入；事件回调签名与 Element Plus 实际类型不符（el-checkbox 的 `CheckboxValueType`、el-radio-group 的 `string|number|boolean`、el-tree 的 `Node` + `DragEvent`）
+- **修复**: 统一改 `primary` 并给映射函数补精确返回类型；事件签名按 EP 类型修正（`v === true` 归一化、`dropType` 收敛为字面量联合、`onKeydown` 接收 `Event | KeyboardEvent`）
+
+### BUG-062: 首次进入看板时引导遮罩拦截点击且没有「跳过」[High]
+
+- **严重程度**: High（新用户第一屏就"点不动"，直接判定产品卡死）
+- **发现版本**: v2.2
+- **文件**: `frontend/src/composables/useTour.ts`
+- **现象**: 首次进看板弹出 driver.js 引导（1 of 3），遮罩层拦截全页点击，popover 上只有「上一步 / 下一步 / 完成 / ×」；点击看板任何按钮都无响应
+- **根因**: driver.js 的 overlay 默认拦截指针事件；配置里没有提供 skip 入口，且「完成」要连点 3 步才出现
+- **修复**: `onPopoverRender` 注入「跳过引导」按钮，点击即 `d.destroy()` 并写入已完成标记
+- **验证**: 断言"跳过引导"可见，点击后 `.driver-overlay` 数量为 0
+
+### BUG-063: 暗色模式从未启用 Element Plus 暗色主题 [High]
+
+- **严重程度**: High（暗色模式下弹窗/表格/输入框全是浅色，整体割裂）
+- **发现版本**: v2.1
+- **文件**: `frontend/src/main.ts`、`frontend/src/store/app.ts`
+- **现象**: 切到暗色后，`el-dialog` / `el-table` / `el-input` / `el-calendar` 仍是白色；顶部 header 也是浅灰
+- **根因**: 只设置了 `<html data-theme="dark">`（仅驱动自定义 CSS 变量），而 Element Plus 的暗色主题要求 `<html class="dark">` + 引入 `element-plus/theme-chalk/dark/css-vars.css`
+- **修复**: `main.ts` 引入 dark css-vars；`applyTheme()` 同时 `classList.toggle('dark', dark)`
+- **验证**: `document.documentElement.classList.contains('dark')` → true，表格/输入框背景变为 `rgb(20,20,20)`
+
+### BUG-064: 日历页暗色下整页白底，且 Sass 颜色运算编译失败 [High]
+
+- **严重程度**: High（暗色下该页几乎全白；修一半还会整页变成红色报错层）
+- **发现版本**: v2.8.0
+- **文件**: `frontend/src/views/CalendarView.vue`
+- **现象**: ① 暗色下日历主体仍为白底黑字；② 把 SCSS 变量改成 CSS 变量后，Vite 直接报 `[sass] $color: var(--bg-hover) is not a color`，页面只剩错误覆盖层
+- **根因**: ① 文件顶部 `$primary:#409eff;$border:#e4e7ed;$text:#303133;$bg:#f5f7fa;$card:#fff` 全是硬编码浅色；② 有两处 `darken($bg,3%)` 对颜色做运算，CSS 变量无法参与 Sass 运算
+- **修复**: 除 `$primary`（有 `rgba($primary,.x)` 运算）外，其余改为 `var(--text-primary)` 等 CSS 变量；两处 `darken($bg,3%)` 换成 `filter: brightness(1.12)`；`month-cell` / `today` / `other` 在 `global.css` 补暗色覆盖（实际类名是 `month-cell`，不是 `cal-cell`）
+- **验证**: 暗色日历白格计数 13 → 0
+
+### BUG-065: 首页问候语硬编码深色，暗色下几乎不可见 [Medium]
+
+- **严重程度**: Medium（首页第一行文字看不清）
+- **发现版本**: v2.1
+- **文件**: `frontend/src/views/Dashboard.vue`
+- **现象**: 暗色下「早上好，admin」呈深蓝色，和黑底几乎融在一起
+- **根因**: `<ShinyText color="#0f172a" shine-color="#7c3aed" />` 写死了浅色主题的配色
+- **修复**: 传 `var(--text-primary)` / `var(--color-accent)`，由主题变量决定
+
+### BUG-066: 任务弹窗「甘特图排期」区块硬编码淡紫渐变 [Low]
+
+- **严重程度**: Low（暗色下弹窗底部一块刺眼亮斑）
+- **发现版本**: v2.9.3
+- **文件**: `frontend/src/components/issue/IssueDetailDialog.vue`
+- **现象**: 暗色新建/详情弹窗底部出现浅紫卡片
+- **根因**: `background: linear-gradient(135deg, #f5f3ff 0%, #eef2ff 100%)` + `border: 1px solid #e0e7ff` 写死
+- **修复**: 改用 `--color-primary-lighter`，并在暗色块里把它定义为半透明紫 `rgba(99,102,241,.16)`
+
+### BUG-067: 暗色调色板过黑且 `--text-muted` 未定义 [Medium]
+
+- **严重程度**: Medium（层次不可辨、部分文字颜色静默失效）
+- **发现版本**: v2.1
+- **文件**: `frontend/src/styles/variables.css`
+- **现象**: 页面 `#030304` 配卡片 `#111114`，卡片边界看不出来；Dashboard 多处 `color: var(--text-muted)` 因变量未定义而回退成继承色
+- **根因**: 暗色 token 取值过暗；`--text-muted` 只被引用从未定义
+- **修复**: 重做暗色盘（页 `#0b0d13` / 卡 `#151822` / 列 `#10131b` / 悬停 `#1e2230`，边框与次要文字提亮）；补 `--text-muted`（亮色 `#94a3b8`、暗色 `#7b8798`）
+
+### BUG-068: 项目概览页没有任何入口 [High]
+
+- **严重程度**: High（信息架构缺陷：项目主页要先猜路径才能到达）
+- **发现版本**: v2.1
+- **文件**: `frontend/src/views/ProjectList.vue`、`frontend/src/views/ProjectOverview.vue`
+- **现象**: 项目列表卡片整体 `@click` 直接跳 `/projects/{id}/board`；`/projects/{id}`（概览）只能从看板左上角返回
+- **根因**: 卡片点击目标写成 board；概览页的跳转按钮集中堆在 hero 区（12 个）
+- **修复**: 卡片点击进概览；概览 hero 只保留「新建工作项/新建日程/导入/导出」这类动作，交付分析/甘特图/工作流/知识库收进项目内导航
+
+### BUG-069: 侧边栏 13 项平铺 + 项目内入口分散 [Medium]
+
+- **严重程度**: Medium（"工具堆砌感"，用户不知道从哪开始）
+- **发现版本**: v2.1
+- **文件**: `frontend/src/components/layout/MainLayout.vue`
+- **现象**: 一级菜单 13 个平级入口（工作台/项目管理/团队管理/个人信息/日历/公告/邮箱/等级/角色/审批/审计/Webhook/邮件日志）；项目内功能又分散在 hero 按钮、页面 tab、看板工具栏三处
+- **根因**: 功能按"新增顺序"堆到菜单，没有信息架构分层
+- **修复**: 三层导航（我的工作 / 项目 / 团队 / 设置）+ 项目内固定导航（概览/看板/迭代/时间线/报表/知识库/交付分析/工作流/故事地图），管理类功能下沉到「设置」，个人设置收进头像菜单
+
+### BUG-070: 前端产物体积过大（入口 1.2 MB / ECharts 全量 / html2pdf 全量）[Medium]
+
+- **严重程度**: Medium（首屏白屏时间长，弱网明显）
+- **发现版本**: v2.1
+- **文件**: `frontend/src/main.ts`、`vite.config.ts`、6 个图表组件、`ReportList.vue`
+- **现象**: 生产构建入口 chunk 1227.8 kB、ECharts 共享块 1011.3 kB、ReportList 971.3 kB
+- **根因**: Element Plus 全量 `app.use` + 全部图标注册；`import * as echarts from 'echarts'` 把全量图表类型打进包；html2pdf 静态引入
+- **修复**: Element Plus/ECharts 改按需，html2pdf 改动态 import
+- **验证**: 入口 1227.8 → 414.9 kB（−66%）、ECharts 1011.3 → 617.0 kB（−39%）、ReportList 971.3 → 11.0 kB（−99%）、JS 总量 −17%
+
+---
+
 ## v2.9.0 — AI 助手流式对话稳定化 (2026-06-17)
 
 ### BUG-049: AI 助手 SSE 端点返回 406 Not Acceptable [High]
@@ -723,6 +873,44 @@
 - **现象**: 执行即覆盖服务器生产环境，无确认提示
 - **建议修复**: 加 `Read-Host "确认部署? (y/n)"` 确认步骤
 
+
+### KNOWN-017: 核心业务链路缺少端到端验证 [High]
+
+- **文件**: `frontend/src/views/ProjectBoard.vue`、`components/issue/IssueDetailDialog.vue`、`views/SprintView.vue`
+- **现象**: 「新建任务 → 拖拽 → 评论 → 附件 → 提交验收 → 变更审批」这条主链路，目前只验证到"弹窗能打开、接口存在"，没有任何一条被端到端跑通并断言结果
+- **已覆盖**: 建任务/评论/Wiki/日历/报告/公告/导出 PDF 的接口层返回 200；页面渲染 25/25 通过、0 控制台告警
+- **未覆盖**: 拖拽移动与 WebSocket 广播、附件上传下载、验收打回、变更申请审批、Sprint 启停与燃尽图数据一致性
+- **风险**: 上述任一环节坏了都不会被现有检查发现（前端零自动化测试，后端只有 Service 层单测）
+- **建议**: 把 `toolchain/e2e/flows2.mjs` 升级成正式 Playwright 用例集并入 CI，覆盖上述链路
+
+### KNOWN-018: 未配置 AI Key 时的用户提示未验证 [Medium]
+
+- **文件**: `backend/.../ai/`、`frontend/src/components/common/AiChatPanel.vue`
+- **现象**: 本地未设 `DEEPSEEK_API_KEY`，AI 面板/智能创建/Story 拆分/健康度解读的降级表现未知
+- **风险**: 若直接抛 500 或长时间无响应，用户会认为功能坏了；规格要求"AI 不可用时规则回退"，但回退路径没被验证过
+- **建议**: 补齐无 Key 场景的断言（友好提示 + 规则回退结果）
+
+### KNOWN-019: 空状态缺少「下一步」引导 [Medium]
+
+- **文件**: `views/Wiki.vue`、`views/ApprovalList.vue`、`views/Announcements.vue`、`views/TeamList.vue`、`views/ProjectList.vue`
+- **现象**: 多数空状态只有"暂无数据"；只有甘特图（"为 Issue 设置计划起止后…"）和收件箱（"尚未绑定任何邮箱，请先去邮箱绑定"）给了可执行指引
+- **风险**: 新用户面对空列表不知道点哪里，加剧"不知道怎么用"的观感
+- **建议**: 统一空状态组件，强制包含一句可操作指引 + 一个主按钮
+
+### KNOWN-020: 缺少演示数据初始化入口 [Medium]
+
+- **文件**: `backend/.../db/init.sql`、前端无对应入口
+- **现象**: 空库只有 3 用户 / 1 团队；工作台、Sprint 健康度、交付分析、RAG、审计日志等页面全为 0 或空，无法体验也无法演示
+- **风险**: 验收/答辩时看到的是"一堆 0"，容易被判定为未完成
+- **建议**: 提供「一键生成演示数据」脚本或 `/admin/demo-data` 接口（项目 + Sprint + 20 条 Issue + 评论 + 工时）
+
+### KNOWN-021: 前端仍有硬编码颜色残留 [Low]
+
+- **文件**: `frontend/src/**/*.vue`、`styles/global.css`
+- **现象**: 全仓仍有约 42 处 `rgba(255,255,255,…)`、10 处 `background: #fff`、若干 `#f8fafc/#f5f7fa/#f1f5f9`；本次只修了已经被截图暴露出来的部分
+- **风险**: 换主题或新增页面时继续出现"某一块是白的"
+- **建议**: 增加 stylelint 规则禁止颜色字面量（或至少警告），逐步替换为 CSS 变量
+
 ---
 
 ## Bug 统计
@@ -730,22 +918,27 @@
 | 严重程度 | 数量 |
 |---------|------|
 | Critical | 5 |
-| High | 14 |
-| Medium | 10 |
-| Low | 7 |
-| **已知未修复** | **13** |
-| **总计** | **49** |
+| High | 20 |
+| Medium | 15 |
+| Low | 10 |
+| **已知未修复** | **18** |
+| **总计** | **68** |
 
 | 模块 | Bug 数量 |
 |------|---------|
 | 审批系统 | 7 |
 | 权限控制 | 6 |
-| 看板/拖拽 | 5 |
+| 看板/拖拽 | 6 |
 | 项目管理 | 4 |
 | 通知系统 | 3 |
 | 用户/认证 | 3 |
 | 聊天系统 | 2 |
 | 报表/Sprint | 3 |
-| UI/样式 | 3 |
-| 已知未修复 | 13 |
-| **总计** | **49** |
+| UI/样式 | 7 |
+| 暗色主题 | 3 |
+| 前端请求/接口 | 2 |
+| 信息架构 | 2 |
+| 交互引导 | 1 |
+| 性能 | 1 |
+| 已知未修复 | 18 |
+| **总计** | **68** |
