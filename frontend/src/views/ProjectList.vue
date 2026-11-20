@@ -28,7 +28,7 @@
             {{ p.name.charAt(0).toUpperCase() }}
           </div>
           <div class="list-card__title">{{ p.name }}</div>
-          <el-tag :type="p.template === 'SCRUM' ? '' : 'warning'" size="small" effect="plain">
+          <el-tag :type="p.template === 'SCRUM' ? 'primary' : 'warning'" size="small" effect="plain">
             {{ p.template === 'SCRUM' ? 'Scrum' : 'Kanban' }}
           </el-tag>
         </div>

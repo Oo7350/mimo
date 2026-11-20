@@ -6,7 +6,7 @@
     </div>
     <div class="ac-list">
       <div v-for="item in list" :key="item.id" class="ac-item" :class="{ 'ac-item--done': item.done }">
-        <el-checkbox :model-value="item.done" @change="(v: boolean) => toggle(item.id, v)" />
+        <el-checkbox :model-value="item.done" @change="(v: string | number | boolean) => toggle(item.id, v === true)" />
         <span class="ac-item__text">{{ item.text }}</span>
         <el-button size="small" text type="danger" @click="remove(item.id)">
           <el-icon :size="14"><Close /></el-icon>

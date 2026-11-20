@@ -433,10 +433,11 @@ function isGroupIndeterminate(mod: string): boolean {
   const checked = perms.filter((p) => editing.value.permissions.includes(p.code));
   return checked.length > 0 && checked.length < perms.length;
 }
-function toggleGroup(mod: string, checked: boolean) {
+// checked 来自 el-checkbox 的 change 事件，类型是 boolean | string | number
+function toggleGroup(mod: string, checked: boolean | string | number) {
   const perms = groupedAllPermissions.value[mod] || [];
   const codes = perms.map((p) => p.code);
-  if (checked) {
+  if (checked === true) {
     const set = new Set([...editing.value.permissions, ...codes]);
     editing.value.permissions = [...set];
   } else {

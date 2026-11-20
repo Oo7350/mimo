@@ -79,12 +79,13 @@ const localKeyword = ref('')
 
 const searchKeyword = computed(() => props.searchKeyword || localKeyword.value)
 
+type TagType = 'primary' | 'success' | 'warning' | 'info' | 'danger'
 function sevLabel(s: string) { return (SEVERITY_LABEL as Record<string, string>)[s] || s }
-function sevColor(s: string) { return (SEVERITY_COLOR as Record<string, string>)[s] || '' }
+function sevColor(s: string): TagType { return ((SEVERITY_COLOR as Record<string, string>)[s] || 'primary') as TagType }
 function bsLabel(s: string) { return (BUG_STATUS_LABEL as Record<string, string>)[s] || s || '新建' }
-function bsColor(s: string) { return (BUG_STATUS_COLOR as Record<string, string>)[s] || '' }
+function bsColor(s: string): TagType { return ((BUG_STATUS_COLOR as Record<string, string>)[s] || 'primary') as TagType }
 function priLabel(p: string) { return (PRIORITY_LABEL as Record<string, string>)[p] || p }
-function priColor(p: string) { return (PRIORITY_COLOR as Record<string, string>)[p] || '' }
+function priColor(p: string): TagType { return ((PRIORITY_COLOR as Record<string, string>)[p] || 'primary') as TagType }
 
 const severities = [
   { label: '阻塞', value: 'BLOCKER' },

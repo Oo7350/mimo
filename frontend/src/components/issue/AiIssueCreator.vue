@@ -43,7 +43,7 @@
     <!-- Step 2: 解析结果预览 + 编辑 -->
     <div v-else-if="step === 'preview'" class="ai-creator__step">
       <div class="ai-creator__preview-header">
-        <el-tag :type="parsedResult?.type === 'BUG' ? 'danger' : parsedResult?.type === 'STORY' ? '' : 'success'" size="large">
+        <el-tag :type="parsedResult?.type === 'BUG' ? 'danger' : parsedResult?.type === 'STORY' ? 'primary' : 'success'" size="large">
           {{ typeLabel(parsedResult?.type) }}
         </el-tag>
         <el-tag :type="priorityTagType(parsedResult?.priority)" effect="plain">
@@ -283,14 +283,14 @@ function typeLabel(type?: string): string {
   }
 }
 
-function priorityTagType(priority?: string): string {
+function priorityTagType(priority?: string): 'primary' | 'success' | 'warning' | 'info' | 'danger' {
   switch (priority) {
     case 'HIGHEST': return 'danger'
     case 'HIGH': return 'warning'
-    case 'MEDIUM': return ''
+    case 'MEDIUM': return 'primary'
     case 'LOW': return 'info'
     case 'LOWEST': return 'info'
-    default: return ''
+    default: return 'primary'
   }
 }
 

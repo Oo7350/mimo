@@ -348,9 +348,9 @@ function formatDate(s:string):string{const d=new Date(s);return`${d.getFullYear(
 function formatDateFull(d:Date):string{return`${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日 ${weekDays[d.getDay()]}`}
 function pad(n:number):string{return String(n).padStart(2,'0')}
 function eventTypeName(t:string):string{return({TASK_DEADLINE:'截止日期',MEETING:'会议',REMINDER:'提醒',SPRINT:'Sprint',CUSTOM:'自定义'})[t]||t}
-function eventTypeTagType(t:string):''|'success'|'warning'|'danger'|'info'{
-  const map:{[k:string]:''|'success'|'warning'|'danger'|'info'}={
-    TASK_DEADLINE:'danger',MEETING:'',REMINDER:'warning',SPRINT:'success',CUSTOM:'info'
+function eventTypeTagType(t:string):'primary'|'success'|'warning'|'danger'|'info'{
+  const map:{[k:string]:'primary'|'success'|'warning'|'danger'|'info'}={
+    TASK_DEADLINE:'danger',MEETING:'primary',REMINDER:'warning',SPRINT:'success',CUSTOM:'info'
   }
   return map[t]||'info'
 }

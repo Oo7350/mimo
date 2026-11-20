@@ -8,7 +8,7 @@
       <el-tag v-if="issue.severity" size="small" :type="sevColor" effect="dark">
         {{ SEVERITY_LABEL[issue.severity] || issue.severity }}
       </el-tag>
-      <el-tag v-if="issue.bugStatus" size="small" :type="BUG_STATUS_COLOR[issue.bugStatus]" effect="plain">
+      <el-tag v-if="issue.bugStatus" size="small" :type="bsTagType" effect="plain">
         {{ BUG_STATUS_LABEL[issue.bugStatus] || issue.bugStatus }}
       </el-tag>
     </div>
@@ -45,7 +45,13 @@ import { WarningFilled, Monitor } from '@element-plus/icons-vue'
 
 const props = defineProps<{ issue: IssueCard }>()
 
-const sevColor = computed(() => SEVERITY_COLOR[props.issue.severity || ''] || '')
+type TagType = 'primary' | 'success' | 'warning' | 'info' | 'danger'
+const sevColor = computed<TagType>(() => (SEVERITY_COLOR[props.issue.severity || ''] || 'primary') as TagType)
+const bsTagType = computed<TagType>(() => {
+  const status = props.issue.bugStatus
+  if (!status) return 'primary'
+  return ((BUG_STATUS_COLOR as Record<string, string>)[status] || 'primary') as TagType
+})
 </script>
 
 <style scoped lang="scss">

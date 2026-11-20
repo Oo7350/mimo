@@ -72,7 +72,7 @@
                 <span class="td-member__email">{{ m.email }}</span>
               </div>
               <el-tag
-                :type="team?.ownerId === m.userId ? 'warning' : (m.role === 'ROLE_ADMIN' ? 'danger' : '')"
+                :type="team?.ownerId === m.userId ? 'warning' : (m.role === 'ROLE_ADMIN' ? 'danger' : 'primary')"
                 size="small"
                 round
                 effect="plain"
@@ -496,8 +496,9 @@ function getApprovalTypeName(type: string): string {
 }
 
 // 审批类型颜色映射
-function getApprovalTypeColor(type: string): string {
-  const map: Record<string, string> = {
+type TagType = 'primary' | 'success' | 'warning' | 'danger' | 'info'
+function getApprovalTypeColor(type: string): TagType {
+  const map: Record<string, TagType> = {
     'PROJECT_CREATE': 'success',
     'PROJECT_UPDATE': 'warning',
     'PROJECT_DELETE': 'danger',

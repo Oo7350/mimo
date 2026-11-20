@@ -312,17 +312,20 @@ function allowDrop(_dragging: unknown, _dropNode: unknown, type: string) {
   return type !== "none"
 }
 
+// el-tree 的 node-drop 事件签名里节点类型是 Node（data 为 unknown），
+// 且第四个参数是原生 DragEvent；这里按 Wiki 树节点的实际结构取值，故用 any 接收。
 async function handleNodeDrop(
-  draggingNode: { data: WikiTreeVO },
-  dropNode: { data: WikiTreeVO },
-  dropType: string
+  draggingNode: any,
+  dropNode: any,
+  dropType: "before" | "after" | "inner"
 ) {
-  if (dropType === "none") return
+  const from = draggingNode.data as WikiTreeVO
+  const to = dropNode.data as WikiTreeVO
   try {
-    await moveWikiPage(draggingNode.data.id, {
-      parentId: dropType === "inner" ? dropNode.data.id : dropNode.data.parentId,
-      targetId: dropNode.data.id,
-      position: dropType as "before" | "after" | "inner",
+    await moveWikiPage(from.id, {
+      parentId: dropType === "inner" ? to.id : to.parentId,
+      targetId: to.id,
+      position: dropType,
     })
     ElMessage.success("目录已更新")
   } catch {

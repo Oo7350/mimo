@@ -142,7 +142,7 @@
                 <span>邮箱</span>
               </template>
               <el-menu-item index="/email/inbox">
-                <el-icon><Inbox /></el-icon>
+                <el-icon><Postcard /></el-icon>
                 <span>收件箱</span>
               </el-menu-item>
               <el-menu-item index="/email/accounts">
@@ -214,7 +214,7 @@ import { useTour } from '@/composables/useTour'
 import { useNotifications } from '@/composables/useNotifications'
 import { useWebSocket } from '@/composables/useWebSocket'
 import { useCommandPalette } from '@/composables/useCommandPalette'
-import { Moon, Sunny, Medal, Checked, Document, Connection, Message } from '@element-plus/icons-vue'
+import { Moon, Sunny, Medal, Checked, Document, Connection, Message, Postcard } from '@element-plus/icons-vue'
 import { formatRelativeTime } from '@/utils/constants'
 
 const route = useRoute()

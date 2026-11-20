@@ -171,9 +171,10 @@ const colorOptions = [
   { value: '#1ABC9C', name: '青' },
 ]
 
-function onTypeChange(type: string) {
+// el-radio-group 的 change 事件值类型是 string | number | boolean | undefined
+function onTypeChange(type: string | number | boolean | undefined) {
   const map: Record<string, string> = { CUSTOM: '#909399', MEETING: '#409EFF', REMINDER: '#E6A23C' }
-  if (!props.event) form.value.color = map[type] || '#909399'
+  if (!props.event) form.value.color = map[String(type)] || '#909399'
 }
 
 function resetForm() {

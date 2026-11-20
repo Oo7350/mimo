@@ -101,9 +101,10 @@ async function handleDelete(commentId: number) {
   finally { deletingId.value = null }
 }
 
-function onKeydown(e: KeyboardEvent) {
-  if (e.ctrlKey && e.key === 'Enter') {
-    e.preventDefault()
+function onKeydown(e: Event | KeyboardEvent) {
+  const evt = e as KeyboardEvent
+  if (evt.ctrlKey && evt.key === 'Enter') {
+    evt.preventDefault()
     send()
   }
 }
