@@ -61,8 +61,13 @@ public class BoardService {
                             .add(toLabelVO(l)));
         }
 
+        // 无列归属的任务（历史数据、导入数据、或直接调 API 创建时没传 columnId）统一归到第一列。
+        // 不能直接 Collectors.groupingBy(Issue::getColumnId)：key 为 null 时 JDK 会抛
+        // NullPointerException("element cannot be mapped to a null key")，导致整个看板 500。
+        Long fallbackColumnId = columns.isEmpty() ? -1L : columns.get(0).getId();
         Map<Long, List<Issue>> issueMap = issues.stream()
-                .collect(Collectors.groupingBy(Issue::getColumnId));
+                .collect(Collectors.groupingBy(
+                        i -> i.getColumnId() != null ? i.getColumnId() : fallbackColumnId));
 
         List<ColumnVO> columnVOs = columns.stream().map(col -> {
             ColumnVO cvo = new ColumnVO();
@@ -71,7 +76,7 @@ public class BoardService {
             cvo.setColor(col.getColor());
             cvo.setSortOrder(col.getSortOrder());
             List<Issue> colIssues = issueMap.getOrDefault(col.getId(), new ArrayList<>());
-            colIssues.sort(Comparator.comparing(Issue::getSortOrder));
+            colIssues.sort(Comparator.comparing(Issue::getSortOrder, Comparator.nullsLast(Integer::compareTo)));
             cvo.setIssues(colIssues.stream().map(i -> toIssueVO(i, userMap, labelMap)).collect(Collectors.toList()));
             return cvo;
         }).collect(Collectors.toList());

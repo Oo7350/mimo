@@ -211,6 +211,38 @@ class BoardServiceTest {
         verify(boardColumnMapper, org.mockito.Mockito.times(2)).updateById(any());
     }
 
+    @Test
+    void shouldPutIssuesWithoutColumnIntoFirstColumn() {
+        // 回归：column_id 为 null 的任务（导入数据 / 直接调 API 创建）曾让 Collectors.groupingBy
+        // 抛 "element cannot be mapped to a null key"，整个看板接口 500。
+        when(boardColumnMapper.selectList(any())).thenReturn(List.of(column(1L, "待办"), column(2L, "进行中")));
+        when(issueMapper.selectList(any())).thenReturn(List.of(issue(11L, null, null), issue(12L, 2L, 0)));
+        when(userMapper.selectBatchIds(any())).thenReturn(List.of(user(7L, "张三"), user(8L, "李四")));
+        when(issueLabelMapper.selectList(any())).thenReturn(List.of());
+
+        BoardVO board = service().getBoard(3L);
+
+        assertThat(board.getColumns()).hasSize(2);
+        assertThat(board.getColumns().get(0).getIssues())
+                .extracting(com.mimo.dto.IssueDTO.IssueVO::getId)
+                .containsExactly(11L);
+        assertThat(board.getColumns().get(1).getIssues())
+                .extracting(com.mimo.dto.IssueDTO.IssueVO::getId)
+                .containsExactly(12L);
+    }
+
+    @Test
+    void shouldReturnEmptyColumnsWhenProjectHasNoBoard() {
+        when(boardColumnMapper.selectList(any())).thenReturn(List.of());
+        when(issueMapper.selectList(any())).thenReturn(List.of(issue(11L, null, null)));
+        when(userMapper.selectBatchIds(any())).thenReturn(List.of());
+        when(issueLabelMapper.selectList(any())).thenReturn(List.of());
+
+        BoardVO board = service().getBoard(3L);
+
+        assertThat(board.getColumns()).isEmpty();
+    }
+
     private BoardService service() {
         return new BoardService(boardColumnMapper, issueMapper, issueLabelMapper, userMapper,
                 activityLogMapper, notificationService, webSocketService, workflowService,
