@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-> **最新版本**：v2.15.7（2026-11-20）— 前端产物体积优化（Element Plus / ECharts 按需引入 + html2pdf 懒加载）并修复看板空列 NPE。详见末尾"版本变更记录"。
+> **最新版本**：v2.15.8（2026-11-20）— 三层信息架构重构（项目内导航 + 管理功能下沉设置）并修复两处断链。详见末尾"版本变更记录"。
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -207,6 +207,26 @@ All v2.15 AI roadmap items are implemented; see `项目功能完善计划.md` §
 - **Board Sync Flow**: Drag → `PUT /api/board/issue/move` → backend updates issue + logs + WebSocket broadcast → all board subscribers receive event → optimistic UI update
 
 ## Version History
+
+### v2.15.8 — 信息架构重构：三层导航 + 项目内导航 (2026-11-20)
+
+真实浏览器审计（25 个页面 + 7 条核心流程，脚本见工作区 `toolchain/e2e/`）后修复的问题：
+
+- **断链修复**：`ProjectOverview` 里 `request.get('/api/reports/stats/:id')` 与 axios `baseURL: '/api'`
+  叠加成 `/api/api/reports/stats/:id` → 404，项目概览右上角直接弹「Not Found」；改为 `/reports/stats/:id`。
+- **断链修复**：`Webhooks.vue` 用 `GET /projects` 拉项目下拉，后端无此接口（405），
+  「生效范围=项目」下拉永远为空；改为 `/projects/my`。
+- **导航重构**：左侧菜单从 13 项平铺改为四组 —— 我的工作（工作台/日历/公告/收件箱/邮箱绑定）、
+  项目（项目列表）、团队（团队管理）、设置（等级/角色/审批/审计/Webhook/邮件日志，仅管理员）。
+  个人设置移到右上角头像菜单。
+- **项目内导航**：进入项目后左侧切换为 概览/看板/迭代/时间线/报表/知识库/交付分析/工作流/故事地图，
+  带「全部项目」返回与当前项目名；`activeMenu` 按最长前缀匹配，燃尽图等深层路由也能高亮。
+- **入口修正**：项目列表卡片点击改为进入项目概览（原来直接跳看板，概览页没有入口）；
+  项目概览 hero 只保留动作按钮（新建工作项/日程/导入/导出），跳转类收进侧边栏。
+- **引导修正**：driver.js 首次引导新增「跳过引导」，之前遮罩拦截点击且无跳过入口，用户会以为页面卡死。
+
+验证：`npm run build` 通过；Playwright 冒烟 25 页全 PASS、0 控制台告警；
+断言全局侧边栏 4 组、项目内导航 9 项、跳过引导后遮罩数为 0、项目概览无错误提示。
 
 ### v2.15.7 — 前端产物体积优化：Element Plus / ECharts 按需引入 + html2pdf 懒加载 (2026-11-20)
 
