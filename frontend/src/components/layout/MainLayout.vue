@@ -106,75 +106,28 @@
             router
             class="mimo-sidebar__menu"
           >
-            <el-menu-item index="/">
-              <el-icon><HomeFilled /></el-icon>
-              <span>工作台</span>
-            </el-menu-item>
-            <el-sub-menu index="projects">
-              <template #title>
-                <el-icon><Folder /></el-icon>
-                <span>项目管理</span>
+            <!-- 进入项目后：左侧切换成项目内导航，不再显示全局功能清单 -->
+            <template v-if="currentProjectId">
+              <div class="mimo-nav-back" @click="router.push('/projects')">
+                <el-icon><ArrowLeft /></el-icon>
+                <span v-show="!isCollapsed">全部项目</span>
+              </div>
+              <div v-show="!isCollapsed" class="mimo-nav-project">{{ currentProjectName }}</div>
+              <el-menu-item v-for="item in projectNavItems" :key="item.path" :index="item.path">
+                <el-icon><component :is="item.icon" /></el-icon>
+                <span>{{ item.label }}</span>
+              </el-menu-item>
+            </template>
+
+            <!-- 全局：我的工作 / 项目 / 团队 / 设置 四层，管理类功能全部收进「设置」 -->
+            <template v-else>
+              <template v-for="group in visibleNavGroups" :key="group.key">
+                <div v-show="!isCollapsed" class="mimo-nav-label">{{ group.label }}</div>
+                <el-menu-item v-for="item in group.items" :key="item.path" :index="item.path">
+                  <el-icon><component :is="item.icon" /></el-icon>
+                  <span>{{ item.label }}</span>
+                </el-menu-item>
               </template>
-              <el-menu-item index="/projects">
-                <el-icon><List /></el-icon>
-                <span>项目列表</span>
-              </el-menu-item>
-            </el-sub-menu>
-            <el-menu-item index="/teams">
-              <el-icon><UserFilled /></el-icon>
-              <span>团队管理</span>
-            </el-menu-item>
-            <el-menu-item index="/profile">
-              <el-icon><Setting /></el-icon>
-              <span>个人信息</span>
-            </el-menu-item>
-            <el-menu-item index="/calendar">
-              <el-icon><Calendar /></el-icon>
-              <span>日历</span>
-            </el-menu-item>
-            <el-menu-item index="/announcements">
-              <el-icon><BellFilled /></el-icon>
-              <span>公告</span>
-            </el-menu-item>
-            <el-sub-menu index="email">
-              <template #title>
-                <el-icon><Message /></el-icon>
-                <span>邮箱</span>
-              </template>
-              <el-menu-item index="/email/inbox">
-                <el-icon><Postcard /></el-icon>
-                <span>收件箱</span>
-              </el-menu-item>
-              <el-menu-item index="/email/accounts">
-                <el-icon><Connection /></el-icon>
-                <span>邮箱绑定</span>
-              </el-menu-item>
-            </el-sub-menu>
-            <template v-if="userStore.userInfo?.role === 'ROLE_ADMIN'">
-              <el-menu-item index="/admin/levels">
-                <el-icon><Medal /></el-icon>
-                <span>等级管理</span>
-              </el-menu-item>
-              <el-menu-item index="/admin/roles">
-                <el-icon><Lock /></el-icon>
-                <span>角色权限</span>
-              </el-menu-item>
-              <el-menu-item index="/admin/approvals">
-                <el-icon><Checked /></el-icon>
-                <span>审批管理</span>
-              </el-menu-item>
-              <el-menu-item index="/admin/audit-logs">
-                <el-icon><Document /></el-icon>
-                <span>操作审计</span>
-              </el-menu-item>
-              <el-menu-item index="/admin/webhooks">
-                <el-icon><Connection /></el-icon>
-                <span>Webhook 集成</span>
-              </el-menu-item>
-              <el-menu-item index="/admin/email-send-logs">
-                <el-icon><Message /></el-icon>
-                <span>邮件发送日志</span>
-              </el-menu-item>
             </template>
           </el-menu>
 
@@ -215,6 +168,23 @@ import { useNotifications } from '@/composables/useNotifications'
 import { useWebSocket } from '@/composables/useWebSocket'
 import { useCommandPalette } from '@/composables/useCommandPalette'
 import { Moon, Sunny, Medal, Checked, Document, Connection, Message, Postcard } from '@element-plus/icons-vue'
+// 三层导航用到的图标（menu 里通过 <component :is="item.icon"> 渲染，需是组件引用）
+import {
+  HomeFilled,
+  Calendar,
+  BellFilled,
+  Folder,
+  UserFilled,
+  Setting,
+  Lock,
+  Grid,
+  Tickets,
+  TrendCharts,
+  Notebook,
+  DataAnalysis,
+  Share,
+  Collection,
+} from '@element-plus/icons-vue'
 import { formatRelativeTime } from '@/utils/constants'
 
 const route = useRoute()
@@ -228,13 +198,85 @@ const { open: openCommandPalette } = useCommandPalette()
 
 const isCollapsed = computed(() => appStore.sidebarCollapsed)
 const sidebarWidth = computed(() => isCollapsed.value ? '64px' : '230px')
+
+// 全局三层导航：我的工作 / 项目 / 团队 / 设置（管理类功能不再平铺在一级菜单）
+const navGroups = [
+  {
+    key: 'work',
+    label: '我的工作',
+    items: [
+      { label: '工作台', path: '/', icon: HomeFilled },
+      { label: '日历', path: '/calendar', icon: Calendar },
+      { label: '公告', path: '/announcements', icon: BellFilled },
+      { label: '收件箱', path: '/email/inbox', icon: Postcard },
+      { label: '邮箱绑定', path: '/email/accounts', icon: Connection },
+    ],
+  },
+  {
+    key: 'project',
+    label: '项目',
+    items: [{ label: '项目列表', path: '/projects', icon: Folder }],
+  },
+  {
+    key: 'team',
+    label: '团队',
+    items: [{ label: '团队管理', path: '/teams', icon: UserFilled }],
+  },
+]
+
+const adminNavGroup = {
+  key: 'settings',
+  label: '设置',
+  items: [
+    { label: '等级管理', path: '/admin/levels', icon: Medal },
+    { label: '角色权限', path: '/admin/roles', icon: Lock },
+    { label: '审批管理', path: '/admin/approvals', icon: Checked },
+    { label: '操作审计', path: '/admin/audit-logs', icon: Document },
+    { label: 'Webhook 集成', path: '/admin/webhooks', icon: Setting },
+    { label: '邮件发送日志', path: '/admin/email-send-logs', icon: Message },
+  ],
+}
+
+const visibleNavGroups = computed(() =>
+  userStore.userInfo?.role === 'ROLE_ADMIN' ? [...navGroups, adminNavGroup] : navGroups
+)
+
+// 项目内导航：进入某个项目后，左侧只显示这个项目的功能
+const projectNavItems = computed(() => {
+  const id = currentProjectId.value
+  if (!id) return []
+  const base = `/projects/${id}`
+  return [
+    { label: '概览', path: base, icon: Grid },
+    { label: '看板', path: `${base}/board`, icon: Tickets },
+    { label: '迭代', path: `${base}/sprints`, icon: TrendCharts },
+    { label: '时间线', path: `${base}/gantt`, icon: Calendar },
+    { label: '报表', path: `${base}/reports`, icon: Document },
+    { label: '知识库', path: `${base}/wiki`, icon: Notebook },
+    { label: '交付分析', path: `${base}/analytics`, icon: DataAnalysis },
+    { label: '工作流', path: `${base}/workflow`, icon: Share },
+    { label: '故事地图', path: `${base}/storymap`, icon: Collection },
+  ]
+})
+
+const currentProjectName = computed(() => {
+  const id = currentProjectId.value
+  const hit = myProjects.value.find((p) => p.id === id)
+  return hit?.name || '项目空间'
+})
+
 const activeMenu = computed(() => {
   const p = route.path
-  if (p.startsWith('/projects/')) return '/projects'
+  if (currentProjectId.value) {
+    // 命中最长的项目内路径，例如 /projects/1/sprints/1/burndown → /projects/1/sprints
+    const hit = [...projectNavItems.value]
+      .sort((a, b) => b.path.length - a.path.length)
+      .find((item) => p === item.path || p.startsWith(item.path + '/'))
+    return hit?.path || p
+  }
+  if (p.startsWith('/projects')) return '/projects'
   if (p.startsWith('/teams')) return '/teams'
-  if (p === '/profile') return '/profile'
-  if (p === '/calendar') return '/calendar'
-  return '/'
+  return p
 })
 
 const showNotifications = ref(false)
@@ -537,6 +579,39 @@ watch(() => route.path, () => checkTourTrigger())
       line-height: 40px;
       font-size: 13px;
     }
+  }
+
+  /* 三层导航：分组标题与项目内导航头部 */
+  .mimo-nav-label {
+    padding: 14px 20px 6px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: rgba(255, 255, 255, 0.32);
+    text-transform: uppercase;
+  }
+
+  .mimo-nav-back {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 20px 4px;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.5);
+    cursor: pointer;
+    transition: color 0.2s ease;
+
+    &:hover { color: #fff; }
+  }
+
+  .mimo-nav-project {
+    padding: 2px 20px 10px;
+    font-size: 14px;
+    font-weight: 700;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   &__toggle {

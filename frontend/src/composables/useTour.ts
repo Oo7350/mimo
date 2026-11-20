@@ -67,6 +67,18 @@ export function useTour() {
       doneBtnText: '完成',
       nextBtnText: '下一步',
       prevBtnText: '上一步',
+      // 引导遮罩会拦截页面点击，必须给一个显眼的「跳过」入口，
+      // 否则第一次进看板的用户会觉得"页面点不动"。
+      onPopoverRender: (popover: any) => {
+        const skip = document.createElement('button')
+        skip.type = 'button'
+        skip.className = 'driver-skip-btn'
+        skip.textContent = '跳过引导'
+        skip.style.cssText =
+          'margin-left:8px;padding:4px 10px;font-size:12px;color:#64748b;background:transparent;border:none;cursor:pointer;'
+        skip.addEventListener('click', () => d.destroy())
+        popover.wrapper.appendChild(skip)
+      },
       onDestroyed: () => {
         markTourCompleted()
         isTourActive.value = false

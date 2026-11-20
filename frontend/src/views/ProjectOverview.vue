@@ -15,18 +15,7 @@
         </div>
       </div>
       <div class="overview__hero-actions">
-        <el-button @click="$router.push(`/projects/${projectId}/analytics`)">
-          <el-icon><TrendCharts /></el-icon>交付分析
-        </el-button>
-        <el-button @click="$router.push(`/projects/${projectId}/gantt`)">
-          <el-icon><DataLine /></el-icon>甘特图
-        </el-button>
-        <el-button @click="$router.push(`/projects/${projectId}/workflow`)">
-          <el-icon><Setting /></el-icon>工作流
-        </el-button>
-        <el-button @click="$router.push(`/projects/${projectId}/wiki`)">
-          <el-icon><Notebook /></el-icon>知识库
-        </el-button>
+        <!-- 交付分析/甘特图/工作流/知识库已收进左侧「项目内导航」，这里只保留动作按钮 -->
         <el-button @click="showCreateCalendarEvent = true">
           <el-icon><Calendar /></el-icon>新建日程
         </el-button>

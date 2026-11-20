@@ -21,7 +21,7 @@
         v-for="p in projects"
         :key="p.id"
         class="list-card"
-        @click="$router.push(`/projects/${p.id}/board`)"
+        @click="$router.push(`/projects/${p.id}`)"
       >
         <div class="list-card__header">
           <div class="list-card__avatar" :style="{ background: avatarGradient(p.name, 'project') }">
