@@ -1,6 +1,6 @@
 # AGENTS.md
 
-> **最新版本**：v2.16.0（2026-11-20）— 看板「进行中」自动计时（状态驱动，无需定时任务）。详见末尾"版本变更记录"。
+> **最新版本**：v2.16.1（2026-11-20）— AI 降级链路修复（无 Key 场景）+ 前端解包修正。详见末尾"版本变更记录"。
 
 This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
@@ -72,8 +72,15 @@ PLAYWRIGHT_MODULE=<playwright 包目录> \
 node e2e/core-flows.mjs http://localhost:5173
 ```
 
-覆盖：创建任务 / 拖拽进进行中（含自动计时）/ 评论 / 附件 / 验收 / 新建 Sprint，6 条断言全部走接口校验。
-跑法与两个必踩的坑（driver.js 的 `driver-active` 会锁死全站点击、Element Plus 页签要 `dispatchEvent`）见 `e2e/README.md`。
+两套用例：
+
+| 脚本 | 覆盖 | 最近结果 |
+|---|---|---|
+| `e2e/core-flows.mjs` | 创建任务 / 拖拽进进行中（含自动计时）/ 评论 / 附件 / 验收 / 新建 Sprint | 6/6 PASS |
+| `e2e/ai-degrade.mjs` | AI 未配置提示条 / 对话友好说明 / 润色失败不改写正文 | 3/3 PASS |
+
+跑法与三个必踩的坑（driver.js 的 `driver-active` 会锁死全站点击、Element Plus 页签要 `dispatchEvent`、
+vuedraggable 不吃 `locator.dragTo`）见 `e2e/README.md`。
 
 ### Database
 
@@ -203,6 +210,28 @@ All v2.15 AI roadmap items are implemented. Future work may replace the lexical 
 - **Board Sync Flow**: Drag → `PUT /api/board/issue/move` → backend updates issue + logs + WebSocket broadcast → all board subscribers receive event → optimistic UI update
 
 ## Version History
+
+### v2.16.1 — AI 降级链路修复（无 Key 场景）+ 前端解包修正 (2026-11-20)
+
+KNOWN-018「未配置 AI Key 时的用户提示未验证」实测后发现降级路径不是降级，而是把错误当成结果。
+
+- **后端契约修正**：新增 `AiUnavailableException`（message 面向用户，细节只进日志）、
+  `AiProvider.isConfigured()`、`AiChatResponse.error` 标记。provider 未配置/调用失败一律抛异常
+  （流式则推送同一句说明后结束），不再把错误说明当内容返回。
+- **润色不再写坏正文**：`POST /api/ai/polish` 出现 `hasError()` 时返回 `503`；
+  此前它返回 `200` + 错误文案，前端点「应用」会把任务描述整段替换成错误提示（BUG-072）。
+- **解析类接口不再泄漏内部信息**：`parse-issue` / `suggest-tasks` 的 500 消息改为通用中文文案，
+  上游原文只进日志；`chatJson` 复用静态 `ObjectMapper`；新增 `ResultCode.SERVICE_UNAVAILABLE(503)`。
+- **用量只在成功时计数**：`chatWithQuota` / `chatStreamWithQuota` 先判 `isConfigured()`，
+  未配置或失败不扣当日配额（此前失败也 +1）。
+- **前端 `api/ai.ts` 解包修正**：axios 拦截器已返回 `Result` 本体，6 处 `res.data?.data`
+  多解一层导致 AI 面板 Provider 永远 `Unknown`、润色返回空串、优先级永远落回 MEDIUM（BUG-074）。
+- **AI 面板提示条**：`/api/ai/usage` 新增 `configured`，面板顶部直接提示"后端未配置模型 Key"，
+  不让用户点一次失败一次。
+- **补回死代码入口**：`IssueDetailDialog` 的「AI 润色描述」按钮此前从未渲染（BUG-075），
+  现在放在基本信息页签，带结果预览卡（取消 / 应用到描述），三种工作项类型统一生效。
+- 测试：新增 `AiServiceTest` 7 项（未配置标记、失败不扣配额、流式推送说明、chatJson 不泄漏原文），
+  后端 71 → 78 全绿；新增 `e2e/ai-degrade.mjs` 3 条浏览器断言，3/3 PASS。
 
 ### v2.16.0 — 看板「进行中」自动计时 (2026-11-20)
 

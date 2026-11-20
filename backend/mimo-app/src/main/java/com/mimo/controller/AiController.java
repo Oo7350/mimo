@@ -2,9 +2,11 @@ package com.mimo.controller;
 
 import com.mimo.ai.AiProvider;
 import com.mimo.ai.AiService;
+import com.mimo.ai.AiUnavailableException;
 import com.mimo.ai.dto.AiChatRequest;
 import com.mimo.ai.dto.AiChatResponse;
 import com.mimo.common.Result;
+import com.mimo.common.ResultCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
@@ -29,6 +31,9 @@ public class AiController {
 
     /**
      * 润色任务描述
+     * <p>
+     * 注意：AI 不可用时必须返回错误码，不能把"服务未配置"这类说明当成润色结果——
+     * 前端会把返回文本填进描述框，用户点一下就把正文覆盖成错误提示了。
      */
     @PostMapping("/polish")
     public Result<String> polish(@RequestBody Map<String, String> body, Authentication auth) {
@@ -42,7 +47,14 @@ public class AiController {
                 .userMessage("请将以下任务描述润色为更专业、清晰的表达:\n\n" + input)
                 .build();
         AiChatResponse response = aiService.chatWithQuota(userId, request);
-        return Result.success(response.getContent());
+        if (response.hasError()) {
+            return Result.error(ResultCode.SERVICE_UNAVAILABLE, response.getContent());
+        }
+        String content = response.getContent();
+        if (content == null || content.isBlank()) {
+            return Result.error(ResultCode.SERVICE_UNAVAILABLE, "AI 返回内容为空，请重试");
+        }
+        return Result.success(content);
     }
 
     /**
@@ -63,10 +75,12 @@ public class AiController {
         try {
             Map<String, String> result = aiService.chatJson(request, Map.class);
             return Result.success(result);
+        } catch (AiUnavailableException e) {
+            log.warn("AI 优先级推荐不可用: {}", e.getMessage());
+            return Result.success(Map.of("priority", "MEDIUM", "reason", "AI 暂不可用，已使用默认优先级"));
         } catch (Exception e) {
             log.warn("解析AI优先级响应失败", e);
-            Map<String, String> fallback = Map.of("priority", "MEDIUM", "reason", "无法解析AI响应，使用默认值");
-            return Result.success(fallback);
+            return Result.success(Map.of("priority", "MEDIUM", "reason", "无法解析AI响应，使用默认值"));
         }
     }
 
@@ -95,9 +109,12 @@ public class AiController {
         try {
             Object result = aiService.chatJson(request, Object.class);
             return Result.success(result);
+        } catch (AiUnavailableException e) {
+            log.warn("AI解析任务不可用: {}", e.getMessage());
+            return Result.error(ResultCode.SERVICE_UNAVAILABLE, e.getMessage());
         } catch (Exception e) {
             log.warn("AI解析任务失败", e);
-            return Result.error(500, "AI 解析失败: " + e.getMessage());
+            return Result.error(ResultCode.INTERNAL_ERROR, "AI 解析失败，请稍后重试或手动填写");
         }
     }
 
@@ -133,9 +150,12 @@ public class AiController {
         try {
             Object result = aiService.chatJson(request, Object.class);
             return Result.success(result);
+        } catch (AiUnavailableException e) {
+            log.warn("AI拆分任务不可用: {}", e.getMessage());
+            return Result.error(ResultCode.SERVICE_UNAVAILABLE, e.getMessage());
         } catch (Exception e) {
             log.warn("AI拆分任务失败", e);
-            return Result.error(500, "AI 拆分失败: " + e.getMessage());
+            return Result.error(ResultCode.INTERNAL_ERROR, "AI 拆分失败，请稍后重试或手动拆分");
         }
     }
 
@@ -165,6 +185,9 @@ public class AiController {
         try {
             Map<String, Object> result = aiService.chatJson(request, Map.class);
             return Result.success(result);
+        } catch (AiUnavailableException e) {
+            log.warn("AI估算故事点不可用: {}", e.getMessage());
+            return Result.success(Map.of("points", 3, "confidence", 0.5, "reason", "AI 暂不可用，使用默认估算"));
         } catch (Exception e) {
             log.warn("AI估算故事点失败", e);
             return Result.success(Map.of("points", 3, "confidence", 0.5, "reason", "默认值"));
@@ -284,6 +307,7 @@ public class AiController {
         Long userId = getLongPrincipal(auth);
         return Result.success(Map.of(
                 "provider", aiService.getProviderName(),
+                "configured", aiService.isConfigured(),
                 "used", aiService.getDailyLimitPerUser() - aiService.getRemainingQuota(userId),
                 "remaining", aiService.getRemainingQuota(userId),
                 "dailyLimit", aiService.getDailyLimitPerUser()

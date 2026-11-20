@@ -45,10 +45,15 @@ public class DeepSeekProvider implements AiProvider {
                 .build();
     }
 
+    /** 未配置 Key 时给用户的说明 */
+    public static final String MSG_NOT_CONFIGURED = "AI 服务未配置，请联系管理员设置 DEEPSEEK_API_KEY";
+    /** 调用失败时给用户的说明（细节只进日志） */
+    public static final String MSG_CALL_FAILED = "AI 服务暂时不可用，请稍后重试";
+
     @Override
     public String chat(String systemMessage, String userMessage) {
-        if (apiKey == null || apiKey.isBlank()) {
-            return "AI 服务未配置，请设置环境变量 DEEPSEEK_API_KEY";
+        if (!isConfigured()) {
+            throw new AiUnavailableException(MSG_NOT_CONFIGURED);
         }
         try {
             Map<String, Object> body = buildBody(systemMessage, userMessage, 0.7, 1024);
@@ -56,14 +61,19 @@ public class DeepSeekProvider implements AiProvider {
             return extractContent(res);
         } catch (Exception e) {
             log.error("DeepSeek API 调用失败", e);
-            return "AI 服务调用失败: " + e.getMessage();
+            throw new AiUnavailableException(MSG_CALL_FAILED, e);
         }
     }
 
     @Override
+    public boolean isConfigured() {
+        return apiKey != null && !apiKey.isBlank();
+    }
+
+    @Override
     public void chatStream(String systemMessage, String userMessage, StreamCallback callback) {
-        if (apiKey == null || apiKey.isBlank()) {
-            callback.onText("AI 服务未配置，请设置环境变量 DEEPSEEK_API_KEY", true);
+        if (!isConfigured()) {
+            callback.onText(MSG_NOT_CONFIGURED, true);
             return;
         }
         try {
@@ -89,7 +99,7 @@ public class DeepSeekProvider implements AiProvider {
             if (response.statusCode() != 200) {
                 String err = new String(response.body().readAllBytes());
                 log.error("DeepSeek流式API返回错误: status={}, body={}", response.statusCode(), err);
-                callback.onText("AI服务返回错误(" + response.statusCode() + "): " + err, true);
+                callback.onText(MSG_CALL_FAILED, true);
                 return;
             }
 
@@ -121,7 +131,7 @@ public class DeepSeekProvider implements AiProvider {
             callback.onText("", true);
         } catch (Exception e) {
             log.error("DeepSeek 流式调用失败", e);
-            callback.onText("AI 流式服务错误: " + e.getMessage(), true);
+            callback.onText(MSG_CALL_FAILED, true);
         }
     }
 

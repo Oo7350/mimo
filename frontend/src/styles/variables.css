@@ -20,6 +20,10 @@
   --color-danger: #dc2626;
   --color-info: #4f46e5;
 
+  /* 提示条（如「AI 未配置」）：浅色底 + 深色字，暗色主题下单独覆盖 */
+  --color-warning-bg: #fffbeb;
+  --color-warning-text: #b45309;
+
   /* Issue type colors — vivid */
   --type-story: #059669;
   --type-task: #4f46e5;
@@ -112,6 +116,10 @@
   --color-primary-dark: #6366f1;
   /* 浅紫底：亮色下是淡紫块，暗色下用低透明度的紫，避免出现大片浅色区域 */
   --color-primary-lighter: rgba(99, 102, 241, 0.16);
+
+  /* 提示条：暗色下用低透明度琥珀底 + 亮琥珀字，不能沿用亮色的浅黄块 */
+  --color-warning-bg: rgba(217, 119, 6, 0.14);
+  --color-warning-text: #fbbf24;
 
   /* 纯黑（#030304）配近黑卡片会让层次全糊掉、长时间看很累；
      改成"深蓝灰 + 明显的卡片层次"，卡片与页面的亮度差保持在可辨认范围。 */

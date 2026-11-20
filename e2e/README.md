@@ -16,6 +16,18 @@
 
 全流程任何 4xx/5xx 都会让对应用例失败。
 
+## AI 降级用例（`ai-degrade.mjs`）
+
+对应 `bug-log.md` **KNOWN-018**（无 Key 时的提示未验证）。后端没配 `DEEPSEEK_API_KEY` 时：
+
+| # | 用例 | 断言 |
+|---|---|---|
+| 1 | AI 未配置提示条 | 打开面板即提示，不让用户点一次失败一次 |
+| 2 | 对话返回友好说明 | 气泡里是中文说明，不含异常堆栈 / 上游原文 |
+| 3 | 润色失败不改写正文 | 只弹错误提示，描述框内容不变、无预览卡 |
+
+第 3 条是回归 `BUG-072`：曾经润色把「服务未配置」当成结果返回，用户点「应用」直接把描述覆盖掉。
+
 ## 怎么跑
 
 前置：MySQL :3306、后端 :8080、前端 :5173 都已启动，且库里有项目 id=1（种子数据或自己造）。
@@ -29,7 +41,8 @@ npm i playwright && npx playwright install chromium
 # 2) 跑用例（回到仓库根目录）
 export PLAYWRIGHT_BROWSERS_PATH=<浏览器安装目录>          # Windows: $env:PLAYWRIGHT_BROWSERS_PATH
 export PLAYWRIGHT_MODULE=<上一步目录>/node_modules/playwright  # 让脚本从仓库外解析 playwright
-node e2e/core-flows.mjs http://localhost:5173
+node e2e/core-flows.mjs http://localhost:5173   # 核心业务链路 6 条
+node e2e/ai-degrade.mjs http://localhost:5173  # AI 未配置场景 3 条
 ```
 
 Playwright 装在仓库外时靠 `PLAYWRIGHT_MODULE` 指过去；直接装在仓库里则不用设，脚本自己会找到。
@@ -51,3 +64,4 @@ Playwright 装在仓库外时靠 `PLAYWRIGHT_MODULE` 指过去；直接装在仓
 - Sprint 启动 / 完成 / 未完成任务迁移
 - 越权场景（普通成员访问他人项目应 403）
 - 导出 PDF / 导入 Excel
+- 配置了真实 Key 后的 AI 正常返回路径（RAG 引用质量、AI Sprint 规划）

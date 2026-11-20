@@ -227,7 +227,7 @@ public class SprintPlanningService {
                     .maxTokens(2000)
                     .build());
             String content = response == null ? null : response.getContent();
-            if (content == null || content.isBlank() || content.startsWith("AI 错误")) {
+            if (response == null || response.hasError() || content == null || content.isBlank()) {
                 return null;
             }
             content = stripCodeFence(content);

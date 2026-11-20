@@ -40,6 +40,11 @@
         </div>
       </div>
 
+      <!-- 未配置模型 Key：提前说清楚，别让用户点一次失败一次 -->
+      <div v-if="!isMinimized && !aiConfigured" class="ai-chat-panel__notice">
+        后端未配置模型 Key，AI 功能暂不可用（其余功能不受影响）
+      </div>
+
       <div v-if="!isMinimized" class="ai-chat-panel__mode">
         <button :class="{ active: mode === 'chat' }" @click.stop="mode = 'chat'">
           通用对话
@@ -350,8 +355,14 @@ const lastMessage = computed(() => {
   return last.content.length > 30 ? last.content.slice(0, 30) + '...' : last.content
 })
 
-// 初始化时获取Provider名称
-getAiUsage().then((u) => { providerName.value = u.provider }).catch(() => {})
+// 初始化时获取Provider名称 / 是否已配置 Key
+const aiConfigured = ref(true)
+getAiUsage()
+  .then((u) => {
+    providerName.value = u.provider
+    aiConfigured.value = u.configured !== false
+  })
+  .catch(() => {})
 
 function scrollToBottom() {
   nextTick(() => {
@@ -599,6 +610,15 @@ function renderMarkdown(text: string): string {
 .ai-chat-panel__header-actions {
   display: flex;
   gap: 4px;
+}
+.ai-chat-panel__notice {
+  padding: 7px 12px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--color-warning-text, #b45309);
+  background: var(--color-warning-bg, #fffbeb);
+  border-bottom: 1px solid var(--border-color, #f0f0f0);
+  flex-shrink: 0;
 }
 .ai-chat-panel__mode {
   display: flex;

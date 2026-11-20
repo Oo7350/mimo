@@ -8,8 +8,18 @@ public interface AiProvider {
 
     /**
      * 非流式对话
+     *
+     * @throws AiUnavailableException 未配置 / 网络失败 / 上游报错时抛出，
+     *                                message 可直接展示给用户
      */
     String chat(String systemMessage, String userMessage);
+
+    /**
+     * 是否已配置可用（未配置时前端应给出提示，而不是让用户点一次失败一次）
+     */
+    default boolean isConfigured() {
+        return true;
+    }
 
     /**
      * 流式对话 (SSE)

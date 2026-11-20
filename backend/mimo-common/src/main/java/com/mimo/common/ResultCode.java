@@ -12,6 +12,8 @@ public enum ResultCode {
     NOT_FOUND(404, "资源不存在"),
     CONFLICT(409, "数据冲突"),
     INTERNAL_ERROR(500, "服务器内部错误"),
+    /** 依赖的外部服务暂时不可用（如 AI 未配置 / 上游失败），业务数据未被修改 */
+    SERVICE_UNAVAILABLE(503, "服务暂时不可用"),
 
     // 业务错误码 1xxx
     USERNAME_EXISTS(1001, "用户名已存在"),

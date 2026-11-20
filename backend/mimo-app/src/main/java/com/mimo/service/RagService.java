@@ -145,7 +145,7 @@ public class RagService {
                     .maxTokens(1200)
                     .build());
             String answer = response == null ? null : response.getContent();
-            if (answer == null || answer.isBlank() || answer.startsWith("AI 错误")) {
+            if (answer == null || answer.isBlank() || response.hasError()) {
                 throw new IllegalStateException("AI 未返回有效回答");
             }
             answer = answer.trim();

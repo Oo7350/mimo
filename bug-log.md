@@ -4,6 +4,77 @@
 
 ---
 
+## v2.16.1 — AI 降级链路修复（无 Key 场景）与前端解包修复 (2026-11-20)
+
+> 触发原因：KNOWN-018「未配置 AI Key 时的用户提示未验证」一直没有实测。按"AI 不可用时
+> 应该降级、应该给友好提示"的规格跑了一遍，发现降级路径不是降级，而是把错误当成结果。
+
+### BUG-072: AI 不可用时 `/ai/polish` 把错误说明当润色结果返回 200 [High]
+
+- **严重程度**: High（会把用户正文直接改坏）
+- **发现版本**: v2.16.1（KNOWN-018 实测）
+- **文件**: `backend/mimo-app/src/main/java/com/mimo/ai/AiProvider.java`、`DeepSeekProvider.java`、`AiService.java`、`ai/dto/AiChatResponse.java`、`controller/AiController.java`
+- **现象**: 未设置 `DEEPSEEK_API_KEY` 时 `POST /api/ai/polish` 返回
+  `{"code":200,"data":"AI 服务未配置，请设置环境变量 DEEPSEEK_API_KEY"}`。
+  前端把 `data` 当润色结果展示，用户点「应用」后任务描述被整段替换成这句错误提示——正文丢失。
+- **根因**: `AiProvider.chat()` 的契约是"返回字符串内容"，未配置 Key 和调用异常时把错误说明
+  当成内容返回；`AiChatResponse` 又没有错误标记，`AiController.polish` 无从判断，
+  只能 `Result.success(response.getContent())`。
+- **修复**: 引入 `AiUnavailableException`（message 直接面向用户，细节只进日志）+
+  `AiProvider.isConfigured()` + `AiChatResponse.error` 标记；
+  provider 未配置/调用失败一律抛异常（流式则推送同一句说明后结束）；
+  `AiService.chatWithQuota` 捕获后返回带 error 标记的响应；
+  `polish` 检测到 `hasError()` 返回 `503`，前端只弹提示、不动正文。
+- **验证**: 未配置 Key 下 `polish` → `{"code":503,"message":"AI 服务未配置…"}`；
+  浏览器用例断言"点润色后描述框内容不变、无预览卡、有错误提示"（`e2e/ai-degrade.mjs` 3/3 PASS）
+
+### BUG-073: 解析类接口把上游原文拼进 500 消息，且失败也扣配额 [Medium]
+
+- **严重程度**: Medium（内部实现细节泄漏到用户提示；配额被白白消耗）
+- **发现版本**: v2.16.1
+- **文件**: `backend/mimo-app/src/main/java/com/mimo/ai/AiService.java`、`controller/AiController.java`、`common/ResultCode.java`
+- **现象**: `POST /api/ai/suggest-tasks` 返回
+  `{"code":500,"message":"AI 拆分失败: AI返回格式异常: AI 服务未配置，请设置环境变量 DEEPSEEK_API_KEY"}`
+  ——前端弹出的 toast 直接暴露出"AI返回格式异常"这类实现细节。
+  同时 `/api/ai/usage` 的 `used` 在失败后也会 +1。
+- **根因**: `AiService.chatJson` 把模型原始返回的前 200 字符拼进异常消息；controller 的
+  `catch (Exception e)` 又把 `e.getMessage()` 原样透出；`chatWithQuota` 先 `recordUsage` 再判断结果。
+- **修复**: `chatJson` 原始内容只写日志（截断 300 字），异常消息改为
+  「AI 返回的内容无法解析，请重试」；controller 区分 `AiUnavailableException`（503，友好文案）
+  与其它异常（500，通用文案）；`chatWithQuota` / `chatStreamWithQuota` 加 `isConfigured()`
+  前置判断，失败不计用量；`ResultCode` 新增 `SERVICE_UNAVAILABLE(503)`。
+- **验证**: 同上三接口返回 503 + 中文说明；`used` 在多次失败后仍为 0
+
+### BUG-074: 前端 `api/ai.ts` 解包多了一层，AI 功能整体失效 [High]
+
+- **严重程度**: High（AI 相关功能实际全部不可用，但看起来"能点"）
+- **发现版本**: v2.16.1（排查 BUG-072 时发现 AI 面板 Provider 一直显示 `Unknown`）
+- **文件**: `frontend/src/api/ai.ts`
+- **现象**: AI 面板 Provider 标签永远 `Unknown`、用量永远 `0/100`；润色返回空串
+  （点「应用」等于清空描述）；优先级建议永远落回 `MEDIUM / 无法解析AI响应`；
+  智能创建、Story 拆分拿不到结构化数据。后端接口日志显示 200 且内容正常。
+- **根因**: axios 响应拦截器 `request.ts` 已经把 `Result` 本体返回
+  （`return res`，`res` 即 `response.data`），业务数据就在 `res.data`；
+  `api/ai.ts` 里却写 `res.data?.data`，多解一层永远拿到 `undefined`，
+  于是全部走了 `|| 默认值` 兜底。同仓其它 api 模块（issue/rag/role…）都是正确的 `res.data`。
+- **修复**: 6 处 `res.data?.data` → `res.data`（polish/priority/parse-issue/suggest-tasks/
+  estimate-story-points/usage），并给润色加空值防御（空内容抛错，不写回表单）
+- **验证**: `e2e/ai-degrade.mjs` 第 1 条断言 Provider 与提示条正常；`npm run build` 通过
+
+### BUG-075: 任务详情「AI 润色」是死代码，按钮从来没渲染出来 [Medium]
+
+- **严重程度**: Medium（功能宣称有、界面没有）
+- **发现版本**: v2.16.1
+- **文件**: `frontend/src/components/issue/IssueDetailDialog.vue`
+- **现象**: `handlePolish` / `applyPolish` / `polishedText` 三个成员都有定义，
+  但模板里没有任何按钮引用它们，「AI 润色」实际不可达；同页的「AI分析」按钮有入口。
+- **修复**: 在基本信息页签增加「AI 润色描述」按钮 + 结果预览卡（取消 / 应用到描述），
+  三种工作项类型的描述都绑在 `form.description` 上，一处入口全部生效；
+  描述为空时按钮禁用，避免无意义调用
+- **验证**: 按钮在真实浏览器里渲染且 disabled 状态随描述内容变化；应用流程走预览卡二次确认
+
+---
+
 ## v2.16.0 — 看板进行中自动计时 (2026-11-20)
 
 ### BUG-071: 停止计时不生效——MyBatis-Plus `updateById` 默认忽略 null 字段 [High]
@@ -906,12 +977,21 @@
 - **风险**: 上述环节坏了仍不会被发现；后端只有 Service 层单测，前端其余页面无自动化
 - **建议**: 按 `e2e/README.md` 的"还没覆盖"清单继续补，最终接进 CI
 
-### KNOWN-018: 未配置 AI Key 时的用户提示未验证 [Medium]
+### KNOWN-018: 未配置 AI Key 时的用户提示未验证 [Medium] — 2026-11-20 已解决
 
-- **文件**: `backend/.../ai/`、`frontend/src/components/common/AiChatPanel.vue`
-- **现象**: 本地未设 `DEEPSEEK_API_KEY`，AI 面板/智能创建/Story 拆分/健康度解读的降级表现未知
-- **风险**: 若直接抛 500 或长时间无响应，用户会认为功能坏了；规格要求"AI 不可用时规则回退"，但回退路径没被验证过
-- **建议**: 补齐无 Key 场景的断言（友好提示 + 规则回退结果）
+- **文件**: `backend/.../ai/`、`frontend/src/components/common/AiChatPanel.vue`、`e2e/ai-degrade.mjs`
+- **现象**（原记录）: 本地未设 `DEEPSEEK_API_KEY`，AI 面板/智能创建/Story 拆分/健康度解读的降级表现未知
+- **实测结论**: 降级路径当时是坏的，直接命中 4 个 Bug（BUG-072~075）：润色把错误说明当结果写回正文、
+  解析类接口把上游原文透出、失败也扣配额、前端解包多一层导致 AI 功能整体失效
+- **已解决（2026-11-20 / v2.16.1）**:
+  - 后端：`AiUnavailableException` + `isConfigured()` + `AiChatResponse.error` 标记；
+    未配置/失败统一返回 503 + 面向用户的中文说明，失败不计当日用量
+  - 前端：`api/ai.ts` 解包修正；AI 面板顶部提示条「后端未配置模型 Key，AI 功能暂不可用」；
+    润色加空值防御
+  - 用例：`e2e/ai-degrade.mjs` 3 条浏览器断言（提示条 / 对话友好说明 / 润色失败不改写正文），
+    当前 3/3 PASS；后端新增 7 条单测（`AiServiceTest`），后端测试 71 → 78 全绿
+- **仍未验证**: 配置了真实 Key 后的正常返回路径（需要有效的 DeepSeek Key），
+  以及 RAG 问答/AI Sprint 规划在 Key 有效时的引用质量
 
 ### KNOWN-019: 空状态缺少「下一步」引导 [Medium]
 
@@ -941,11 +1021,11 @@
 | 严重程度 | 数量 |
 |---------|------|
 | Critical | 5 |
-| High | 21 |
-| Medium | 15 |
+| High | 23 |
+| Medium | 17 |
 | Low | 10 |
-| **已知未修复** | **18** |
-| **总计** | **69** |
+| **已知未修复** | **17** |
+| **总计** | **73** |
 
 | 模块 | Bug 数量 |
 |------|---------|
@@ -963,5 +1043,6 @@
 | 信息架构 | 2 |
 | 交互引导 | 1 |
 | 性能 | 1 |
-| 已知未修复 | 18 |
-| **总计** | **69** |
+| AI 降级/接口 | 4 |
+| 已知未修复 | 17 |
+| **总计** | **73** |

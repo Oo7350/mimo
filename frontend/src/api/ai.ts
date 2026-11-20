@@ -2,16 +2,18 @@ import request from './request'
 
 // ==================== 现有接口 (兼容) ====================
 
-/** 润色任务描述 */
+/** 润色任务描述 —— 失败必须抛出，绝不能把错误说明当成润色结果回填到描述框 */
 export async function polishDescription(text: string): Promise<string> {
   const res = await request.post('/ai/polish', { text })
-  return res.data?.data || res.data || ''
+  const polished = (res.data || '') as string
+  if (!polished.trim()) throw new Error('AI 未返回内容，请稍后重试')
+  return polished
 }
 
 /** AI 推荐优先级 */
 export async function analyzePriority(title: string, description: string): Promise<{ priority: string; reason: string }> {
   const res = await request.post('/ai/priority', { title, description })
-  return res.data?.data || { priority: 'MEDIUM', reason: '无法解析AI响应，使用默认值' }
+  return res.data || { priority: 'MEDIUM', reason: '无法解析AI响应，使用默认值' }
 }
 
 // ==================== 新增AI能力接口 ====================
@@ -33,7 +35,7 @@ export interface ParsedIssue {
 
 export async function parseIssue(input: string, context?: Record<string, any>): Promise<ParsedIssue> {
   const res = await request.post('/ai/parse-issue', { input, context })
-  return res.data?.data
+  return res.data
 }
 
 /** Story 拆分 - 将Story拆分为子任务建议 */
@@ -51,7 +53,7 @@ export async function suggestSubTasks(params: {
   acceptanceCriteria?: string
 }): Promise<SuggestedTask[]> {
   const res = await request.post('/ai/suggest-tasks', params)
-  return res.data?.data || []
+  return res.data || []
 }
 
 /** AI 故事点估算 */
@@ -67,7 +69,7 @@ export async function estimateStoryPoints(params: {
   type?: string
 }): Promise<StoryPointEstimate> {
   const res = await request.post('/ai/estimate-story-points', params)
-  return res.data?.data || { points: 3, confidence: 0.5, reason: '默认值' }
+  return res.data || { points: 3, confidence: 0.5, reason: '默认值' }
 }
 
 // ==================== 流式对话 ====================
@@ -156,6 +158,8 @@ export function chatStream(
 /** 获取AI用量信息 */
 export interface AiUsageInfo {
   provider: string
+  /** 后端是否配置了模型 Key；false 时 AI 功能不可用，界面据此给提示 */
+  configured: boolean
   used: number
   remaining: number
   dailyLimit: number
@@ -163,5 +167,5 @@ export interface AiUsageInfo {
 
 export async function getAiUsage(): Promise<AiUsageInfo> {
   const res = await request.get('/ai/usage')
-  return res.data?.data || { provider: 'Unknown', used: 0, remaining: 100, dailyLimit: 100 }
+  return res.data || { provider: 'Unknown', configured: true, used: 0, remaining: 100, dailyLimit: 100 }
 }

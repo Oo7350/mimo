@@ -155,7 +155,7 @@ public class SprintHealthService {
                     .maxTokens(500)
                     .build());
             String content = response == null ? null : response.getContent();
-            if (content == null || content.isBlank() || content.startsWith("AI 错误")) {
+            if (response == null || response.hasError() || content == null || content.isBlank()) {
                 throw new IllegalStateException(content == null ? "AI 未返回内容" : content);
             }
             vo.setSummary(content.trim());

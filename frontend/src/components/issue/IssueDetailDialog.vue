@@ -118,6 +118,27 @@
             :stories="stories"
           />
 
+          <!-- AI 润色描述：三种类型的描述都绑在 form.description 上，统一放这里一份就够 -->
+          <div class="issue-dialog__ai-polish">
+            <el-button
+              size="small"
+              :loading="polishing"
+              :disabled="!form.description?.trim()"
+              @click="handlePolish"
+            >
+              <el-icon><MagicStick /></el-icon> AI 润色描述
+            </el-button>
+            <span class="issue-dialog__ai-polish-hint">把草稿整理成正式表述，应用前可先预览</span>
+          </div>
+          <div v-if="polishedText" class="ai-polish-preview">
+            <div class="ai-polish-preview__header">AI 润色结果</div>
+            <div class="ai-polish-preview__body">{{ polishedText }}</div>
+            <div class="ai-polish-preview__actions">
+              <el-button size="small" @click="polishedText = ''">取消</el-button>
+              <el-button size="small" type="primary" @click="applyPolish">应用到描述</el-button>
+            </div>
+          </div>
+
           <!-- 甘特图字段 — v2.9.3 -->
           <div class="issue-dialog__gantt-fields">
             <div class="issue-dialog__gantt-title">
@@ -708,5 +729,28 @@ async function handleGovernanceUpdated() {
   padding: 10px 12px;
   &__header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; span { font-size: 12px; font-weight: 600; color: var(--text-secondary); } }
   &__reason { font-size: 12px; color: var(--text-regular); margin-bottom: 8px; }
+}
+
+.issue-dialog__ai-polish {
+  display: flex; align-items: center; gap: 10px; margin: 4px 0 10px;
+  flex-wrap: wrap;
+}
+.issue-dialog__ai-polish-hint {
+  font-size: 11px; color: var(--text-muted);
+}
+.ai-polish-preview {
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  background: var(--bg-hover);
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  &__header {
+    font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;
+  }
+  &__body {
+    font-size: 13px; color: var(--text-primary); white-space: pre-wrap;
+    max-height: 200px; overflow-y: auto; line-height: 1.6;
+  }
+  &__actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
 }
 </style>
