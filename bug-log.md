@@ -4,6 +4,27 @@
 
 ---
 
+## v2.16.0 — 看板进行中自动计时 (2026-11-20)
+
+### BUG-071: 停止计时不生效——MyBatis-Plus `updateById` 默认忽略 null 字段 [High]
+
+- **严重程度**: High（功能看起来做了，实际"停表"永远失败）
+- **发现版本**: v2.16.0（开发过程中由接口验证发现）
+- **文件**: `backend/mimo-app/src/main/java/com/mimo/entity/Issue.java`
+- **现象**: 把任务从「进行中」拖到「已完成」后，`in_progress_seconds` 确实累加了，但
+  `in_progress_started_at` 仍是旧时间，看板上已完成的任务还在"继续计时"
+- **根因**: 停止计时依赖把 `inProgressStartedAt` 置为 `null`，而 MyBatis-Plus 的 `updateById`
+  默认策略是 `NOT_NULL`（忽略 null 字段），这条 UPDATE 里根本没有 `in_progress_started_at` 列。
+  同类坑在 v2.13.8 Wiki 目录拖拽（`parentId=null` 移回根级）已经踩过一次
+- **修复**: 字段上加 `@TableField(updateStrategy = FieldStrategy.IGNORED)`，强制把 null 写进 UPDATE
+- **验证**: 接口复跑 `待办 → 进行中 → 已完成`：`startedAt` 由 `null` 变为时间戳再回到 `null`，
+  `seconds` 从 0 累加到 6；UI 上已完成卡片只剩灰色累计时长
+- **经验**: 凡是"取消/清空"类字段更新，都要显式确认 null 是否落库；必要时用
+  `LambdaUpdateWrapper.set(field, null)` 或 `updateStrategy = IGNORED`，
+  不能假设 `updateById` 会把 null 写进去
+
+---
+
 ## v2.15.8 — 真实使用审计 + 信息架构 + 暗色模式 (2026-11-20)
 
 > 触发原因：用户反馈"很多功能不知道怎么用、很多功能跑不通、暗色模式效果很差"。
@@ -918,17 +939,17 @@
 | 严重程度 | 数量 |
 |---------|------|
 | Critical | 5 |
-| High | 20 |
+| High | 21 |
 | Medium | 15 |
 | Low | 10 |
 | **已知未修复** | **18** |
-| **总计** | **68** |
+| **总计** | **69** |
 
 | 模块 | Bug 数量 |
 |------|---------|
 | 审批系统 | 7 |
 | 权限控制 | 6 |
-| 看板/拖拽 | 6 |
+| 看板/拖拽 | 7 |
 | 项目管理 | 4 |
 | 通知系统 | 3 |
 | 用户/认证 | 3 |
@@ -941,4 +962,4 @@
 | 交互引导 | 1 |
 | 性能 | 1 |
 | 已知未修复 | 18 |
-| **总计** | **68** |
+| **总计** | **69** |

@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-> **最新版本**：v2.15.8（2026-11-20）— 三层信息架构重构（项目内导航 + 管理功能下沉设置）并修复两处断链。详见末尾"版本变更记录"。
+> **最新版本**：v2.16.0（2026-11-20）— 看板「进行中」自动计时（状态驱动，无需定时任务）。详见末尾"版本变更记录"。
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -207,6 +207,24 @@ All v2.15 AI roadmap items are implemented; see `项目功能完善计划.md` §
 - **Board Sync Flow**: Drag → `PUT /api/board/issue/move` → backend updates issue + logs + WebSocket broadcast → all board subscribers receive event → optimistic UI update
 
 ## Version History
+
+### v2.16.0 — 看板「进行中」自动计时 (2026-11-20)
+
+需求："看板只要在进行中就计时。"实现上没有引入定时任务、也没有往 work_logs 写流水，而是**状态驱动**：
+
+- **V23 迁移**（`V23__issue_progress_timer.sql`）：`issues` 新增
+  `in_progress_started_at`（本轮开始时间，NULL=未计时）与 `in_progress_seconds`（已累计秒数），
+  并给存量"进行中但没开始时间"的任务用 `updated_at` 兜底。
+- **计时规则**（`com.mimo.util.IssueTimerUtil`）：
+  进入 `IN_PROGRESS` 写 startedAt；离开（完成/回退/关闭）把 `now - startedAt` 累加进 seconds 并清空 startedAt；
+  状态没变化（如同列排序）不动。`BoardService.moveIssue` 与 `IssueService.updateInternal` 都接了同一个入口。
+- **不需要后端 tick**：数据库只存"开始时间 + 已累计"，前端用 1s 的全局单例 ticker
+  （`composables/useIssueTimer.ts`）算 `已累计 + 本轮已跑`，刷新页面/换设备/多人同看都不丢时间。
+- **看板展示**：`IssueCard.vue` 右下角计时胶囊——进行中为蓝色并闪烁，离开进行中后显示灰色累计时长，
+  hover 显示"进行中，本轮已计时 mm:ss"。
+- **接口字段**：`IssueVO` 新增 `inProgressStartedAt` / `inProgressSeconds`（注意 `spring.jackson.default-property-inclusion: non_null`，未计时时 startedAt 字段会整个不出现，前端一律用可选读取）。
+- 单测：`IssueTimerUtilTest` 5 项（开始/累加并清空/再次进入保留累计/状态不变不动/总时长含本轮）。
+  后端测试 66 → 71 全绿。
 
 ### v2.15.8 — 信息架构重构：三层导航 + 项目内导航 (2026-11-20)
 
