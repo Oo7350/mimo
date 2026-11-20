@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-> **最新版本**：v2.15.6（2026-11-13）— 交付分析与 AI 规划/RAG、访问控制加固、核心 Service 单元测试。详见末尾"版本变更记录"。
+> **最新版本**：v2.15.7（2026-11-20）— 前端产物体积优化（Element Plus / ECharts 按需引入 + html2pdf 懒加载）并修复看板空列 NPE。详见末尾"版本变更记录"。
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -8,8 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Mimo is a lightweight Trello-like project management platform for small teams. It supports team collaboration, kanban task tracking, and progress visualization.
 
-- **Version**: v2.15.6 — Delivery Analytics + AI Sprint Planning + RAG + Access Hardening + Service Tests (2026-11-13)
-- **Previous**: v2.14.0 — Issue Version Governance + Change Approval + Task Review (2026-11-08)
+- **Version**: v2.15.7 — Frontend Bundle Size Optimization + Board Null-Column Fix (2026-11-20)
+- **Previous**: v2.15.6 — Delivery Analytics + AI Sprint Planning + RAG + Access Hardening + Service Tests (2026-11-13)
 - **GitHub**: https://github.com/Oo7350/mimo
 - **API docs**: `接口文档.md` (70+ endpoints, Chinese)
 - **User manual**: `操作手册.md` (Chinese)
@@ -207,6 +207,37 @@ All v2.15 AI roadmap items are implemented; see `项目功能完善计划.md` §
 - **Board Sync Flow**: Drag → `PUT /api/board/issue/move` → backend updates issue + logs + WebSocket broadcast → all board subscribers receive event → optimistic UI update
 
 ## Version History
+
+### v2.15.7 — 前端产物体积优化：Element Plus / ECharts 按需引入 + html2pdf 懒加载 (2026-11-20)
+
+§七 技术债务表「前端部分 chunk 过大」的既定方案落地。`npm run build` 通过，Playwright 冒烟 25 个页面全 PASS、0 控制台告警。
+
+**一、Element Plus 与图标按需引入**
+- `vite.config.ts` 接入 `unplugin-vue-components` + `ElementPlusResolver({ importStyle: false })`，模板里的 `el-*` 与 `v-loading` 指令在使用处才 import；样式仍由 `main.ts` 统一引入 `element-plus/dist/index.css`（避免逐组件 style 重复）。
+- `main.ts` 移除 `app.use(ElementPlus)`；中文语言包改由 `App.vue` 的 `<el-config-provider :locale="zhCn">` 提供。
+- 保留图标全量全局注册：`LevelManage` / `Profile` 把图标名当字符串用 `<component :is="'Bell'" />` 渲染，依赖运行时按名解析。
+- 插件生成的 `src/components.d.ts` 一并提交，IDE 与 `vue-tsc` 才能识别按需组件。
+
+**二、ECharts 按需注册**
+- 新增 `src/utils/echarts.ts`：`echarts/core` + 仅注册实际用到的 Line/Bar/Pie/Custom/Graph 图表与 Grid/Tooltip/Legend/Title/MarkLine/AxisPointer/VisualMap 组件、Canvas 渲染器，`export * from "echarts/core"` 保证 `echarts.init/graphic/ECharts` 用法不变。
+- 6 个图表消费方（ReportList / ProjectOverview / Cfd / Burndown / Velocity / Gantt）统一改从 `@/utils/echarts` 导入。**新增图表类型必须在 `utils/echarts.ts` 注册**，否则运行时报 `Series xxx is not exists`。
+
+**三、html2pdf 动态加载**
+- `ReportList.vue` 的导出 PDF 改为 `await import("html2pdf.js")`，约 960 kB 只在首次导出时下载。
+
+**实测（生产构建，单位 kB）**
+| 产物 | 优化前 | 优化后 | 变化 |
+|---|---|---|---|
+| 入口 chunk | 1227.8 | 414.9 | −66% |
+| ECharts 共享 chunk | 1011.3 | 617.0 | −39% |
+| ReportList 路由 | 971.3 | 11.0 | −99%（html2pdf 拆为 960 kB 懒加载块） |
+| JS 总量 | 3842 | 3171 | −17% |
+| CSS 总量 | 519 | 519 | 不变 |
+
+**四、顺带修复（原先前置问题）**
+- `BoardService.getBoard`：`column_id` 为 null 的任务（导入数据或直接调 API 创建）会让 `Collectors.groupingBy` 抛 `NullPointerException: element cannot be mapped to a null key`，整个看板接口 500。改为空列任务归入首列，并对 `sortOrder` 为 null 做空值排序保护；新增 2 个回归测试（后端 64 → 66 项）。
+- `MainLayout.vue` 用了不存在的图标 `<Inbox />`（Element Plus 图标库无此图标），导致每次渲染都报 `Failed to resolve component: Inbox`；改用 `Postcard`。
+- 多处 `el-tag` 传空字符串 `type=""`（Element Plus 校验只接受 primary/success/info/warning/danger），统一改为 `primary` 并给映射函数补上精确返回类型；`components.d.ts` 生效后 `vue-tsc` 暴露的 12 处模板类型不匹配一并修掉（el-checkbox / el-radio-group / el-tree 事件签名）。
 
 ### v2.15.6 — 访问控制加固 + 核心 Service 单元测试 (2026-11-13)
 

@@ -1,6 +1,6 @@
 # AGENTS.md
 
-> **最新版本**：v2.15.6（2026-11-12）— 权限与变更治理加固。详见末尾"版本变更记录"。
+> **最新版本**：v2.15.7（2026-11-20）— 前端产物体积优化（Element Plus / ECharts 按需引入 + html2pdf 懒加载）并修复看板空列 NPE。详见末尾"版本变更记录"。
 
 This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
@@ -8,8 +8,8 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 Mimo is a lightweight Trello-like project management platform for small teams. It supports team collaboration, kanban task tracking, and progress visualization.
 
-- **Version**: v2.15.6 — Access Control and Change Governance Hardening (2026-11-12)
-- **Previous**: v2.15.5 — Project Knowledge RAG (2026-11-12)
+- **Version**: v2.15.7 — Frontend Bundle Size Optimization + Board Null-Column Fix (2026-11-20)
+- **Previous**: v2.15.6 — Access Control and Change Governance Hardening (2026-11-12)
 - **GitHub**: https://github.com/Oo7350/mimo
 - **API docs**: `接口文档.md` (70+ endpoints, Chinese)
 - **User manual**: `操作手册.md` (Chinese)
@@ -190,6 +190,16 @@ All v2.15 AI roadmap items are implemented. Future work may replace the lexical 
 - **Board Sync Flow**: Drag → `PUT /api/board/issue/move` → backend updates issue + logs + WebSocket broadcast → all board subscribers receive event → optimistic UI update
 
 ## Version History
+
+### v2.15.7 — 前端产物体积优化：Element Plus / ECharts 按需引入 + html2pdf 懒加载 (2026-11-20)
+
+- `vite.config.ts` 接入 `unplugin-vue-components` + `ElementPlusResolver({ importStyle: false })`，`el-*` 组件与 `v-loading` 指令按需 import；样式仍由 `main.ts` 统一引入 `element-plus/dist/index.css`。
+- `main.ts` 移除 `app.use(ElementPlus)`；中文语言包改由 `App.vue` 的 `<el-config-provider :locale="zhCn">` 提供；图标仍全量注册（LevelManage / Profile 用字符串图标名 `<component :is="'Bell'" />`，依赖运行时解析）。
+- 新增 `src/utils/echarts.ts`：`echarts/core` 只注册 Line/Bar/Pie/Custom/Graph + Grid/Tooltip/Legend/Title/MarkLine/AxisPointer/VisualMap + CanvasRenderer，6 个图表组件统一改从 `@/utils/echarts` 导入；**新增图表类型必须在此注册**。
+- `ReportList.vue` 导出 PDF 改为 `await import("html2pdf.js")`，约 960 kB 改为首次导出时下载。
+- 实测（生产构建 kB）：入口 1227.8 → 414.9（−66%）；ECharts 共享块 1011.3 → 617.0（−39%）；ReportList 971.3 → 11.0（html2pdf 拆为 960 kB 懒加载块）；JS 总量 3842 → 3171（−17%）；CSS 519 不变。
+- 修复：`BoardService.getBoard` 对 `column_id = null` 的任务抛 `NullPointerException: element cannot be mapped to a null key` 导致看板接口 500（空列任务改归首列 + `sortOrder` 空值排序保护），后端测试 64 → 66；`MainLayout.vue` 用了不存在的 `<Inbox />` 图标改 `Postcard`；`el-tag` 传 `type=""` 与 12 处模板类型不匹配统一修正（`components.d.ts` 生效后 `vue-tsc` 会检查 Element Plus 组件 prop 类型）。
+- 验证：`npm run build` 通过；Playwright 冒烟 25 个页面全 PASS、0 控制台告警。
 
 ### v2.15.6 — 权限与变更治理加固 (2026-11-12)
 
