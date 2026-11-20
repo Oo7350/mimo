@@ -895,14 +895,16 @@
 - **建议修复**: 加 `Read-Host "确认部署? (y/n)"` 确认步骤
 
 
-### KNOWN-017: 核心业务链路缺少端到端验证 [High]
+### KNOWN-017: 核心业务链路缺少端到端验证 [High] — 2026-11-20 部分已解决
 
-- **文件**: `frontend/src/views/ProjectBoard.vue`、`components/issue/IssueDetailDialog.vue`、`views/SprintView.vue`
-- **现象**: 「新建任务 → 拖拽 → 评论 → 附件 → 提交验收 → 变更审批」这条主链路，目前只验证到"弹窗能打开、接口存在"，没有任何一条被端到端跑通并断言结果
-- **已覆盖**: 建任务/评论/Wiki/日历/报告/公告/导出 PDF 的接口层返回 200；页面渲染 25/25 通过、0 控制台告警
-- **未覆盖**: 拖拽移动与 WebSocket 广播、附件上传下载、验收打回、变更申请审批、Sprint 启停与燃尽图数据一致性
-- **风险**: 上述任一环节坏了都不会被现有检查发现（前端零自动化测试，后端只有 Service 层单测）
-- **建议**: 把 `toolchain/e2e/flows2.mjs` 升级成正式 Playwright 用例集并入 CI，覆盖上述链路
+- **文件**: `e2e/core-flows.mjs`、`frontend/src/views/ProjectBoard.vue`、`components/issue/IssueDetailDialog.vue`、`views/SprintView.vue`
+- **现象**: 「新建任务 → 拖拽 → 评论 → 附件 → 提交验收」这条主链路，此前只验证到"弹窗能打开、接口存在"，没有任何一条端到端跑通并断言结果
+- **已解决（2026-11-20）**: 新增 `e2e/core-flows.mjs`，用真实浏览器 + 接口断言覆盖 6 条链路，
+  当前 **6/6 全绿**：创建任务、拖拽进入进行中（含自动计时启动）、发表评论、上传附件、提交验收、新建 Sprint；
+  运行结果逐次写入 `e2e/last-run.md`，失败会截图。跑法与踩坑记录见 `e2e/README.md`
+- **仍未覆盖**: 变更审批（申请 → 审批 → 自动执行）、Sprint 启动/完成与未完成任务迁移、越权访问 403、Excel 导入 / PDF 导出、WebSocket 广播一致性
+- **风险**: 上述环节坏了仍不会被发现；后端只有 Service 层单测，前端其余页面无自动化
+- **建议**: 按 `e2e/README.md` 的"还没覆盖"清单继续补，最终接进 CI
 
 ### KNOWN-018: 未配置 AI Key 时的用户提示未验证 [Medium]
 

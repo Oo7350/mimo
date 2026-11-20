@@ -62,6 +62,19 @@ npm run dev          # Vite dev server on :5173, proxies /api → :8080
 npm run build        # Type-check (vue-tsc) + production build to dist/
 ```
 
+### 端到端用例（E2E）
+
+仓库 `e2e/` 下是核心链路的真实浏览器用例（Playwright，装在仓库外，不污染 package.json）：
+
+```bash
+PLAYWRIGHT_BROWSERS_PATH=<浏览器目录> \
+PLAYWRIGHT_MODULE=<playwright 包目录> \
+node e2e/core-flows.mjs http://localhost:5173
+```
+
+覆盖：创建任务 / 拖拽进进行中（含自动计时）/ 评论 / 附件 / 验收 / 新建 Sprint，6 条断言全部走接口校验。
+跑法与两个必踩的坑（driver.js 的 `driver-active` 会锁死全站点击、Element Plus 页签要 `dispatchEvent`）见 `e2e/README.md`。
+
 ### Database
 
 New tables must be created manually since Docker is not available:
