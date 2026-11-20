@@ -11,7 +11,7 @@
 
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, watch, ref } from 'vue'
-import * as echarts from 'echarts'
+import * as echarts from "@/utils/echarts"
 
 interface GanttItem {
   id: number

@@ -1,12 +1,17 @@
 <template>
-  <router-view v-slot="{ Component, route }">
-    <transition name="page-fade" mode="out-in" appear>
-      <component :is="Component" :key="route.path" />
-    </transition>
-  </router-view>
+  <!-- Element Plus 改为按需引入后不再有 app.use(ElementPlus, { locale })，
+       中文语言包通过 ElConfigProvider 提供给内部组件（分页/日期选择器等） -->
+  <el-config-provider :locale="zhCn">
+    <router-view v-slot="{ Component, route }">
+      <transition name="page-fade" mode="out-in" appear>
+        <component :is="Component" :key="route.path" />
+      </transition>
+    </router-view>
+  </el-config-provider>
 </template>
 
 <script setup lang="ts">
+import zhCn from "element-plus/dist/locale/zh-cn.mjs";
 </script>
 
 <style>

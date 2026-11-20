@@ -272,7 +272,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick } from "vue"
 import { useRoute } from "vue-router"
-import * as echarts from "echarts"
+import * as echarts from "@/utils/echarts"
 import { getBoard } from "@/api/board"
 import { getProjectById } from "@/api/project"
 import { getSprints, getBurndown } from "@/api/sprint"

@@ -22,7 +22,7 @@
             <el-table :data="reports" stripe>
       <el-table-column prop="type" label="类型" width="80">
         <template #default="{ row }">
-          <el-tag :type="row.type === 'DAILY' ? '' : 'warning'" size="small">
+          <el-tag :type="row.type === 'DAILY' ? 'primary' : 'warning'" size="small">
             {{ row.type === 'DAILY' ? '日报' : '周报' }}
           </el-tag>
         </template>
@@ -136,13 +136,12 @@
 
 <script setup lang="ts">
 import { ref, onMounted, nextTick } from "vue";
-import * as echarts from "echarts";
+import * as echarts from "@/utils/echarts"
 import { useRoute } from "vue-router";
 import { generateReport, getReports, submitReport, updateReport, getProjectStats } from "@/api/report";
 import { renderMarkdown } from "@/utils/markdown";
 import { ElMessage } from "element-plus";
 import { Plus, Document, User, TrendCharts, DataAnalysis } from "@element-plus/icons-vue";
-import html2pdf from "html2pdf.js";
 import PageHeader from "@/components/common/PageHeader.vue";
 
 const route = useRoute();
@@ -210,6 +209,8 @@ async function exportPdfFromView() {
     jsPDF: { unit: "mm", format: "a4", orientation: "portrait" as const },
   };
   try {
+    // 按需加载：html2pdf（含 html2canvas + jsPDF）约 950 kB，只在首次导出 PDF 时才下载
+    const { default: html2pdf } = await import("html2pdf.js");
     await (html2pdf() as any).set(opt).from(el).save();
     ElMessage.success("PDF 已导出");
   } catch (e) {

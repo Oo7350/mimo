@@ -11,7 +11,7 @@
 
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import * as echarts from 'echarts'
+import * as echarts from "@/utils/echarts"
 import type { VelocityVO } from '@/api/analytics'
 
 const props = withDefaults(defineProps<{ data: VelocityVO | null; height?: number }>(), {

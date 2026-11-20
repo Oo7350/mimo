@@ -13,7 +13,7 @@
 
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import * as echarts from 'echarts'
+import * as echarts from "@/utils/echarts"
 import type { CfdVO } from '@/api/analytics'
 
 const props = withDefaults(defineProps<{ data: CfdVO | null; height?: number }>(), {

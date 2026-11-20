@@ -1,9 +1,9 @@
 import { createApp } from "vue";
 import { createPinia } from "pinia";
-import ElementPlus from "element-plus";
 import * as ElementPlusIconsVue from "@element-plus/icons-vue";
+// Element Plus 组件改为按需引入（见 vite.config.ts 的 unplugin-vue-components）。
+// 这里只保留全量样式：组件 style 由 importStyle:false 关闭，统一由此处加载。
 import "element-plus/dist/index.css";
-import zhCn from "element-plus/dist/locale/zh-cn.mjs";
 
 import App from "./App.vue";
 import router from "./router";
@@ -15,14 +15,15 @@ import permissionDirective from "./directives/permission";
 
 const app = createApp(App);
 
-// 注册所有 Element Plus 图标
+// 全局注册 Element Plus 图标。
+// 部分页面（如 LevelManage / Profile）把图标名当字符串放进配置后用 <component :is="'Bell'" /> 渲染，
+// 依赖运行时按名字解析，所以这里仍需全量注册；直接 import 的图标会被打包器 tree-shake。
 for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
   app.component(key, component);
 }
 
 app.use(createPinia());
 app.use(router);
-app.use(ElementPlus, { locale: zhCn });
 
 // 全局指令
 app.directive("permission", permissionDirective);
