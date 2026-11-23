@@ -5,6 +5,8 @@ import com.mimo.ai.AiService;
 import com.mimo.ai.AiUnavailableException;
 import com.mimo.ai.dto.AiChatRequest;
 import com.mimo.ai.dto.AiChatResponse;
+import com.mimo.ai.prompt.PromptRegistry;
+import com.mimo.ai.prompt.PromptTemplate;
 import com.mimo.common.Result;
 import com.mimo.common.ResultCode;
 import lombok.RequiredArgsConstructor;
@@ -42,9 +44,13 @@ public class AiController {
             return Result.error(400, "文本不能为空");
         }
         Long userId = getLongPrincipal(auth);
+        PromptTemplate prompt = PromptRegistry.POLISH;
         AiChatRequest request = AiChatRequest.builder()
-                .systemMessage("你是一个专业的项目管理助手，擅长将粗糙的草稿润色为正式、清晰、可执行的任务描述。使用中文输出，保持原意不添加新信息。")
+                .systemMessage(prompt.getSystemMessage())
                 .userMessage("请将以下任务描述润色为更专业、清晰的表达:\n\n" + input)
+                .temperature(prompt.getTemperature())
+                .maxTokens(prompt.getMaxTokens())
+                .promptRef(prompt.ref())
                 .build();
         AiChatResponse response = aiService.chatWithQuota(userId, request);
         if (response.hasError()) {
@@ -68,9 +74,13 @@ public class AiController {
                 ? "标题: " + title + "\n描述: " + description
                 : "标题: " + title;
         Long userId = getLongPrincipal(auth);
+        PromptTemplate prompt = PromptRegistry.PRIORITY;
         AiChatRequest request = AiChatRequest.builder()
-                .systemMessage("你是一个敏捷项目管理专家，根据任务的紧急性和重要性评估优先级。只返回JSON格式，不要其他内容。")
+                .systemMessage(prompt.getSystemMessage())
                 .userMessage("根据以下任务信息，推荐最合适的优先级（HIGHEST/HIGH/MEDIUM/LOW/LOWEST），返回JSON: {\"priority\": \"HIGH\", \"reason\": \"简短理由(中文，不超过30字)\"}\n\n" + text)
+                .temperature(prompt.getTemperature())
+                .maxTokens(prompt.getMaxTokens())
+                .promptRef(prompt.ref())
                 .build();
         try {
             Map<String, String> result = aiService.chatJson(request, Map.class);
@@ -99,12 +109,13 @@ public class AiController {
         @SuppressWarnings("unchecked")
         Map<String, Object> context = (Map<String, Object>) body.getOrDefault("context", Map.of());
 
-        String systemPrompt = buildParseIssueSystemPrompt(context);
+        PromptTemplate prompt = PromptRegistry.parseIssueWithContext(context);
         AiChatRequest request = AiChatRequest.builder()
-                .systemMessage(systemPrompt)
+                .systemMessage(prompt.getSystemMessage())
                 .userMessage(input)
-                .temperature(0.3)  // 低温度保证结构化输出稳定
-                .maxTokens(2048)
+                .temperature(prompt.getTemperature())  // 低温度保证结构化输出稳定
+                .maxTokens(prompt.getMaxTokens())
+                .promptRef(prompt.ref())
                 .build();
         try {
             Object result = aiService.chatJson(request, Object.class);
@@ -141,11 +152,13 @@ public class AiController {
                 acceptanceCriteria != null ? acceptanceCriteria : "无"
         );
 
+        PromptTemplate prompt = PromptRegistry.SUGGEST_TASKS;
         AiChatRequest request = AiChatRequest.builder()
-                .systemMessage("你是一个资深Scrum Master，擅长将大型用户故事拆分为可执行的子任务。输出结构化JSON。")
+                .systemMessage(prompt.getSystemMessage())
                 .userMessage(userMessage)
-                .temperature(0.4)
-                .maxTokens(2048)
+                .temperature(prompt.getTemperature())
+                .maxTokens(prompt.getMaxTokens())
+                .promptRef(prompt.ref())
                 .build();
         try {
             Object result = aiService.chatJson(request, Object.class);
@@ -169,18 +182,20 @@ public class AiController {
         String type = (String) body.getOrDefault("type", "TASK");
 
         Long userId = getLongPrincipal(auth);
-        String prompt = String.format(
+        String promptText = String.format(
                 "请估算以下任务的Fibonacci故事点数(1,2,3,5,8,13,21):\n\n" +
                 "**类型**: %s | **标题**: %s\n**描述**: %s\n\n" +
                 "返回JSON: {\"points\": 3, \"confidence\": 0.85, \"reason\": \"估算理由\"}",
                 type, title, description != null ? description : "无"
         );
 
+        PromptTemplate prompt = PromptRegistry.ESTIMATE_POINTS;
         AiChatRequest request = AiChatRequest.builder()
-                .systemMessage("你是一个敏捷开发估算专家，基于Fibonacci序列进行故事点估算。考虑复杂度、工作量、不确定性因素。")
-                .userMessage(prompt)
-                .temperature(0.2)
-                .maxTokens(512)
+                .systemMessage(prompt.getSystemMessage())
+                .userMessage(promptText)
+                .temperature(prompt.getTemperature())
+                .maxTokens(prompt.getMaxTokens())
+                .promptRef(prompt.ref())
                 .build();
         try {
             Map<String, Object> result = aiService.chatJson(request, Map.class);
@@ -271,8 +286,13 @@ public class AiController {
                 };
 
                 AiChatRequest aiRequest = AiChatRequest.builder()
-                        .systemMessage(systemPrompt.isEmpty() ? "你是一个项目管理AI助手" : systemPrompt)
+                        .systemMessage(systemPrompt.isEmpty()
+                                ? PromptRegistry.CHAT.getSystemMessage() : systemPrompt)
                         .userMessage(message)
+                        .temperature(PromptRegistry.CHAT.getTemperature())
+                        .maxTokens(PromptRegistry.CHAT.getMaxTokens())
+                        .promptRef(systemPrompt.isEmpty()
+                                ? PromptRegistry.CHAT.ref() : "INLINE@v0")
                         .build();
                 aiService.chatStreamWithQuota(finalUserId, aiRequest, callback);
 
@@ -320,30 +340,5 @@ public class AiController {
         Object p = auth.getPrincipal();
         if (p instanceof Number) return ((Number) p).longValue();
         throw new IllegalArgumentException("未登录或登录状态异常");
-    }
-
-    private String buildParseIssueSystemPrompt(Map<String, Object> context) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("你是一个智能项目管理助手，将用户的自然语言描述转换为结构化的任务数据。\n");
-        sb.append("严格返回JSON格式，包含以下字段:\n");
-        sb.append("{\n");
-        sb.append("  \"title\": \"任务标题\",\n");
-        sb.append("  \"type\": \"STORY/TASK/BUG(三选一)\",\n");
-        sb.append("  \"priority\": \"HIGHEST/HIGH/MEDIUM/LOW/LOWEST\",\n");
-        sb.append("  \"assigneeSuggestion\": \"建议指派人(从团队成员中选择)\",\n");
-        sb.append("  \"storyPoints\": 数字,\n");
-        sb.append("  \"labels\": [\"标签1\",\"标签2\"],\n");
-        sb.append("  \"description\": \"## 背景\\n详细描述...\\n\\n## 验收标准\\n- [ ] ...\",\n");
-        sb.append("  \"dueDateSuggestion\": \"YYYY-MM-DD(如提及时间则推断)\",\n");
-        sb.append("  \"subTaskSuggestions\": [{\"title\":\"子任务\",\"type\":\"TASK\",\"estimate\":数字}],\n");
-        sb.append("  \"confidence\": 0.0~1.0,\n");
-        sb.append("  \"disclaimer\": \"建议人工审核后保存\"\n");
-        sb.append("}\n");
-
-        if (!context.isEmpty()) {
-            sb.append("\n项目上下文:\n");
-            sb.append(context.toString());
-        }
-        return sb.toString();
     }
 }

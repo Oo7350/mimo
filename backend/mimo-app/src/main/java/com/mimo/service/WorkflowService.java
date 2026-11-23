@@ -37,6 +37,7 @@ public class WorkflowService {
     private final ProjectMapper projectMapper;
     private final TeamMemberMapper teamMemberMapper;
     private final UserMapper userMapper;
+    private final AccessControlService accessControlService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     // ========== CRUD ==========
@@ -357,14 +358,10 @@ public class WorkflowService {
     }
 
     private boolean isProjectAdmin(Long projectId, Long userId) {
-        User user = userMapper.selectById(userId);
-        if (user != null && "ROLE_ADMIN".equals(user.getRole())) return true;
+        if (accessControlService.isSystemAdmin(userId)) return true;
         Project project = projectMapper.selectById(projectId);
         if (project == null) return false;
         if (Objects.equals(project.getOwnerId(), userId)) return true;
-        return teamMemberMapper.selectOne(new LambdaQueryWrapper<TeamMember>()
-                .eq(TeamMember::getTeamId, project.getTeamId())
-                .eq(TeamMember::getUserId, userId)
-                .eq(TeamMember::getRole, "ROLE_ADMIN")) != null;
+        return accessControlService.isTeamAdmin(userId, project.getTeamId());
     }
 }

@@ -27,6 +27,10 @@ class ProjectAccessServiceTest {
     private UserMapper userMapper;
     @Mock
     private TeamService teamService;
+    @Mock
+    private RoleService roleService;
+    @Mock
+    private com.mimo.mapper.TeamMemberMapper teamMemberMapper;
 
     @Test
     void shouldRejectUserOutsideProjectTeam() {
@@ -64,7 +68,8 @@ class ProjectAccessServiceTest {
     }
 
     private ProjectAccessService service() {
-        return new ProjectAccessService(projectMapper, issueMapper, userMapper, teamService);
+        return new ProjectAccessService(projectMapper, issueMapper, userMapper, teamService,
+                new AccessControlService(roleService, userMapper, teamMemberMapper));
     }
 
     private Project project() {

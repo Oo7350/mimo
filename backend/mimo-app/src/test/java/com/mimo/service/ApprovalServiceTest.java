@@ -38,10 +38,12 @@ class ApprovalServiceTest {
     @Mock private ProjectMapper projectMapper;
     @Mock private ApprovalExecutionService approvalExecutionService;
     @Mock private NotificationService notificationService;
+    @Mock private RoleService roleService;
 
     private ApprovalService service() {
         return new ApprovalService(approvalRequestMapper, teamMemberMapper, userMapper,
-                teamMapper, projectMapper, approvalExecutionService, notificationService);
+                teamMapper, projectMapper, approvalExecutionService, notificationService,
+                new AccessControlService(roleService, userMapper, teamMemberMapper));
     }
 
     private ApprovalRequest request(String status) {

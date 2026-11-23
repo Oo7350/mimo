@@ -1,6 +1,6 @@
 # AGENTS.md
 
-> **最新版本**：v2.18.1（2026-11-23）— Markdown / 邮件正文 XSS 修复：正则黑名单换成 DOMPurify，并补了一条不用起服务的浏览器级取证用例。详见末尾"版本变更记录"。
+> **最新版本**：v2.18.2（2026-11-23）— 技术债清理：权限判定收敛到 `AccessControlService`、AI 提示词版本化并让采样参数真正生效、评论 @提及补上通知。详见末尾"版本变更记录"。
 
 This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
@@ -8,8 +8,8 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 Mimo is a lightweight Trello-like project management platform for small teams. It supports team collaboration, kanban task tracking, and progress visualization.
 
-- **Version**: v2.18.1 — Markdown/邮件 XSS 修复 + 取证用例 (2026-11-23)
-- **Previous**: v2.18.0 — KNOWN 遗留收口（编号并发 / 团队孤儿 / 审批补偿 / 更新端点）(2026-11-23)
+- **Version**: v2.18.2 — 技术债清理：权限单一入口 + AI 可复现 + @提及通知 (2026-11-23)
+- **Previous**: v2.18.1 — Markdown/邮件 XSS 修复 + 浏览器取证用例 (2026-11-23)
 - **GitHub**: https://github.com/Oo7350/mimo
 - **API docs**: `接口文档.md` (70+ endpoints, Chinese)
 - **User manual**: `操作手册.md` (Chinese)
@@ -213,6 +213,28 @@ All v2.15 AI roadmap items are implemented. Future work may replace the lexical 
 - **Board Sync Flow**: Drag → `PUT /api/board/issue/move` → backend updates issue + logs + WebSocket broadcast → all board subscribers receive event → optimistic UI update
 
 ## Version History
+
+### v2.18.2 — 技术债清理：权限单一入口 / AI 参数可追溯 / 评论 @提及 (2026-11-23)
+
+计划书 §七「技术债务修复」的收尾：三条遗留的结构性问题，都是"不修就会持续产生 bug"的欠账。
+
+- **① 新旧权限判断并存 → `AccessControlService`**：11 处各写各的 `"ROLE_ADMIN".equals(user.getRole())`
+  （公告甚至读 JWT 的授权项），同一句"是不是管理员"在 8 个 Service + 3 个 Controller 上口径不同。
+  新增 `com.mimo.service.AccessControlService`，只暴露 `isSystemAdmin`（RBAC `role.manage`，V11 仅授 SUPER_ADMIN）
+  与 `isTeamAdmin`（系统管理员 ∪ RBAC `team.manage` 的 TEAM 作用域 ∪ 旧字段）两个口径，两套**求并集**保证零回归，
+  `mimo.access.legacy-role-fallback=false` 可切纯 RBAC。旧字段先短路，避免给每个读接口多加两次 SQL。
+- **② AI 输出不可复现**：取证发现两个硬伤 —— `AiChatRequest.temperature/maxTokens` 被整段丢弃
+  （`DeepSeekProvider` 硬编码 0.7/1024，Controller 里 `.temperature(0.3)` 那句注释从未生效），
+  且 `AiChatResponse.model` 从没被赋值。现在 `AiProvider` 增加带采样参数的重载与 `getModel()`，
+  `AiService` 每次调用记 `[AI] model=… prompt=… temperature=… maxTokens=…` 并填进响应；
+  新增 `ai/prompt/PromptRegistry`（6 个提示词，`CODE@vN` + 正文指纹，温度与提示词同处定义），
+  `AiController` 里 6 处内联 systemMessage 与 `buildParseIssueSystemPrompt()` 全部删除。
+- **③ 通知触发点遗漏**：`CommentService` 原来只通知指派人，评论里的 `@某人` 毫无反应。
+  现在解析提及（收窄字符集，`@张三，谢谢` → 「张三」，邮箱不算）→ 站内 `MENTION` 通知 + WebSocket 推送，
+  跳过作者本人与刚收到「新评论」的指派人；`mapEmailType` 归入既有 `comment` 邮件偏好，不新增开关。
+- **验证**：`mvn test` **128 项全绿**（+25：AccessControlService 11、PromptRegistry 7、AiService +3、
+  CommentService +4）。计划书 §七 表格中「新旧权限判断并存」「AI 输出不可复现」标记已解决，
+  仅「WebSocket 内存 broker」按设计留待多实例部署时处理（KNOWN-002）。
 
 ### v2.18.1 — Markdown / 邮件正文 XSS 修复 + 浏览器级取证用例 (2026-11-23)
 

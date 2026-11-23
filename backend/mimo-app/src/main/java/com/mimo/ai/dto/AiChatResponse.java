@@ -16,6 +16,12 @@ public class AiChatResponse {
     private Long completionTokens;
     private Boolean finished;
 
+    /** 实际下发给模型的温度（未指定时为默认值），用于复盘"同样输入为什么结果不同" */
+    private Double temperature;
+
+    /** 提示词版本标识，如 {@code ISSUE_DRAFT@v1} */
+    private String promptRef;
+
     /**
      * true 表示 content 是错误说明（未配置 / 上游失败 / 超限），不是模型输出。
      * 调用方必须先看这个标记，绝不能把错误说明当结果写回业务数据。

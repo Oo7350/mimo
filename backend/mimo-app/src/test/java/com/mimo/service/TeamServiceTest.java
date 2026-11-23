@@ -40,10 +40,12 @@ class TeamServiceTest {
     @Mock private UserLevelMapper userLevelMapper;
     @Mock private ProjectMapper projectMapper;
     @Mock private ProjectService projectService;
+    @Mock private RoleService roleService;
 
     private TeamService service() {
         return new TeamService(teamMapper, teamMemberMapper, userMapper, activityLogMapper,
-                userLevelMapper, projectMapper, projectService);
+                userLevelMapper, projectMapper, projectService,
+                new AccessControlService(roleService, userMapper, teamMemberMapper));
     }
 
     private Team teamOwnedBy(long ownerId) {

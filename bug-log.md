@@ -4,6 +4,77 @@
 
 ---
 
+## v2.18.2 — 技术债清理：权限口径 / AI 可复现 / 通知触发点 (2026-11-23)
+
+> 计划书 §七 的三条遗留项。都不是"新 bug"，是"老做法会持续产生 bug"的结构性欠账，
+> 因此登记在本文件但**不计入 BUG/KNOWN 条目数**（统计口径不变，仍为 100）。
+
+### 技术债①: 新旧权限判断并存 → `AccessControlService` 单一入口
+
+- **问题**: 11 处各写各的 `"ROLE_ADMIN".equals(user.getRole())`，公告还从 JWT 的 `ROLE_ADMIN` 授权项里读。
+  同一句"是不是管理员"在不同接口上口径不同 —— 计划书原文就是「个别接口可能绕过 RBAC」。
+- **取证位置**: `backend/mimo-app/.../service/` 的 `ApprovalService`、`IssueChangeRequestService`、
+  `IssueReviewService`、`ProjectAccessService`、`TeamService`、`WorkflowService`、`WikiService`、
+  `UserLevelService`，以及 `controller/` 的 `UserLevelController`、`ApprovalController`、`AnnouncementController`。
+- **修复**: 新增 `com.mimo.service.AccessControlService`，只回答两个问题：
+  `isSystemAdmin`（RBAC 权限码 `role.manage`，V11 里仅授予 SUPER_ADMIN）+ 旧字段兜底；
+  `isTeamAdmin`（系统管理员 ∪ RBAC `team.manage` 的 TEAM 作用域 ∪ `team_members.role=ROLE_ADMIN`）。
+  两套口径**求并集**：老管理员不会被误挡（回归为零），"只在 RBAC 里有角色、旧字段没同步"的账号也能生效。
+  旧字段这条路可用 `mimo.access.legacy-role-fallback=false` 关掉，关掉即纯 RBAC 判定。
+- **为什么旧字段先查**: 旧路径各一次查询，RBAC 路径要查角色 + 权限两张表；而
+  `ProjectAccessService.requireProject` 在每个请求上都会被调用，让管理员/成员在第一次查询就短路，
+  避免所有读接口白多两次 SQL。
+- **验证**: `AccessControlServiceTest` 11 项，含"旧字段命中后不再查 RBAC""只在 RBAC 有 `role.manage`
+  的账号不再被拒""团队判定必须落在 TEAM 作用域""开关关闭后 `ROLE_ADMIN` 彻底失效"。
+
+### 技术债②: AI 输出不可复现 → 提示词版本化 + 采样参数真的下发
+
+- **取证（两处硬伤）**:
+  1. `AiChatRequest.temperature/maxTokens` **一路被丢弃**：`AiService.chat` 调的是 `provider.chat(sys,user)`，
+     `DeepSeekProvider` 内部硬编码 `0.7 / 1024`。Controller 里那句
+     `.temperature(0.3)  // 低温度保证结构化输出稳定` 是注释，从未生效 —— 结构化输出其实一直按 0.7 采样。
+  2. `AiChatResponse.model` 从没被赋过值，`AiProvider` 也没有模型名可问：复盘时连"用的哪个模型"都答不上。
+- **修复**:
+  - `AiProvider` 新增 `chat(sys, user, temperature, maxTokens)`（抽象）与 `getModel()`；
+    原 2 参版本降为 `default` 走默认值，老调用点零改动。
+  - `AiService` 每次调用打一行 `[AI] model=… prompt=… temperature=… maxTokens=…`，
+    并把 `model / temperature / promptRef` 填进响应；`chatJson` 改走 `chat()`，JSON 分支同样留痕。
+  - 新增 `com.mimo.ai.prompt.PromptRegistry` + `PromptTemplate`：6 个提示词
+    （`ISSUE_POLISH` / `ISSUE_PRIORITY` / `ISSUE_DRAFT` / `STORY_SPLIT` / `STORY_POINTS` / `CHAT_DEFAULT`）
+    集中登记，每个带 `CODE@vN` 与正文指纹（改文案忘改版本号能被抓）；温度与 maxTokens 跟提示词写在一起，
+    结构化输出 ≤ 0.3。`AiController` 里 6 处内联 systemMessage 与 `buildParseIssueSystemPrompt()` 全部删除。
+- **验证**: `PromptRegistryTest` 7 项（版本格式、结构化提示词温度上限、指纹稳定/随正文变化、
+  未登记 code 直接抛、上下文追加不改版本）；`AiServiceTest` 新增 3 项，直接断言
+  `verify(aiProvider).chat("sys","hi",0.2,512)`、缺省值回落 `INLINE@v0`、JSON 分支下发 0.3。
+
+### 技术债③: 通知触发点遗漏 → 评论 @提及
+
+- **取证**: `CommentService.create` 只通知 `issue.assigneeId`。评论里写 `@某人` 不会有任何反应，
+  而"@ 一下"正是团队里最主要的派活方式。
+- **修复**: `parseMentions` 解析提及（收窄字符集：`@张三，谢谢` 解析成「张三」，邮箱 `a@b.com` 不算提及）→
+  按用户名查人 → 站内通知 `type=MENTION` + WebSocket 实时推送；跳过作者本人、
+  跳过刚收到「新评论」的指派人（同一件事不打扰两次）。
+  `NotificationService.mapEmailType` 把 `MENTION` 归到既有的 `comment` 邮件偏好，不新增开关。
+- **验证**: `CommentServiceTest` 4 项（被 @ 者收到含任务 key 与作者的通知、自己/不存在的人不通知、
+  指派人只收一条、字符集边界）。
+
+- **回归**: `mvn test` **128 项全绿**（改造前 103 项，+25：AccessControlService 11、PromptRegistry 7、
+  AiService +3、CommentService +4）。
+
+- **真实栈冒烟**（`java -jar` + 本地 MySQL 8，端口 18080，因为单测用的裸构造覆盖不到新 Bean 的装配）：
+  - 应用启动成功 → `AccessControlService` 注入 `RoleService` 无循环依赖，容器正常起来（这是单测看不到的风险）；
+  - 评论 `@zhangsan …` → 库里出现 `user_id=2 type=MENTION related_id=13` 的通知（改造前这条记录不可能存在）；
+    同一 issue 再发 `@admin 自己@自己` → `MENTION` 计数仍为 1，确认不给自己发；
+  - `lisi`（`users.role=ROLE_MEMBER`）发公告 → `code=403 无权操作，仅管理员可发布/编辑公告`，库里没多出行；
+  - 临时给 zhangsan 插一条 RBAC `SUPER_ADMIN`（旧字段仍是 MEMBER）→ 同一接口 `code=200` 创建成功，
+    随后已删除该临时授权 —— 这就是"两套口径求并集"的实证：改造前这个账号会被挡在门外；
+  - `POST /api/ai/estimate-story-points` 日志出现
+    `[AI] model=deepseek-chat prompt=STORY_POINTS@v1 temperature=0.2 maxTokens=512`
+    （改造前无 prompt 标识，且实际下发的是硬编码的 0.7）。
+  - 冒烟用的评论/公告/通知已清理，未在开发库里留下测试数据。冒烟过程中新发现 KNOWN-022。
+
+---
+
 ## v2.18.1 — Markdown / 邮件正文 XSS 修复（取证驱动）(2026-11-23)
 
 ### BUG-092: 「正则黑名单」清洗挡不住 XSS，`<details ontoggle>` 在真实浏览器里直接执行 [High]
@@ -1323,6 +1394,23 @@
 - **风险**: 换主题或新增页面时继续出现"某一块是白的"
 - **建议**: 增加 stylelint 规则禁止颜色字面量（或至少警告），逐步替换为 CSS 变量
 
+### KNOWN-022: `user_roles` 的唯一约束对 GLOBAL 角色失效，同一授权被重复写入 [Medium]
+
+- **文件**: `backend/mimo-app/src/main/resources/db/migration/V11__rbac.sql`（建表 + `INSERT IGNORE`）、
+  `V12__fix_user_role_migration.sql`
+- **现象（v2.18.2 冒烟时实测）**: 本地开发库 `user_roles` 共 **50 行**，而实际只有
+  `admin→SUPER_ADMIN`、`zhangsan→DEVELOPER`、`lisi→DEVELOPER` 三条授权，每条重复 **10 次**。
+- **根因**: 表上确有 `UNIQUE KEY uk_user_role_scope (user_id, role_id, scope_type, scope_id)`，
+  但 GLOBAL 行的 `scope_id` 是 **NULL**，而 MySQL 的唯一索引把多个 NULL 视为互不相同 ——
+  唯一约束对全局角色**完全不生效**，`INSERT IGNORE` 便每次都能插进去一条。
+- **影响**: 每次重放迁移/重建演示库都会再叠一份；`PermissionMapper` 的 `JOIN user_roles` 结果集随之膨胀
+  （`SELECT DISTINCT` 兜住了正确性，所以表现为"悄悄变慢 + 数据看着很脏"，不是权限算错）。
+- **建议修复（未做）**: 把 GLOBAL 行的 `scope_id` 规范化成 `0`（代码里查 GLOBAL 本来就传 `0L`），
+  先 `DELETE` 掉重复行、再 `ALTER TABLE ... MODIFY scope_id BIGINT NOT NULL DEFAULT 0`，
+  让既有唯一键真正生效；写入侧（`RoleService` 分配角色）同步写 `0` 而不是 `NULL`。
+  **本轮没做**是因为要新增 `V25` 迁移文件，而你手上还有未推送的工作流/面板改动，
+  避免迁移编号撞车，等你那批推上来再补。
+
 ---
 
 ## Bug 统计
@@ -1334,8 +1422,8 @@
 | Medium | 31 |
 | Low | 18 |
 | **已修复（BUG 条目）** | **92** |
-| **已知未修复（KNOWN 条目）** | **8** |
-| **总计** | **100** |
+| **已知未修复（KNOWN 条目）** | **9** |
+| **总计** | **101** |
 
 | 版本段 | BUG 条数 |
 |--------|---------|
@@ -1368,3 +1456,6 @@
 > ② 本轮复核把 6 条「其实早就修好、只是没标」的 KNOWN（001 / 003 / 008 / 010 / 012 / 015）标为已修复，
 > 加上 KNOWN-011 收口，未关闭 15 → 8；
 > ③ 严重程度四档合计仍等于 BUG 条目数（6 + 37 + 31 + 18 = 92）。
+>
+> **2026-11-23 补记**：v2.18.2 冒烟时新发现 KNOWN-022（`user_roles` 唯一约束对 GLOBAL 失效），
+> KNOWN 未关闭 8 → 9、总计 100 → 101；本轮的技术债修复不产生 BUG 条目，故 BUG 数仍为 92。
