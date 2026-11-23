@@ -222,15 +222,30 @@ ON DUPLICATE KEY UPDATE role_id = r.id;
 -- ============================================================
 -- 迁移现有 User.role 字符串 → user_roles
 -- 仅迁移存在 role 字符串的用户到 GLOBAL SUPER_ADMIN / 其他
+--
+-- 注意：不能用 INSERT IGNORE 做幂等。GLOBAL 行的 scope_id 为 NULL，而 MySQL 的唯一键
+-- 认为 NULL 互不相等，于是 uk_user_role_scope 对这类行完全不生效，INSERT IGNORE 每次都插一条。
+-- MigrationRunner 每次启动都会重跑所有脚本，结果就是每个用户堆了十几份相同授权（BUG-098）。
+-- 改成 NOT EXISTS 显式判重（NULL 安全）。
 -- ============================================================
-INSERT IGNORE INTO user_roles (user_id, role_id, scope_type, scope_id)
+INSERT INTO user_roles (user_id, role_id, scope_type, scope_id)
 SELECT u.id, r.id, 'GLOBAL', NULL
 FROM users u
 JOIN roles r ON r.code = 'SUPER_ADMIN'
-WHERE u.role = 'ADMIN';
+WHERE u.role = 'ADMIN'
+  AND NOT EXISTS (
+      SELECT 1 FROM (SELECT * FROM user_roles) ur
+      WHERE ur.user_id = u.id AND ur.role_id = r.id
+        AND ur.scope_type = 'GLOBAL' AND ur.scope_id IS NULL
+  );
 
-INSERT IGNORE INTO user_roles (user_id, role_id, scope_type, scope_id)
+INSERT INTO user_roles (user_id, role_id, scope_type, scope_id)
 SELECT u.id, r.id, 'GLOBAL', NULL
 FROM users u
 JOIN roles r ON r.code = 'DEVELOPER'
-WHERE u.role = 'MEMBER';
+WHERE u.role = 'MEMBER'
+  AND NOT EXISTS (
+      SELECT 1 FROM (SELECT * FROM user_roles) ur
+      WHERE ur.user_id = u.id AND ur.role_id = r.id
+        AND ur.scope_type = 'GLOBAL' AND ur.scope_id IS NULL
+  );

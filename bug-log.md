@@ -4,6 +4,60 @@
 
 ---
 
+## v2.18.5 — 角色授权不再重复堆积（BUG-098）+ 首屏别先下结论 (2026-11-23)
+
+> 起因只是收尾时顺手 `select count(*) from user_roles`：89 行。库里一共 13 个用户，
+> 每人最多只该有 1 条 GLOBAL 授权 —— 多出来的 76 行全是重复。
+
+### BUG-098: 每启动一次后端，就重复插一遍角色授权 [High]
+
+- **现象**: `user_roles` 里 admin 有 13 条完全相同的 `SUPER_ADMIN/GLOBAL` 记录，其余用户各
+  4~13 条不等；`GET /api/role/user/{id}/assignments` 也跟着返回十几条重复角色。
+  重复条数正好等于后端启动次数（当天重启了 13 次）。
+- **根因（两处，缺一不可）**:
+  1. `db/migration/V11__rbac.sql` / `V12__fix_user_role_migration.sql` 用
+     `INSERT IGNORE INTO user_roles ... scope_id = NULL` 做幂等。表上确有唯一键
+     `uk_user_role_scope (user_id, role_id, scope_type, scope_id)`，但 **MySQL 的唯一键认为
+     NULL 互不相等**，GLOBAL 行（scope_id 为 NULL）等于完全不受约束，`INSERT IGNORE` 从不"忽略"。
+     而 `MigrationRunner` 每次启动都会把所有 `V*.sql` 重跑一遍（没有版本记录表），于是每次 +1。
+  2. `RoleService.assignRole` 的幂等检查写的是
+     `.eq(req.getScopeId() == null, UserRole::getScopeId, null)`，生成的 SQL 是 `scope_id = NULL`
+     —— 恒为假。所以走接口手动分配同样每次插一条。
+- **修复**:
+  - 迁移脚本改为 `INSERT ... SELECT ... WHERE NOT EXISTS (… scope_id IS NULL)`（NULL 安全）；
+    `V12` 开头新增一段可重复执行的重复行清理，只保留 `id` 最小的那条。
+  - `RoleService.assignRole` 改成 `scopeId == null ? wrapper.isNull(...) : wrapper.eq(...)`，
+    并用 `selectCount` 判断。
+  - **没有新建 `V2x` 迁移**：schema 层面给 `scope_id` 加 `NOT NULL DEFAULT 0` 才是彻底的解法，
+    但那要占一个新版本号，与今晚要推的工作流/面板迁移号有冲突风险。当前做法在代码层解决了
+    全部两条写入路径，schema 变更留待后续统一排。
+- **真实栈对照**: 修复前 `user_roles` 89 行（每人 4~13 份）；带修复的 jar 启动一次 → 13 行
+  （每人 1 份）；再启动一次 → 仍是 13 行（日志 `V12 … ok=3 skipped=0 failed=0`）；
+  连续 3 次 `POST /api/role/assign` 同一角色 → 分配记录数 1 → 1，不再增长。
+- **回归防线**:
+  - `RoleServiceTest` 加两条用例直接断言生成的 SQL（`scope_id IS NULL` / `scope_id = ?`）。
+    旧用例只 mock 了 mapper 返回值，看不到 SQL 长什么样，所以这个 bug 一直没被拦住。
+  - 新增 `RoleMigrationScriptTest`：迁移脚本里禁止对 `user_roles` 用 `INSERT IGNORE`，
+    且写入语句必须带 `NOT EXISTS`；`V12` 必须含去重语句。
+  - 顺带关闭 KNOWN-022（`user_roles` 唯一键对 GLOBAL 行失效）——以代码层幂等替代 schema 变更。
+
+### 首屏「接下来做什么」先下结论的假状态 [Medium]
+
+- **现象**: `e2e/next-step.mjs` 有一次失败："提示=当前没有卡在你这儿的事，三件事=0"，
+  可是同一时刻接口 `GET /api/workbench/my` 明确返回 1 条任务。
+- **根因**: 区块的渲染条件是"首屏 dashboard 已加载"，而它依赖的是**工作台的另一路请求**。
+  数据没到时 `nextUps` 为空 → 直接渲染成"没有卡在你这儿的事"——界面先撒一次谎再改口。
+- **修复**: 工作台加载中显示骨架屏与"正在整理你今天该做的事…"，不再输出结论；
+  用例侧改为等待"结论态"（有事项 / 上手清单 / 空态）而不是等区块可见。
+
+### 验证
+
+- 后端 `mvn test`：**137 通过**（v2.18.4 为 133，新增 4 条）。
+- 前端 `vue-tsc` 通过；`e2e/next-step.mjs` **6/6 连跑两次**稳定；`e2e/chain-links.mjs` **5/5**。
+- 真实栈：两次启动 `user_roles` 行数 13 → 13；`/api/role/user/1/assignments` 返回 1 条。
+
+---
+
 ## v2.18.4 — 主链路给出「下一步」+ 修菜单可点却进不去的权限口径 (2026-11-23)
 
 > 上一轮（v2.18.3）把断掉的线接上了，这一轮回答"接上之后每一步该点哪里"：
@@ -1551,7 +1605,7 @@
 - **风险**: 换主题或新增页面时继续出现"某一块是白的"
 - **建议**: 增加 stylelint 规则禁止颜色字面量（或至少警告），逐步替换为 CSS 变量
 
-### KNOWN-022: `user_roles` 的唯一约束对 GLOBAL 角色失效，同一授权被重复写入 [Medium]
+### KNOWN-022: `user_roles` 的唯一约束对 GLOBAL 角色失效，同一授权被重复写入 [Medium] — ✅ 已解决（v2.18.5）
 
 - **文件**: `backend/mimo-app/src/main/resources/db/migration/V11__rbac.sql`（建表 + `INSERT IGNORE`）、
   `V12__fix_user_role_migration.sql`
@@ -1562,11 +1616,14 @@
   唯一约束对全局角色**完全不生效**，`INSERT IGNORE` 便每次都能插进去一条。
 - **影响**: 每次重放迁移/重建演示库都会再叠一份；`PermissionMapper` 的 `JOIN user_roles` 结果集随之膨胀
   （`SELECT DISTINCT` 兜住了正确性，所以表现为"悄悄变慢 + 数据看着很脏"，不是权限算错）。
-- **建议修复（未做）**: 把 GLOBAL 行的 `scope_id` 规范化成 `0`（代码里查 GLOBAL 本来就传 `0L`），
-  先 `DELETE` 掉重复行、再 `ALTER TABLE ... MODIFY scope_id BIGINT NOT NULL DEFAULT 0`，
-  让既有唯一键真正生效；写入侧（`RoleService` 分配角色）同步写 `0` 而不是 `NULL`。
-  **本轮没做**是因为要新增 `V25` 迁移文件，而你手上还有未推送的工作流/面板改动，
-  避免迁移编号撞车，等你那批推上来再补。
+- **✅ v2.18.5 已解决（未动 schema，见 BUG-098）**:
+  - 写入侧两条路径全部改成 NULL 安全判重：迁移脚本 `INSERT ... SELECT ... NOT EXISTS`，
+    `RoleService.assignRole` 用 `isNull` / `selectCount`；
+  - `V12` 增加可重复执行的重复行清理，历史脏数据一次性收掉（本地实测 89 行 → 13 行）；
+  - 新增 `RoleMigrationScriptTest` 与两条断言 SQL 形状的 `RoleServiceTest` 用例守住回归。
+  - **为什么仍不改 schema**: 给 `scope_id` 加 `NOT NULL DEFAULT 0` 才是根治，但要占一个新迁移编号；
+    等你手上未推送的工作流/面板那批推上来、编号确定后再统一排，届时这两道判重仍然兼容 0 值。
+
 
 ---
 
@@ -1575,15 +1632,16 @@
 | 严重程度 | 数量 |
 |---------|------|
 | Critical | 6 |
-| High | 40 |
+| High | 41 |
 | Medium | 33 |
 | Low | 18 |
-| **已修复（BUG 条目）** | **97** |
-| **已知未修复（KNOWN 条目）** | **8** |
+| **已修复（BUG 条目）** | **98** |
+| **已知未修复（KNOWN 条目）** | **7** |
 | **总计** | **105** |
 
 | 版本段 | BUG 条数 |
 |--------|---------|
+| v2.18.5 — 角色授权重复堆积 + 首屏假结论 (2026-11-23) | 1 |
 | v2.18.4 — 主链路「下一步」+ 菜单/守卫权限口径统一 (2026-11-23) | 1 |
 | v2.18.3 — 功能链路闭合（断链/假入口/切面 NPE）(2026-11-23) | 4 |
 | v2.18.1 — Markdown/邮件 XSS 修复（取证驱动）(2026-11-23) | 1 |
@@ -1628,3 +1686,8 @@
 > **2026-11-23 补记（v2.18.4）**：新增 BUG-097（菜单可见但守卫拒绝 / 权限码并发拉取），
 > BUG 已修复 96 → 97（High 39 → 40，四档合计 6+40+33+18 = 97），总计 104 → 105。
 > 本轮的 P1/P2/P3（下一步、接下来做什么、每页一句话）是功能增强，不记 BUG 条目。
+>
+> **2026-11-23 补记（v2.18.5）**：新增 BUG-098（每次启动重复插角色授权 + assign 幂等失效），
+> 并关闭 KNOWN-022。于是 BUG 已修复 97 → 98（High 40 → 41，四档合计 6+41+33+18 = 98）、
+> KNOWN 未关闭 8 → 7、总计维持 98 + 7 = 105。首屏"数据未到先下结论"的假状态记在
+> BUG-098 同一版本段内，不单列条目（属于本轮新增功能的自身缺陷）。

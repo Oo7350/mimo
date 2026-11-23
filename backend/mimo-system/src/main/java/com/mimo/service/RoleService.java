@@ -114,13 +114,21 @@ public class RoleService {
             throw new BusinessException(ResultCode.BAD_REQUEST,
                     "非 GLOBAL scope 必须提供 scopeId");
         }
-        // 幂等：已存在则跳过
-        UserRole exist = userRoleMapper.selectOne(Wrappers.<UserRole>lambdaQuery()
+        // 幂等：已存在则跳过。
+        // 注意 GLOBAL 行的 scope_id 是 NULL，必须用 IS NULL 判断——以前写的是
+        // `.eq(req.getScopeId() == null, UserRole::getScopeId, null)`，生成的 SQL 是 `scope_id = NULL`，
+        // 永远不成立，于是每次调用都插一行（BUG-098）。表上的唯一键对 NULL 也不生效。
+        var wrapper = Wrappers.<UserRole>lambdaQuery()
                 .eq(UserRole::getUserId, req.getUserId())
                 .eq(UserRole::getRoleId, req.getRoleId())
-                .eq(UserRole::getScopeType, req.getScopeType())
-                .eq(req.getScopeId() == null, UserRole::getScopeId, null));
-        if (exist != null) return; // 已存在，幂等
+                .eq(UserRole::getScopeType, req.getScopeType());
+        if (req.getScopeId() == null) {
+            wrapper.isNull(UserRole::getScopeId);
+        } else {
+            wrapper.eq(UserRole::getScopeId, req.getScopeId());
+        }
+        Long existCount = userRoleMapper.selectCount(wrapper);
+        if (existCount != null && existCount > 0) return; // 已存在，幂等
         UserRole ur = new UserRole();
         ur.setUserId(req.getUserId());
         ur.setRoleId(req.getRoleId());

@@ -164,6 +164,22 @@ async function main() {
         await page.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
         const block = page.locator(".dash-next");
         await block.waitFor({ state: "visible", timeout: 20000 });
+        // 等工作台数据落地：有具体事项 / 上手清单 / 空态，三者都算"结论已出"。
+        // 只等 .dash-next 可见会在骨架屏阶段就读到"没有卡在你这儿的事"，
+        // 而那正是被修掉的假结论（数据没到就先下判断）。
+        await page.waitForFunction(
+          () => {
+            const el = document.querySelector(".dash-next");
+            if (!el) return false;
+            return !!(
+              el.querySelector(".dash-next__item") ||
+              el.querySelector(".dash-next__empty") ||
+              el.querySelector(".dash-next__steps")
+            );
+          },
+          null,
+          { timeout: 20000 }
+        );
         const title = await page.locator(".dash-next__title").innerText();
         const hint = await page.locator(".dash-next__hint").innerText();
         const items = await page.locator(".dash-next__item").count();
