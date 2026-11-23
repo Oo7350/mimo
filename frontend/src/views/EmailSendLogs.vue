@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="email-send-logs-page">
     <el-card>
       <template #header>
@@ -10,6 +10,8 @@
           </div>
         </div>
       </template>
+
+      <PageHint>系统替你发出的每一封邮件（通知、审批结果）是否投递成功。邮件没收到时，先来这里看失败原因，再查邮箱绑定。</PageHint>
 
       <!-- 统计卡片 -->
       <div class="stats-row" v-if="stats">
@@ -98,6 +100,7 @@
 </template>
 
 <script setup lang="ts">
+import PageHint from "@/components/common/PageHint.vue"
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import request from '@/api/request'

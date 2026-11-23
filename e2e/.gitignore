@@ -1,4 +1,5 @@
 # 跑用例产生的临时产物，不入库
 shots-suite/
 suite-report.md
+xss-report.md
 e2e-attachment-*.txt

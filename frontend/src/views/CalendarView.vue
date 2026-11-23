@@ -1,5 +1,7 @@
-<template>
+﻿<template>
   <div class="calendar-page">
+    <PageHint>把工作项的截止日期、Sprint 起止和你自己的会议/提醒铺在同一张日历上，用来看排期冲突和到期分布。</PageHint>
+
     <!-- ===== HEADER ===== -->
     <div class="cal-header">
       <div class="cal-header__left">
@@ -256,6 +258,7 @@
 </template>
 
 <script setup lang="ts">
+import PageHint from "@/components/common/PageHint.vue"
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { ArrowLeft, ArrowRight, Plus, Clock, Document, Location, CollectionTag, User, Close, Sunny, Calendar, EditPen, Bell } from '@element-plus/icons-vue'
 import { getCalendarEvents, deleteCalendarEvent, type CalendarEvent } from '@/api/calendar'

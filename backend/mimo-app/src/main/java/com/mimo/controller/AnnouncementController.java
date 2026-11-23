@@ -18,6 +18,7 @@ import java.util.List;
 public class AnnouncementController {
 
     private final AnnouncementService announcementService;
+    private final com.mimo.service.AccessControlService accessControlService;
 
     @GetMapping
     public Result<List<AnnouncementDTO.VO>> list(
@@ -54,15 +55,20 @@ public class AnnouncementController {
         return Result.successMessage("公告已删除");
     }
 
+    /**
+     * 公告的发布/编辑/删除只允许系统管理员。
+     *
+     * <p>以前这里是读 JWT 里的 {@code ROLE_ADMIN} 授权项（和别处查 users.role 是两套口径），
+     * 现在统一走 {@link com.mimo.service.AccessControlService}，与 RBAC 完全一致。
+     */
     private void requireAdmin(Authentication auth) {
-        if (auth == null || auth.getAuthorities() == null) {
-            throw new BusinessException(ResultCode.FORBIDDEN, "无权操作，仅管理员可发布/编辑公告");
+        String denied = "无权操作，仅管理员可发布/编辑公告";
+        if (auth == null || !(auth.getPrincipal() instanceof Number)) {
+            throw new BusinessException(ResultCode.FORBIDDEN, denied);
         }
-        boolean isAdmin = auth.getAuthorities().stream()
-                .map(GrantedAuthority::getAuthority)
-                .anyMatch(a -> "ROLE_ADMIN".equals(a));
-        if (!isAdmin) {
-            throw new BusinessException(ResultCode.FORBIDDEN, "无权操作，仅管理员可发布/编辑公告");
+        Long userId = ((Number) auth.getPrincipal()).longValue();
+        if (!accessControlService.isSystemAdmin(userId)) {
+            throw new BusinessException(ResultCode.FORBIDDEN, denied);
         }
     }
 

@@ -7,10 +7,19 @@
       </el-button>
     </div>
 
+    <PageHint>绑定你的工作邮箱（IMAP 收信 / SMTP 发信）。绑好之后，系统才能代你发通知邮件、把收件箱拉进来。</PageHint>
+
     <!-- 已绑定账户列表 -->
     <el-card class="section" shadow="never">
       <template #header><span>已绑定的邮箱</span></template>
-      <el-empty v-if="accounts.length === 0" description="尚未绑定任何邮箱" />
+      <EmptyGuide
+        v-if="accounts.length === 0"
+        :icon="Message"
+        title="还没有绑定邮箱"
+        reason="绑好之后系统才能代你发通知邮件、把收件箱里的来信拉进 Mimo。用的是你自己的 IMAP / SMTP 账号，密码只用于登录邮件服务器。"
+        action-label="绑定第一个邮箱"
+        @action="openBind"
+      />
       <el-table v-else :data="accounts" stripe>
         <el-table-column label="邮箱地址" min-width="200">
           <template #default="{ row }">
@@ -146,9 +155,11 @@
 </template>
 
 <script setup lang="ts">
+import PageHint from "@/components/common/PageHint.vue"
 import { ref, onMounted, reactive } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Message } from '@element-plus/icons-vue'
+import EmptyGuide from '@/components/common/EmptyGuide.vue'
 import { useRouter } from 'vue-router'
 import {
   listEmailAccounts,

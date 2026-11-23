@@ -23,6 +23,17 @@ public class SprintDTO {
     }
 
     @Data
+    public static class UpdateRequest {
+        @NotBlank(message = "Sprint 名称不能为空")
+        private String name;
+        private String goal;
+        @NotNull(message = "开始日期不能为空")
+        private LocalDate startDate;
+        @NotNull(message = "结束日期不能为空")
+        private LocalDate endDate;
+    }
+
+    @Data
     public static class SprintVO {
         private Long id;
         private String name;

@@ -35,12 +35,36 @@ public class AiService {
     /**
      * 普通对话
      *
+     * <p>每次调用都会把 **模型 / 提示词版本 / 温度 / maxTokens** 记进日志与响应体：
+     * 同一句需求两次结果不同时，至少能回答"参数一不一样"。
+     * 采样参数以前在这里被整段丢弃（Provider 内部硬编码 0.7/1024），
+     * 现在原样下发，见 {@link AiProvider#chat(String, String, double, int)}。
+     *
      * @throws AiUnavailableException 未配置或调用失败
      */
     public AiChatResponse chat(AiChatRequest request) {
         String sys = request.getSystemMessage() != null ? request.getSystemMessage() : "你是一个有用的助手。";
-        String result = aiProvider.chat(sys, request.getUserMessage());
-        return AiChatResponse.of(result);
+        double temperature = request.getTemperature() != null
+                ? request.getTemperature() : AiProvider.DEFAULT_TEMPERATURE;
+        int maxTokens = request.getMaxTokens() != null
+                ? request.getMaxTokens() : AiProvider.DEFAULT_MAX_TOKENS;
+        String model = aiProvider.getModel() != null ? aiProvider.getModel() : aiProvider.getName();
+        // INLINE@v0 = 调用方没走 PromptRegistry（自己拼的 systemMessage），复盘时一眼能看出来
+        String promptRef = request.getPromptRef() != null ? request.getPromptRef() : "INLINE@v0";
+
+        log.info("[AI] model={} prompt={} temperature={} maxTokens={} userMessageLength={}",
+                model, promptRef, temperature, maxTokens,
+                request.getUserMessage() != null ? request.getUserMessage().length() : 0);
+
+        String result = aiProvider.chat(sys, request.getUserMessage(), temperature, maxTokens);
+        return AiChatResponse.builder()
+                .content(result)
+                .model(model)
+                .temperature(temperature)
+                .promptRef(promptRef)
+                .finished(true)
+                .error(false)
+                .build();
     }
 
     /**
@@ -105,10 +129,8 @@ public class AiService {
      * @throws AiUnavailableException 未配置 / 调用失败 / 模型返回的不是合法 JSON
      */
     public <T> T chatJson(AiChatRequest request, Class<T> type) {
-        String result = aiProvider.chat(
-                request.getSystemMessage(),
-                request.getUserMessage()
-        );
+        // 走 chat() 而不是直接打 Provider：JSON 类调用同样要留下 模型/温度/提示词版本 的痕迹
+        String result = chat(request).getContent();
         try {
             return JSON.readValue(result, type);
         } catch (Exception e) {

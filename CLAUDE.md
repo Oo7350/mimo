@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-> **最新版本**：v2.17.1（2026-11-21）— 工作流按看板列自动生成 + 认领/审批自动推进。详见末尾"版本变更记录"。
+> **最新版本**：v2.18.1（2026-11-23）— 工作流按看板列自动生成 + 认领/审批自动推进（并入 v2.18.0 的 KNOWN 收口）。详见末尾"版本变更记录"。
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Mimo is a lightweight Trello-like project management platform for small teams. It supports team collaboration, kanban task tracking, and progress visualization.
 
-- **Version**: v2.15.8 — Three-layer Navigation (global + project-scoped sidebar) + Broken-link Fixes (2026-11-20)
+- **Version**: v2.18.0 — KNOWN 遗留收口（编号并发 / 团队孤儿 / 审批补偿 / 更新端点）(2026-11-23)
 - **Previous**: v2.15.6 — Delivery Analytics + AI Sprint Planning + RAG + Access Hardening + Service Tests (2026-11-13)
 - **GitHub**: https://github.com/Oo7350/mimo
 - **API docs**: `接口文档.md` (70+ endpoints, Chinese)
@@ -230,7 +230,7 @@ All v2.15 AI roadmap items are implemented; see `项目功能完善计划.md` §
 
 ## Version History
 
-### v2.17.1 — 工作流自动生成 + 认领/审批自动推进 (2026-11-21)
+### v2.18.1 — 工作流自动生成 + 认领/审批自动推进 (2026-11-23)
 
 用户反馈"工作流不能自动生成吗？自己生成什么工作流啊"——原来的设计器要求手工拖节点、手工配转换规则。
 
@@ -238,7 +238,7 @@ All v2.15 AI roadmap items are implemented; see `项目功能完善计划.md` §
 - `WorkflowService.ensureDefaultWorkflows(projectId, userId)`：按项目看板列生成 STORY/TASK/BUG 三套默认工作流
   （Scrum 模板，前进+回退都允许，所以不改变原有拖拽行为；`is_default=1`，名称"默认工作流（自动生成）"），幂等。
 - 触发点：`ProjectService.create` 建完默认列后立即生成；`GET /api/workflow/project/{id}` 对存量项目懒补齐
-  （打开设计器即生成，现有 5 个项目已验证全部补齐）。
+  （打开设计器即生成）。
 - 设计器：自动生成的显示「自动生成」标签 + 顶部说明；空态改为"该项目还没有看板列"；
   管理员仍可改节点/转换/执行条件，或切换 Scrum/Kanban/Bug 模板收紧。
 - 无列归属的历史任务在认领时先落到第一列，工作流才有起点。
@@ -248,13 +248,34 @@ All v2.15 AI roadmap items are implemented; see `项目功能完善计划.md` §
   - 管理员 / 项目负责人 / 团队管理员：直接指派本人 + 自动移到「进行中」+ 计时开始
     （复用 `BoardService.moveIssue`，工作流校验、活动日志、WebSocket 广播一次到位）。
   - 普通成员：生成 `ISSUE_CLAIM` 审批请求（`dataJson={issueId,userId,toColumnId}`）并通知项目负责人/团队管理员；
-    审批通过后 `ApprovalService.executeApprovedAction` 回调 `IssueClaimService.applyClaim` 自动指派并推进。
+    审批通过后由 `ApprovalExecutionService`（v2.18.0 拆出的独立事务执行器）回调
+    `IssueClaimService.applyClaim` 自动指派并推进。
   - 已被他人认领 → `409` 并提示认领人；重复申请复用已有待处理请求。
 - 前端：任务详情底部「认领任务」按钮（仅未指派时显示）；审批列表类型显示「认领任务」。
-- 测试：后端 86 → 90 项全绿（工作流自动生成 3 项 + `IssueClaimService` 4 项）；前端 `vue-tsc` 通过。
+- 测试：合并后后端全量测试全绿（含工作流自动生成 3 项 + `IssueClaimService` 4 项）；前端 `vue-tsc` 通过。
 
 **已知差距（未做）**：看板仍是固定 3 列，工作流节点无法独立于列存在，所以还没有
 「开发→测试→验收→上线」这种多人多步交接；下一步需要可自定义列/节点 + 每节点责任人（角色或成员）+ 交接审批。
+### v2.18.0 — KNOWN 遗留四连修：编号冲突 / 团队孤儿 / 审批补偿 / 更新端点 (2026-11-23)
+
+按 bug-log「已知未修复」清单里 Medium/High 的条目批量收口，后端测试 83 → 103 全绿。
+
+- **KNOWN-004 任务编号并发冲突**：新增 `IssueKeyAllocator`，把「取号 + 插入」收成一个可重试单元，
+  撞 `uk_issue_key` 就重新取号（最多 5 次），超限返回 `409 任务编号分配冲突`，
+  不再把 `DuplicateKeyException` 抛成 500。`IssueService.create()` 改为调用它。
+- **KNOWN-005 删团队留孤儿项目**：`TeamService.deleteTeam()` 先遍历团队下的项目逐个
+  `projectService.deleteProject()`（复用既有级联：看板列/任务/项目成员/报告/Sprint），再删成员与团队。
+  此前项目失去团队后谁都看不见也删不掉（`listByUser` 按团队过滤）。
+- **KNOWN-006 审批执行无补偿**：审批结果与执行结果拆成两个状态，`approval_requests` 新增
+  `exec_status` / `exec_error` / `exec_attempts` / `last_exec_at`（`V24`）。
+  执行挪进 `ApprovalExecutionService` 并用 `REQUIRES_NEW` 独立事务——失败只回滚执行自己，
+  不再出现「项目建了一半」；失败原因落库、日志走 SLF4J，新增补偿入口
+  `POST /api/approvals/{id}/retry-execution`（管理员，仅「已通过且未成功」可重试）。
+- **KNOWN-009 缺更新端点**：补 `PUT /api/teams/{id}`（管理员）、`PUT /api/projects/{projectId}`（管理员）、
+  `PUT /api/sprints/{id}`（成员，日期不可倒挂、已结束不可改）、`PUT /api/comments/{id}`（仅作者）。
+  项目 **Key 刻意不可改**（任务编号前缀就是它），评论不做管理员代改。前端编辑 UI 尚未接入。
+- **测试**：新增 `IssueKeyAllocatorTest`(3) / `TeamServiceTest`(4) / `ApprovalServiceTest`(6) /
+  `CommentServiceTest`(3) / `SprintServiceTest`(4)，共 20 条；统计口径上「已知未修复 KNOWN」19 → 15。
 
 ### v2.17.0 — 新手引导重做：分主题 + 锚点自解析 + 干净退出 (2026-11-20)
 

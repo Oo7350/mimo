@@ -4,6 +4,507 @@
 
 ---
 
+## v2.19.2 — 空状态别只说"暂无"，空库要有数据可看 (2026-11-23)
+
+> 这一轮不加新功能，专门清两条一直挂着的 Medium：**KNOWN-019（空状态缺下一步）** 和
+> **KNOWN-020（没有演示数据入口）**。两条其实是同一个病根：
+> 页面在"什么都还没有"的状态下不给用户任何出路 —— 要么对着"暂无数据"发呆，
+> 要么看着一堆 0 以为功能没做。
+
+### KNOWN-019: 空状态缺少「下一步」引导 → ✅ 已解决
+
+- **原现象**: 多数空列表只有"暂无 xx"四个字；只有甘特图和收件箱给了可执行指引。
+- **做法**: 新增通用组件 `components/common/EmptyGuide.vue`，把空状态要做的事定成三条——
+  这里会出现什么（title）、为什么现在是空的/它有什么用（reason）、下一步点哪里（action 主按钮）。
+  纯展示组件，只 emit 不猜业务。
+- **落地页面**（本轮把"只写暂无"的几处全部换掉）:
+  - 公告：管理员看到「发布第一条公告」，普通成员看到"公告只在管理员发布后出现"——
+    不再给普通成员一个点了会 403 的按钮；
+  - 邮箱绑定：「绑定第一个邮箱」+ 一句"用你自己的 IMAP/SMTP 账号，密码只用于登录邮件服务器"；
+  - Webhook：「创建第一个 Webhook」+ 说明"没配也不影响系统本身，只是外部系统收不到消息"；
+  - 审批管理两个页签（表格空态改用 `#empty` 插槽）：说清"什么操作会落到这里"；
+  - 工作台空库的"三步上手"后面加一条"或：一键生成示例数据"（见 KNOWN-020）。
+- **仍未覆盖**: 工作台内部小面板（暂无动态 / 没有被驳回的变更）、Wiki 的历史版本/差异、
+  迭代规划里的 Backlog 空态。这些属于"局部信息为空"，指引价值低，留待需要时再补。
+
+### KNOWN-020: 缺少演示数据初始化入口 → ✅ 已解决
+
+- **原现象**: 空库只有 3 用户 / 1 团队。工作台、迭代健康度、交付分析、审计日志全是 0 或空，
+  既没法试用也没法演示 —— 看到的是"一堆 0"，很容易被当成"这功能没做完"。
+- **做法**: 后端 `POST /api/admin/demo-data`（`DemoDataService`），一次事务里生成一套自洽数据：
+  团队 → 项目 → 4 个看板列 → 3 个迭代（进行中/规划中/已完成）→ 15 个工作项（四种状态、三种类型、
+  含逾期与临期）→ 5 条评论 → 6 条工时 → 3 条验收（其中 2 条 <b>PENDING 且提交人不是管理员</b>，
+  这样「待我处理」里真的有东西）→ 2 份报告 → 5 条审计动态 → 2 条通知。
+- **三个刻意的设计**:
+  1. **幂等**：以项目名 `示例项目：移动端改版` 为标记，已生成过就返回现状（`created=false`），
+     反复点不会把库堆满；
+  2. **只给管理员**：`AccessControlService.isSystemAdmin` 判定，普通成员点了是 403 提示，
+     前端也不显示入口（实测 zhangsan 看不到按钮）；
+  3. **不碰已有数据**：只新建自己的项目和团队，删掉那个项目就干净了。
+- **前端入口**: 工作台空库的三步上手后加"或：一键生成示例数据"；项目列表页头对管理员常驻
+  「生成示例数据」按钮（有项目时也能用，这是实际演示最常用的入口）。共用
+  `composables/useDemoData.ts`，确认框会列清"会建什么、不会动什么"。
+- **自测撞到的一处 500（已修）**: 第一版把项目 Key 写死成 `DEMO`，而 `projects.key` 上有
+  **全局**唯一索引，dev 库里的 demo 项目本身就占着 `DEMO` —— 一点就
+  `Duplicate entry 'DEMO' for key 'projects.uk_project_key'`。改成先读现有 Key 再取
+  （`allocateProjectKey()`），并补了单测 `shouldPickAFreeProjectKeyBecauseProjectKeyIsGloballyUnique`
+  钉住它。这类"硬编码唯一值"的错误用单测挡比靠手点便宜得多。
+- **顺手清掉的历史残留**: dev 库里躺着早期 e2e 跑挂留下的 8 条 `E2E任务*` 和一组
+  「链路团队 / 链路项目」—— 演示数据想好看，这些必须先清掉（已按依赖顺序删除并核对计数）。
+
+### 验证
+
+- 后端：`mvn test` **142 项全绿**（新增 `DemoDataServiceTest` 4 项：拒绝非管理员、
+  已有数据时幂等、真的铺满 15 卡/3 迭代/含"别人提交的待验收"、项目 Key 不硬编码）。
+- 接口实测：`POST /api/admin/demo-data` → `created=true, issueCount=15`；再点一次 →
+  `created=false, issueCount=15`（幂等）。
+- 界面实测（Playwright）：工作台从空变成「当前共有 5 项个人任务 · 2 项审批或验收等待你处理」；
+  看板/交付分析/审计日志均有内容；审批管理两个空态、Webhook 空态渲染出引导文案与按钮；
+  管理员看得到「生成示例数据」、zhangsan 看不到。
+- 前端 `vue-tsc` 通过。
+
+---
+
+## v2.19.1 — 「工作流不知所云」：配好了看不见、挡住了不说往哪走 (2026-11-23)
+
+> 反馈只有六个字：**工作流不知所云**。去页面上一看，确实——这一页把"规则"藏起来了。
+
+### BUG-101: 工作流配好之后看不懂，被拦住也不说还能去哪 [Medium]
+
+- **现象（两部分，同一根因：信息只在一个视角里存在）**:
+  1. 打开 `/projects/1/workflow`，页面上只有一行「当前「STORY」类型已配置工作流: scrum 工作流
+     [编辑] [删除]」。**允许什么、禁止什么，一个字都没有** —— 得先点「编辑」进入拖拽画布才看得见。
+     而画布本身是一堆抽象词：节点、转换规则、终态、执行条件 (空=所有人)，没有一处解释它们
+     对应到看板上的什么东西。
+  2. 看板上真被挡住时，提示是「工作流不允许从「待办」转换到「已完成」」——
+     然后呢？用户不知道现在到底能往哪拖。后端 `/api/workflow/transitions`（可用转换列表）
+     **前端从来没调用过**，接口一直在那儿。
+- **修复**:
+  - 设计器加只读概览（`ruleRows` 计算属性）：已保存的节点以彩色块列出、终态单独标出，
+    规则渲染成表格「从 → 到 → 谁可以这么做」，条件翻成「任何成员 / 仅管理员 / 仅指派人 / 仅报告人」。
+    不点「编辑」就能看懂。
+  - 顶部加 `PageHint`：说明「不配置=随便拖，配置后只能走这些路径，按工作项类型分别生效，保存即生效」；
+    空状态文案改成「「Story」类型没有配置工作流 —— 这一类型的任务可以随便拖」，并提示其它类型的状态。
+  - 保存/套用模板的提示改成有信息量的：保存 → 「已生效：现在看板上「Story」只能按这 4 条规则移动」；
+    模板 → 「模板已套用，确认或修改后点「保存工作流」才真正生效」（以前说"已应用"，容易以为已经生效）。
+  - 看板侧接入 `getAvailableTransitions`：被挡时把消息合并成一条
+    「工作流不允许从「待办」转换到「已完成」。当前可以从这里去：进行中」。
+    注意 `request.ts` 的响应拦截器对非 200 已经弹过一条，所以这里先 `ElMessage.closeAll()` 再弹，
+    否则会叠两条一样的 toast。
+- **不是装饰的取证**: 新增 `e2e/workflow-guard.mjs`（4 条）—— 造一张自己的 STORY 卡，
+  ① 设计器不点编辑就能看到 4 条规则和「谁可以这么做」列；
+  ② 把它从「待办」拖到「已完成」（scrum 模板不允许跳步）→ 卡片回到原列，`columnId` 仍是 1；
+  ③ 提示里带「当前可以从这里去：进行中」；
+  ④ 再拖到「进行中」（允许）→ `columnId=2`、`status=IN_PROGRESS`。
+  当前 **4/4**。
+- **遗留**: 规则目前只能"看"和"手写"，不能可视化地拖动连线（画布还是拖看板列那种）；
+  条件只支持三种角色，不支持"必须填完工时""必须通过验收"这类业务条件。
+
+### 验证
+
+- 前端 `vue-tsc` 通过。
+- e2e：`workflow-guard.mjs` **4/4**；主线三套回归（`main-chain` 11/11、`next-step` 6/6、
+  `chain-links` 5/5）不受影响。
+
+---
+
+## v2.19.0 — 主线自证：让一个全新账号走完 团队→项目→迭代→任务→验收→完成→报告 (2026-11-23)
+
+> 这一轮不加功能。拿一个刚注册的账号，只走界面，从"建团队"走到"看报告"，
+> 走到哪一步卡住就当成 bug 修。首轮 **5/9**，现在 **11/11**。
+>
+> 之后补一句自我校正：首跑那 4 个红里，有一个（Sprint 创建）**是判错了** ——
+> 界面其实有提示，是用例自己没填必填项。真正的缺陷比记的小得多，已在本段改写。
+> 记在这里是因为"用例红了就等于产品坏了"这个推断，本轮错了两次（另一次见 e2e 引导遮罩那条）。
+
+### BUG-099: 有资格验收的人在「待我处理」里看不到这条待验收 [High]
+
+- **现象**: 新账号建团队 → 邀请 admin 进团队 → 把任务提交验收。admin 打开工作台，
+  `GET /api/workbench/my` 的 `pendingTaskReviews` 是**空数组**；但 admin 直接打开这个工作项，
+  验收面板里"通过"按钮好好地在（后端 `assertReviewer` 也认他是管理员）。
+- **根因（两处口径不一致）**:
+  1. `IssueReviewService.listPendingForUser` 的规则是"团队成员 + 非提交人 + （系统管理员 / 项目负责人 /
+     团队管理员 / 报告人）"，而 `WorkbenchService.mapPendingReviews` 又把结果按
+     `projectService.listByUser(userId)`（我的项目）过滤了一遍。系统管理员、团队管理员往往
+     **不在项目的成员表里** —— 于是"能批的人在待办里看不到，看得到的人未必能批"。
+     `mapPendingChanges`（变更审批）是同一个写法，同一个毛病。
+  2. `getMyWorkbench` 开头还有 `if (projectIds.isEmpty()) return emptyWorkbench();`：
+     一个人不在任何项目里，整页就是空的，连他能审批的入口都一起没了。
+- **修复**:
+  - 两处 map 去掉"我的项目"二次过滤（只保留 `issue == null` 判空）—— 权限口径只由
+    `listPendingForUser` 决定，不再各说各话。
+  - `projectName()` 遇到不在缓存里的项目现查一次；`loadProjects` 改成可变 `HashMap`
+    （原来是 `Collections.emptyMap()`，往里补项目会直接抛 `UnsupportedOperationException`）。
+  - `getMyWorkbench` 不再因为"没有项目"整页返回空，只跳过需要项目列表的那几个查询。
+- **真实栈对照**: 修前 admin `/api/workbench/my` → `pendingTaskReviews: []`；修后同一条待验收
+  出现在「待我处理」，点进去 → `/projects/{id}/board?issue={id}` → 切「验收」→ 通过 → 状态 `APPROVED`。
+- **回归防线**: `WorkbenchServiceTest` 新增 `shouldShowPendingReviewsFromProjectsImNotIn`
+  （"无项目 + 有可审批的待验收"），`e2e/main-chain.mjs` 第 8 步从工作台入口验收。
+
+### BUG-100: 表单校验失败时 `validate()` 的 reject 没人接（Sprint / 工时） [Medium]
+
+> **先说更正**：这条最初记成"点创建没有任何反应、也没有任何提示"——**是错的**。
+> 回看真实界面：起止时间没选时字段下方一直有红字「请选择起止时间」，弹窗也不会关。
+> 当时是被自己的用例带偏了：用例从没选过日期，断言又只看"接口里有没有新 Sprint"，
+> 于是把"用例没填必填项"写成了"产品没提示"。真实缺陷是下面这个。
+
+- **现象**: 新建 Sprint、记录工时，必填项没填就点提交 —— 界面表现其实正常（红字 + 弹窗不关），
+  但控制台里有一条被吞掉的异常（Playwright 记为 `pageerror: Object`）。
+- **根因**: `SprintView.handleCreate()` 与 `WorkLogTab.handleCreate()` 都写成
+  `await createFormRef.value.validate()` 而不接 reject。Element Plus 的 `validate()`
+  校验不过时是 **reject**：异常没人接就成了未处理异常；更要紧的是**代码继续往下跑**
+  —— 工时弹窗在"没通过校验"之后照样 `creating = true` 并发出请求，等于让服务端再兜一次错。
+- **修复**: 两处都改成 `const valid = await validate().catch(() => false); if (!valid) return`。
+  Sprint 侧另留一条兜底提示（`请选择 Sprint 的起止时间`），正常路径不会走到。
+- **取证方式（这次才做对）**: 不要只断言接口，先读页面本身 ——
+  `.el-form-item__error` 得到 `["请选择起止时间"]`、toast 为空、弹窗仍在；
+  同时监听 `pageerror` 才看见那条被吞的异常。
+- **顺带**: 全前端只有这两处是这种写法（`await .*\.validate\(\)` 共 2 命中），已全部修掉。
+
+### 单人团队：验收本身是一个死锁（本轮补上说明与出口）
+
+- **现象/根因**: 验收要求"不能验收自己提交的结果"，而单人团队里提交人往往同时是项目负责人 +
+  报告人 —— 唯一"能验收"的只剩自己。任务会永远停在待验收，界面上一个字都不解释。
+- **修复**: 详情页在"待验收 + 团队里除我之外没有别人"时给一条警示，说清规则并提供「去邀请成员」
+  （`IssueDetailDialog` 的 `checkReviewable()` + `.next-step-blocked`）。
+- **用例**: `main-chain.mjs` 先断言这条提示确实出现，再去邀请成员、再验收 —— 提示和真流程一起验。
+
+### 新增 `e2e/main-chain.mjs`（主线自证）
+
+- 11 个检查点，全程走界面（只有"注册一个全新账号"用接口，注册页不是考察点）：
+  建团队 → 建项目 → 建迭代 → 看板建任务 → 待办→进行中 → 提交验收 → 无人验收提示 → 邀请成员 →
+  管理员从工作台验收通过 → 一键标记完成 → 项目报告有生成入口。
+- 顺手修掉两个用例可靠性问题：
+  - 引导遮罩：真正的 key 是 `localStorage.mimo_tour_state`（按主题存 `{status,v}`），
+    用例之前写的 `sessionStorage` 假 key 完全无效 —— sprint 页的引导自动启动，遮罩把点击吃掉，
+    表现成"按钮点不动"，白查了半天。
+  - 报告页断言前不再直接读 `body.innerText`（页面还没挂载就读，会误判成"没有生成入口"）。
+- 清理改先用新账号自己的权限删（项目负责人/团队管理员），删不掉才打警告，不再假装成功。
+
+### 验证
+
+- 后端 `mvn test`：**138 通过**（v2.18.5 为 137，新增 1 条）。
+- 前端 `vue-tsc` 通过。
+- e2e：`main-chain.mjs` **11/11**、`next-step.mjs` **6/6**、`chain-links.mjs` **5/5**。
+- 真实栈：见 BUG-099 的修前/修后对照。
+
+---
+
+
+
+> 起因只是收尾时顺手 `select count(*) from user_roles`：89 行。库里一共 13 个用户，
+> 每人最多只该有 1 条 GLOBAL 授权 —— 多出来的 76 行全是重复。
+
+### BUG-098: 每启动一次后端，就重复插一遍角色授权 [High]
+
+- **现象**: `user_roles` 里 admin 有 13 条完全相同的 `SUPER_ADMIN/GLOBAL` 记录，其余用户各
+  4~13 条不等；`GET /api/role/user/{id}/assignments` 也跟着返回十几条重复角色。
+  重复条数正好等于后端启动次数（当天重启了 13 次）。
+- **根因（两处，缺一不可）**:
+  1. `db/migration/V11__rbac.sql` / `V12__fix_user_role_migration.sql` 用
+     `INSERT IGNORE INTO user_roles ... scope_id = NULL` 做幂等。表上确有唯一键
+     `uk_user_role_scope (user_id, role_id, scope_type, scope_id)`，但 **MySQL 的唯一键认为
+     NULL 互不相等**，GLOBAL 行（scope_id 为 NULL）等于完全不受约束，`INSERT IGNORE` 从不"忽略"。
+     而 `MigrationRunner` 每次启动都会把所有 `V*.sql` 重跑一遍（没有版本记录表），于是每次 +1。
+  2. `RoleService.assignRole` 的幂等检查写的是
+     `.eq(req.getScopeId() == null, UserRole::getScopeId, null)`，生成的 SQL 是 `scope_id = NULL`
+     —— 恒为假。所以走接口手动分配同样每次插一条。
+- **修复**:
+  - 迁移脚本改为 `INSERT ... SELECT ... WHERE NOT EXISTS (… scope_id IS NULL)`（NULL 安全）；
+    `V12` 开头新增一段可重复执行的重复行清理，只保留 `id` 最小的那条。
+  - `RoleService.assignRole` 改成 `scopeId == null ? wrapper.isNull(...) : wrapper.eq(...)`，
+    并用 `selectCount` 判断。
+  - **没有新建 `V2x` 迁移**：schema 层面给 `scope_id` 加 `NOT NULL DEFAULT 0` 才是彻底的解法，
+    但那要占一个新版本号，与今晚要推的工作流/面板迁移号有冲突风险。当前做法在代码层解决了
+    全部两条写入路径，schema 变更留待后续统一排。
+- **真实栈对照**: 修复前 `user_roles` 89 行（每人 4~13 份）；带修复的 jar 启动一次 → 13 行
+  （每人 1 份）；再启动一次 → 仍是 13 行（日志 `V12 … ok=3 skipped=0 failed=0`）；
+  连续 3 次 `POST /api/role/assign` 同一角色 → 分配记录数 1 → 1，不再增长。
+- **回归防线**:
+  - `RoleServiceTest` 加两条用例直接断言生成的 SQL（`scope_id IS NULL` / `scope_id = ?`）。
+    旧用例只 mock 了 mapper 返回值，看不到 SQL 长什么样，所以这个 bug 一直没被拦住。
+  - 新增 `RoleMigrationScriptTest`：迁移脚本里禁止对 `user_roles` 用 `INSERT IGNORE`，
+    且写入语句必须带 `NOT EXISTS`；`V12` 必须含去重语句。
+  - 顺带关闭 KNOWN-022（`user_roles` 唯一键对 GLOBAL 行失效）——以代码层幂等替代 schema 变更。
+
+### 首屏「接下来做什么」先下结论的假状态 [Medium]
+
+- **现象**: `e2e/next-step.mjs` 有一次失败："提示=当前没有卡在你这儿的事，三件事=0"，
+  可是同一时刻接口 `GET /api/workbench/my` 明确返回 1 条任务。
+- **根因**: 区块的渲染条件是"首屏 dashboard 已加载"，而它依赖的是**工作台的另一路请求**。
+  数据没到时 `nextUps` 为空 → 直接渲染成"没有卡在你这儿的事"——界面先撒一次谎再改口。
+- **修复**: 工作台加载中显示骨架屏与"正在整理你今天该做的事…"，不再输出结论；
+  用例侧改为等待"结论态"（有事项 / 上手清单 / 空态）而不是等区块可见。
+
+### 验证
+
+- 后端 `mvn test`：**137 通过**（v2.18.4 为 133，新增 4 条）。
+- 前端 `vue-tsc` 通过；`e2e/next-step.mjs` **6/6 连跑两次**稳定；`e2e/chain-links.mjs` **5/5**。
+- 真实栈：两次启动 `user_roles` 行数 13 → 13；`/api/role/user/1/assignments` 返回 1 条。
+
+---
+
+## v2.18.4 — 主链路给出「下一步」+ 修菜单可点却进不去的权限口径 (2026-11-23)
+
+> 上一轮（v2.18.3）把断掉的线接上了，这一轮回答"接上之后每一步该点哪里"：
+> P1 工作项详情的四段链路、P2 工作台首屏的"接下来做什么"、P3 每页一句话定位。
+> 顺带挖出一个"看得见、进不去"的权限口径问题。
+
+### BUG-097: 「设置」菜单能看见，点进去被弹回工作台 [High]
+
+- **现象**: 登录一个 `users.role = ROLE_ADMIN`、但 RBAC 里只有 DEVELOPER 的账号，
+  侧边栏「设置」分组正常显示（含角色权限 / 操作审计 / Webhook / 邮件日志），
+  点任一条却跳回工作台，顶部提示"无访问权限：role.manage"。
+- **根因（两条口径打架）**:
+  1. 菜单可见性 = RBAC 权限码 **∪** 旧字段 `ROLE_ADMIN`（v2.18.3 的 `isLegacyAdmin` 兜底）；
+  2. 路由守卫的 `meta.requiresPermission` 只判 RBAC —— 于是"菜单按并集显示、守卫按 RBAC 拒绝"。
+  这与后端 `AccessControlService.isSystemAdmin`（同样是并集）也不一致。
+  另外 `store/permission.ts` 的 `fetch()` 写的是 `if (loading.value) return`，
+  两个入口（MainLayout 挂载 + 路由守卫）同时触发时，后到的那次拿到 `undefined` 就走，
+  `loaded` 仍是 false → `has()` 判无权限。
+- **修复**:
+  - 守卫与后端同口径：`permStore.has(code) || userInfo.role === 'ROLE_ADMIN'`；
+  - `fetch()` 改为**返回同一个在途 Promise**（`inflight`），并发调用都等同一个请求；
+    同一会话成功拉取后不再重复请求。
+- **决定性对照（真实栈 + 真实浏览器）**: 临时把 lisi 的 `users.role` 改成 `ROLE_ADMIN`
+  （RBAC 仍是只有 14 个码的 DEVELOPER），访问 `/admin/audit-logs`：
+  - 守卫只判 RBAC（旧行为）：`url=/`、页面没渲染 → **点进去被弹回**；
+  - 守卫判并集（修复后）：`url=/admin/audit-logs`，页面与说明文案正常渲染。
+  验证后已把 lisi 的角色改回 `ROLE_MEMBER`。
+
+### P1: 工作项详情给出「下一步」（四段链路 + 唯一主动作）
+
+- **问题**: 链路各段散落在不同地方 —— 状态在「基本信息」的下拉框、验收在第六个 Tab、
+  报告在项目菜单里。做完一件事之后，界面上没有任何地方告诉你"然后呢"。
+- **实现**: `IssueDetailDialog.vue` 顶部新增「下一步」条：
+  - 四段节点 `待办 → 进行中 → 待验收 → 已完成`，按 status + 最新验收记录高亮"走到哪一段"；
+  - 一句话说明 + 一个主动作（必要时附第二个出口）：
+    待办→**开始处理**；进行中→**提交验收**（可直接拉起提交弹窗）或直接标记完成；
+    验收中→**去验收处理**；被打回→**重新提交验收**（带打回原因）；已通过→**标记完成**；
+    已完成→**查看项目报告** / 回到看板。
+  - 状态推进复用「保存」的同一份载荷（抽出 `buildPayload()`），所以看板列、bugStatus、
+    依赖字段不会两条路分叉；失败会回滚界面状态，不让界面骗人。
+  - `IssueReviewPanel` 通过 `@loaded` 回传验收记录（详情页不再重复请求），
+    并 `defineExpose` 出 `openSubmitDialog()` 供「下一步」直接调用。
+
+### P2: 工作台首屏「接下来做什么」
+
+- **问题**: 首屏是"平台有什么"（统计卡 + 四五个面板），不是"你现在该做什么"；
+  0 数据时更是全 0，只能靠新手引导讲控件。
+- **实现**: `Dashboard.vue` 在统计卡下面加一块：
+  - 有数据时按"卡住别人 → 卡住自己 → 快到期"排序给最多三件事（被打回 / 待我处理 / 已逾期 /
+    进行中 / 待开始），每条直达对应工作项；
+  - 一个项目都没有时切成三步上手清单：建项目 → 建迭代 → 建第一个任务。
+
+### P3: 每页一句话定位（`PageHint`）
+
+- 新增 `components/common/PageHint.vue`，给 Webhook 集成、操作审计、邮件发送日志、公告、
+  日历、收件箱、邮箱绑定七个页面各补一句"这一页解决什么问题"。
+- Webhook 那一句如实写明**当前只覆盖工作项新建/更新/删除三种事件** ——
+  以前页面看着像通用集成，实际只在这三处触发（v2.18.3 审计发现），与其让人猜不如写在页面上。
+
+### 验证
+
+- 新增 `e2e/next-step.mjs`：**6/6 通过**（四段链路文案与主动作、点「开始处理」后接口状态真的变
+  IN_PROGRESS、提交验收弹窗被拉起、首屏三件事可点且直达、审计页说明文案渲染）。
+- 回归 `e2e/chain-links.mjs`：**5/5 通过**。
+- 前端 `npm run build`（含 `vue-tsc`）通过；本轮无后端改动。
+- 用例造出来的工作项由脚本删除（走 `DELETE /api/issues/{id}`，服务端软删），
+  临时改的 `users.role`、临时授予的角色、审批与通知数据均已还原/清理。
+
+---
+
+## v2.18.3 — 功能链路闭合：把"散着的功能"接成一条路 (2026-11-23)
+
+> 起因是你那句"很多功能遍布很散，没有形成一股完整的链条……很多东西浮于形式"。
+> 逐个查下去，功能其实都在，坏的是**页与页之间的那一步**：入口指向重复、链接落不到地方、
+> 通知点了没反应、菜单还在用旧字段判断。这一轮**不加任何新功能**，只把已有的线接上。
+
+### BUG-093: `@RequirePermission` 切面 NPE，「角色权限」页所有写操作 500 [High]
+
+- **现象**: `POST /api/role/assign` 直接 `500 服务器内部错误`。后端日志：
+  `NullPointerException: Cannot invoke "com.mimo.common.RequirePermission.scopeType()" because "rp" is null`。
+- **根因**: `PermissionAspect` 写的是 `@Around("@annotation(rp) || @within(rp)")`。
+  两个切点用 `||` 合并时，参数绑定**只在命中的那一支有效**，另一支传 `null`；
+  `RoleController` 用的是方法级注解 → 命中 `@annotation`，`@within` 那支给的就是 `null`。
+- **影响**: 角色新增 / 删除 / 分配 / 撤销 **四个写接口全部 500** ——
+  也就是说 v2.18.2 刚统一的 RBAC 权限口径，在管理页面上根本没有被真正用过。
+- **修复**: 切点改成全限定名（不再绑定参数），advice 内用 `resolveAnnotation()` 依次从
+  方法 → 实现方法 → 声明类取注解；取不到就放行而不是 NPE。
+- **验证**: 新增 `PermissionAspectTest` 5 项（方法级拒绝 / 方法级放行 / 类级生效 / 未登录 401 /
+  无注解放行）；真实栈 `POST /api/role/assign` → `code=200`，`DELETE /api/role/assign` → `code=200`
+  （修复前同一个请求是 500）。
+
+### BUG-094: 所有通知邮件里的「查看详情」都是死链 [High]
+
+- **现象**: `EmailNotificationService#buildActionUrl` 给 comment / assignment / mention / issue_status
+  一律返回 `/issues/{id}`；而 `frontend/src/router/index.ts` **没有这条路由**，也没有 `addRoute`
+  动态注册 → 点开被 catch-all 兜走，落到登录页或工作台。等于每封通知邮件的按钮都作废。
+- **修复**: 新增落地页 `frontend/src/views/IssueRedirect.vue` + 路由 `issues/:id`：
+  用 issueId 反查 projectId，再 `replace` 到 `/projects/{pid}/board?issue={id}`（用 replace 是为了
+  按"返回"不回到中转页）；403 / 404 分别给出"无权限 / 已删除"的提示与两个出口，不留白屏。
+  后端不用改 —— 它拼的 `/issues/{id}` 现在真的存在了。
+- **验证**: `e2e/chain-links.mjs` 用例 2，真实浏览器访问 `/issues/13` →
+  落到 `/projects/1/board?issue=13` 且详情弹窗打开。**基线（改动收起后）同一用例 20s 超时失败。**
+
+### BUG-095: 工作台 4 个快捷入口指向同一个页面 [Medium]（KNOWN-014 收口）
+
+- **现象**: `Dashboard.vue` 的 `quickActions` 里「项目管理 / 看板视图 / Sprint / 项目报告」
+  四项 `route` 全是 `/projects` —— 点"看板视图"永远看不到看板，用户以为功能没做。
+- **修复**: 改为 `computed`，看板 / 迭代 / 报告带上「我的项目」第一个（接口按最近活跃返回）的
+  projectId；没有项目时退回项目列表，并用按钮 title 说明"先创建或加入一个项目"。
+- **验证**: `e2e/chain-links.mjs` 用例 1，落到 `/projects/1/board`，title=`打开「Mimo 演示项目」的看板`
+  （基线 15s 超时失败）。
+
+### BUG-096: 审批类通知点了回工作台 [Medium]
+
+- **现象**: `handleNotifClick` 只认 `relatedType === 'ISSUE'`，其余一律 `router.push('/')`。
+  审批结果通知（`relatedType = APPROVAL_REQUEST`）就这样被吞掉 —— 收到"审批已通过"，
+  点进去却回到工作台，还得自己去设置里翻。
+- **修复**: ISSUE → `/issues/{id}`（和邮件同一个入口，一处修两处通）；
+  APPROVAL_REQUEST → `/admin/approvals?id={id}`；`ApprovalList.vue` 支持 `?id=`，
+  高亮那一行并在顶部提示"来自通知"。
+- **验证**: `e2e/chain-links.mjs` 用例 5（lisi 提 PROJECT_UPDATE → admin 通过 → lisi 点通知 →
+  `/admin/approvals?id=3`）；基线代码读 `git show HEAD:` 可见只有 ISSUE 分支、其余 `push('/')`。
+
+### 技术债（不计入条目）：前端「设置」菜单改按 RBAC 能力判断
+
+- **现象**: `MainLayout.vue` 用 `userStore.userInfo?.role === 'ROLE_ADMIN'` 决定要不要显示整个
+  「设置」分组。后端 v2.18.2 已把"是不是管理员"收敛到 `AccessControlService`（RBAC 优先），
+  前端还在看旧字段 → 只在 RBAC 里有角色的管理员**后端放行、前端藏起来**。
+- **修复**: 用 `usePermissionStore` 逐项判权限码（`level.manage` / `role.manage` /
+  `approval.manage` / `audit.log.view` / `settings.manage`），分组成员为空则整组不显示；
+  旧字段只保留"权限码还没拉回来"时的兜底，避免刷新瞬间菜单闪一下。
+- **验证**: `e2e/chain-links.mjs` 用例 3 —— lisi（`users.role=ROLE_MEMBER`）临时授予 RBAC
+  `SUPER_ADMIN`：授权前看不到管理项 → 授权后看得到 → 用例结束时自动撤销。
+  基线代码读的是旧字段，这条恒为 false，所以该用例在基线上必红。
+
+### 等级 ≠ 权限：把话说在页面上
+
+- **问题**: `UserLevel` 后端只有 `UserLevelService` 自己的 CRUD，**没有任何业务逻辑读它** ——
+  改 L1-L4 不改变任何人的可用功能。而页面副标题写的是"配置 L1-L4 铭牌权限体系"，与事实不符。
+- **处理**: 副标题改为"权益铭牌：只影响展示（头像徽章、等级名），不参与任何权限判断"，
+  顶部加一条 `el-alert` 说明"等级 ≠ 权限"并给出跳转「角色权限」的入口。
+  **没有删功能**，只是不再让它假装有作用。
+
+### 验证
+
+- `mvn test`：**133 通过**（v2.18.2 是 128，新增 `PermissionAspectTest` 5 项）。
+- 前端 `npm run build`（含 `vue-tsc` 类型检查）通过。
+- 真实浏览器 `e2e/chain-links.mjs`（新增）：**5/5 通过**；同文件在基线代码上 **2/4 通过**
+  （用例 1、2 必红；用例 4/5 是新增后才有诊断力）。
+- 真实栈冒烟：`POST /api/role/assign` 200 / `DELETE` 200；`/issues/13` 落地；
+  用例产生的审批、通知、临时角色授权已从开发库清理（approvals=0、stray_grants=0）。
+
+---
+
+## v2.18.2 — 技术债清理：权限口径 / AI 可复现 / 通知触发点 (2026-11-23)
+
+> 计划书 §七 的三条遗留项。都不是"新 bug"，是"老做法会持续产生 bug"的结构性欠账，
+> 因此登记在本文件但**不计入 BUG/KNOWN 条目数**（统计口径不变，仍为 100）。
+
+### 技术债①: 新旧权限判断并存 → `AccessControlService` 单一入口
+
+- **问题**: 11 处各写各的 `"ROLE_ADMIN".equals(user.getRole())`，公告还从 JWT 的 `ROLE_ADMIN` 授权项里读。
+  同一句"是不是管理员"在不同接口上口径不同 —— 计划书原文就是「个别接口可能绕过 RBAC」。
+- **取证位置**: `backend/mimo-app/.../service/` 的 `ApprovalService`、`IssueChangeRequestService`、
+  `IssueReviewService`、`ProjectAccessService`、`TeamService`、`WorkflowService`、`WikiService`、
+  `UserLevelService`，以及 `controller/` 的 `UserLevelController`、`ApprovalController`、`AnnouncementController`。
+- **修复**: 新增 `com.mimo.service.AccessControlService`，只回答两个问题：
+  `isSystemAdmin`（RBAC 权限码 `role.manage`，V11 里仅授予 SUPER_ADMIN）+ 旧字段兜底；
+  `isTeamAdmin`（系统管理员 ∪ RBAC `team.manage` 的 TEAM 作用域 ∪ `team_members.role=ROLE_ADMIN`）。
+  两套口径**求并集**：老管理员不会被误挡（回归为零），"只在 RBAC 里有角色、旧字段没同步"的账号也能生效。
+  旧字段这条路可用 `mimo.access.legacy-role-fallback=false` 关掉，关掉即纯 RBAC 判定。
+- **为什么旧字段先查**: 旧路径各一次查询，RBAC 路径要查角色 + 权限两张表；而
+  `ProjectAccessService.requireProject` 在每个请求上都会被调用，让管理员/成员在第一次查询就短路，
+  避免所有读接口白多两次 SQL。
+- **验证**: `AccessControlServiceTest` 11 项，含"旧字段命中后不再查 RBAC""只在 RBAC 有 `role.manage`
+  的账号不再被拒""团队判定必须落在 TEAM 作用域""开关关闭后 `ROLE_ADMIN` 彻底失效"。
+
+### 技术债②: AI 输出不可复现 → 提示词版本化 + 采样参数真的下发
+
+- **取证（两处硬伤）**:
+  1. `AiChatRequest.temperature/maxTokens` **一路被丢弃**：`AiService.chat` 调的是 `provider.chat(sys,user)`，
+     `DeepSeekProvider` 内部硬编码 `0.7 / 1024`。Controller 里那句
+     `.temperature(0.3)  // 低温度保证结构化输出稳定` 是注释，从未生效 —— 结构化输出其实一直按 0.7 采样。
+  2. `AiChatResponse.model` 从没被赋过值，`AiProvider` 也没有模型名可问：复盘时连"用的哪个模型"都答不上。
+- **修复**:
+  - `AiProvider` 新增 `chat(sys, user, temperature, maxTokens)`（抽象）与 `getModel()`；
+    原 2 参版本降为 `default` 走默认值，老调用点零改动。
+  - `AiService` 每次调用打一行 `[AI] model=… prompt=… temperature=… maxTokens=…`，
+    并把 `model / temperature / promptRef` 填进响应；`chatJson` 改走 `chat()`，JSON 分支同样留痕。
+  - 新增 `com.mimo.ai.prompt.PromptRegistry` + `PromptTemplate`：6 个提示词
+    （`ISSUE_POLISH` / `ISSUE_PRIORITY` / `ISSUE_DRAFT` / `STORY_SPLIT` / `STORY_POINTS` / `CHAT_DEFAULT`）
+    集中登记，每个带 `CODE@vN` 与正文指纹（改文案忘改版本号能被抓）；温度与 maxTokens 跟提示词写在一起，
+    结构化输出 ≤ 0.3。`AiController` 里 6 处内联 systemMessage 与 `buildParseIssueSystemPrompt()` 全部删除。
+- **验证**: `PromptRegistryTest` 7 项（版本格式、结构化提示词温度上限、指纹稳定/随正文变化、
+  未登记 code 直接抛、上下文追加不改版本）；`AiServiceTest` 新增 3 项，直接断言
+  `verify(aiProvider).chat("sys","hi",0.2,512)`、缺省值回落 `INLINE@v0`、JSON 分支下发 0.3。
+
+### 技术债③: 通知触发点遗漏 → 评论 @提及
+
+- **取证**: `CommentService.create` 只通知 `issue.assigneeId`。评论里写 `@某人` 不会有任何反应，
+  而"@ 一下"正是团队里最主要的派活方式。
+- **修复**: `parseMentions` 解析提及（收窄字符集：`@张三，谢谢` 解析成「张三」，邮箱 `a@b.com` 不算提及）→
+  按用户名查人 → 站内通知 `type=MENTION` + WebSocket 实时推送；跳过作者本人、
+  跳过刚收到「新评论」的指派人（同一件事不打扰两次）。
+  `NotificationService.mapEmailType` 把 `MENTION` 归到既有的 `comment` 邮件偏好，不新增开关。
+- **验证**: `CommentServiceTest` 4 项（被 @ 者收到含任务 key 与作者的通知、自己/不存在的人不通知、
+  指派人只收一条、字符集边界）。
+
+- **回归**: `mvn test` **128 项全绿**（改造前 103 项，+25：AccessControlService 11、PromptRegistry 7、
+  AiService +3、CommentService +4）。
+
+- **真实栈冒烟**（`java -jar` + 本地 MySQL 8，端口 18080，因为单测用的裸构造覆盖不到新 Bean 的装配）：
+  - 应用启动成功 → `AccessControlService` 注入 `RoleService` 无循环依赖，容器正常起来（这是单测看不到的风险）；
+  - 评论 `@zhangsan …` → 库里出现 `user_id=2 type=MENTION related_id=13` 的通知（改造前这条记录不可能存在）；
+    同一 issue 再发 `@admin 自己@自己` → `MENTION` 计数仍为 1，确认不给自己发；
+  - `lisi`（`users.role=ROLE_MEMBER`）发公告 → `code=403 无权操作，仅管理员可发布/编辑公告`，库里没多出行；
+  - 临时给 zhangsan 插一条 RBAC `SUPER_ADMIN`（旧字段仍是 MEMBER）→ 同一接口 `code=200` 创建成功，
+    随后已删除该临时授权 —— 这就是"两套口径求并集"的实证：改造前这个账号会被挡在门外；
+  - `POST /api/ai/estimate-story-points` 日志出现
+    `[AI] model=deepseek-chat prompt=STORY_POINTS@v1 temperature=0.2 maxTokens=512`
+    （改造前无 prompt 标识，且实际下发的是硬编码的 0.7）。
+  - 冒烟用的评论/公告/通知已清理，未在开发库里留下测试数据。冒烟过程中新发现 KNOWN-022。
+
+---
+
+## v2.18.1 — Markdown / 邮件正文 XSS 修复（取证驱动）(2026-11-23)
+
+### BUG-092: 「正则黑名单」清洗挡不住 XSS，`<details ontoggle>` 在真实浏览器里直接执行 [High]
+
+- **严重程度**: High（存储型 XSS —— 恶意内容只要落进评论 / Wiki / 公告 / 报告 / AI 气泡 / 邮件正文，
+  点开页面的**其他成员**就会中招；邮件正文那条更糟，发信人可以是团队外任何人）
+- **文件**: `frontend/src/utils/markdown.ts`（`renderMarkdown()` 的调用点 6 个：
+  `CommentSection.vue`、`Wiki.vue`、`Announcements.vue`、`ReportList.vue`、`AiChatPanel.vue`、`IssueDetailDialog` 相关）、
+  `frontend/src/views/EmailInbox.vue`（自己另抄了一份更弱的正则清洗）
+- **现象**: 用户输入经 `marked` 渲染后直接 `v-html`。所谓防护是 `sanitize()` 里的 8 条正则：
+  删 `<script>`/`<iframe>`/`<object>`/`<embed>`、删带引号的 `on\w+="…"`、删 `javascript:` 字符串。
+- **取证方式**: 新增 `e2e/xss-markdown.mjs` —— 不需要后端/前端 dev server，用 Playwright 起真实 Chromium，
+  把仓库里真实的 `markdown.ts` 用 esbuild 转译后**原样执行**（不是抄副本），渲染结果用 `innerHTML` 注入
+  （与 `v-html` 完全一致），再用 `window.__xssFired` 哨兵判断**脚本是否真的执行**，而不是 grep 关键词。
+- **实测（修复前 = git HEAD 的版本，6/10 挡住）**:
+
+  | 载荷 | 结果 |
+  |---|---|
+  | `<details open ontoggle=window.__xssFired=true>` | **脚本已执行** —— 事件处理器不带引号就不匹配正则 |
+  | `[点我](jav&#x61;script:window.__xssFired=true)` | 实体解码后得到 `javascript:` 链接，点一下就执行 |
+  | `<math><mtext><table><mglyph><style><img …>` | mXSS 解析器混淆，`<style>` 留在 DOM 里 |
+  | `<style>div{background:url("javascript:…")}</style>` | `<style>` 标签根本没被处理 |
+
+  邮件正文那份清洗连 `javascript:` 都不删，同一批载荷全过。
+- **根因**: 用正则做 HTML 过滤 —— 正则不懂 HTML 解析，引号可有可无、字符可用实体编码、
+  浏览器还会为修正畸形标签重新分组（mXSS）。黑名单又永远漏项。
+- **修复**: 换成 DOMPurify（按真实 DOM 解析 + 白名单重建），`sanitizeHtml()` 统一出口，
+  Markdown 与邮件正文共用；`dompurify` 从 `jspdf`/`html2pdf.js` 的间接依赖提为直接依赖（`^3.4.8`）。
+- **验证**: `node e2e/xss-markdown.mjs` 当前工作区源码 **10/10 PASS**（含"正常 Markdown 仍能渲染"回归项），
+  同一脚本跑修复前的 `git HEAD` 版本稳定复现 3 条失败 + 1 条真执行，证明用例本身有诊断力；
+  `npm run build`（vue-tsc + vite）通过，新增 DOMPurify 使 markdown 共享块 69.6 kB / gzip 23 kB。
+- **仍未做**: 后端存储前不做 strip（只靠前端白名单，导出/第三方消费方仍需自行转义）；
+  `Profile.vue` 的活动流 `v-html="item.text"` 走的是后端拼的文案，本次未纳入。
+
+---
+
 ## 历史补录 — 2026-11-20 审计
 
 > 用户要求"系统出现过的 bug 都要登记"。审计方式：把仓库里所有 `fix:` 提交拉出来，
@@ -1072,13 +1573,15 @@
 
 ## 已知未修复问题
 
-### KNOWN-001: @PreAuthorize 角色前缀 Bug [Low]
+### KNOWN-001: @PreAuthorize 角色前缀 Bug [Low] — 2026-11-23 复核：已失效
 
 - **文件**: `backend/.../TeamController.java`
 - **现象**: `@PreAuthorize("hasRole('ROLE_ADMIN')")` 实际检查的是 `ROLE_ROLE_ADMIN`，永远不会匹配
 - **原因**: Spring Security 的 `hasRole()` 自动添加 `ROLE_` 前缀
 - **建议修复**: 改用 `hasAuthority('ROLE_ADMIN')`
 - **当前状态**: 未修复（该注解目前未被实际依赖，权限校验在 Service 层手动实现）
+- **复核（2026-11-23）**: 全后端已搜不到任何 `@PreAuthorize`（0 命中），注解被整体移除，
+  前缀陷阱不复存在；权限一律在 Service 层显式判断，本条作废。
 
 ### KNOWN-002: Redis 未实际使用 [Low]
 
@@ -1087,34 +1590,57 @@
 - **影响**: 多实例部署时 WebSocket 消息无法跨实例同步
 - **建议**: 切换到 Redis-backed WebSocket message broker
 
-### KNOWN-003: 上传目录配置缺失 [Low]
+### KNOWN-003: 上传目录配置缺失 [Low] — 2026-11-23 复核：已修复
 
 - **文件**: `backend/.../AttachmentService.java`
 - **现象**: `mimo.upload.dir` 属性未在 `application.yml` 中设置，使用默认值 `./uploads`
 - **影响**: 部署时附件保存路径不可控
+- **复核（2026-11-23）**: `application.yml:54-55` 已显式写成 `dir: ${MIMO_UPLOAD_DIR:./uploads}`，
+  部署时用环境变量覆盖即可，本条关闭。
 
-### KNOWN-004: Issue Key 生成存在并发冲突风险 [Medium]
+### KNOWN-004: Issue Key 生成存在并发冲突风险 [Medium] — 2026-11-23 已修复
 
-- **文件**: `backend/.../IssueService.java`
+- **文件**: `backend/.../IssueService.java`、新增 `backend/.../IssueKeyAllocator.java`
 - **现象**: 多个用户同时创建任务时，`issueKey` 可能重复
 - **根因**: `count + 1` 方式非原子操作，高并发下可能生成相同 Key
-- **建议修复**: 使用数据库序列或 `SELECT ... FOR UPDATE` 悲观锁
-- **当前状态**: 未修复（依赖 `uk_issue_key` 唯一约束兜底，但冲突时用户收到 500）
+  （后来改过一版「取项目内最大值 + 1」，但两个并发事务仍可能读到同一个最大值，非原子问题依旧）
+- **已修复（2026-11-23 / v2.18.0）**:
+  - 抽出 `IssueKeyAllocator`，把「取号 + 插入」收成一个可重试单元：撞 `uk_issue_key` 就重新取号再插，
+    最多 5 次；仍冲突才抛 `409 任务编号分配冲突，请稍后重试`，不再把 DuplicateKeyException 抛成 500
+  - 能在同一事务内重试的依据：MySQL/InnoDB 的重复键错误只回滚当前语句，事务仍然可用
+  - 用例：`IssueKeyAllocatorTest` 3 项（首次取号 / 撞号后重新取号成功 / 连续撞号给出可读错误）
+- **仍未做**: 没上真正的数据库序列或分布式锁——单库单实例够用，多实例部署前需要换方案
 
-### KNOWN-005: 删除团队后项目数据成为孤儿 [Medium]
+### KNOWN-005: 删除团队后项目数据成为孤儿 [Medium] — 2026-11-23 已修复
 
 - **文件**: `backend/.../TeamService.java`
 - **现象**: 删除团队后，该团队下的项目及其 issues/board/sprints 不受影响但无归属团队
 - **根因**: `deleteTeam()` 仅删除 `team_members` 和 `teams`，项目表标注"独立存在"
-- **建议修复**: 要么级联删除项目，要么提供"无团队项目"的管理视图
+- **为什么必须修**: 项目列表按「用户所在团队」过滤（`ProjectService.listByUser`），
+  失去团队的项目谁都看不到、也删不掉，只能靠手工改库
+- **已修复（2026-11-23 / v2.18.0）**: 删除团队时先遍历该团队下所有项目，
+  逐个走 `projectService.deleteProject()`（复用既有的级联删除：看板列 / 任务 / 项目成员 / 报告 / Sprint），
+  再删成员关系和团队本身；整体在一个事务里，中途失败会整体回滚
+- **用例**: `TeamServiceTest` 4 项（连带删项目 / 无项目不误删 / 非所有者拒绝 / 团队不存在）
+- **取舍说明**: 选的是「级联删除」而不是「保留孤儿 + 管理视图」——团队删除本就是不可逆操作，
+  留一堆没人能访问的数据只是延迟爆炸
 
-### KNOWN-006: 审批通过后执行失败无补偿机制 [Medium]
+### KNOWN-006: 审批通过后执行失败无补偿机制 [Medium] — 2026-11-23 已修复
 
-- **文件**: `backend/.../ApprovalService.java`
+- **文件**: `backend/.../ApprovalService.java`、新增 `ApprovalExecutionService.java`、`V24__approval_execution_tracking.sql`、`ApprovalController`
 - **现象**: 审批通过后 `executeApprovedAction()` 若执行失败（如项目创建失败），审批状态已变更为 APPROVED，但操作未实际生效
-- **根因**: 审批和执行在同一个事务中，但异常被 catch 后没有回滚
-- **代码注释明确标注**："实际生产环境应该有补偿机制或重试队列"
-- **当前状态**: 未修复
+- **根因**: 审批和执行在同一个事务中，但异常被 catch 后没有回滚，只 `e.printStackTrace()`
+- **已修复（2026-11-23 / v2.18.0）**:
+  - 审批结果与执行结果拆成两个状态：`approval_requests` 新增
+    `exec_status` / `exec_error` / `exec_attempts` / `last_exec_at`
+  - 执行挪进独立的 `ApprovalExecutionService`，用 `REQUIRES_NEW` 单独事务：
+    执行失败只回滚执行自己（不会留下「项目建了一半」的脏数据），审批结果仍然有效
+  - 失败原因落库（截断 500 字），日志用 SLF4J 记全栈，不再 printStackTrace
+  - 新增补偿入口 `POST /api/approvals/{id}/retry-execution`（需管理员）：
+    只允许「已通过且未执行成功」的审批重试，已成功的直接拒绝
+  - 前端展示字段：`ApprovalRequestVO` 增加 `execStatus` / `execError` / `execAttempts` / `lastExecAt`
+  - 用例：`ApprovalServiceTest` 6 项（失败留痕 / 成功标记 / 重试成功 / 重试仍失败 / 已成功拒绝重试 / 非管理员拒绝）
+- **仍未做**: 没有接自动重试队列（失败需人工点重试）；执行成功但审批更新提交失败这种极端窗口仍未处理
 
 ### KNOWN-007: 数据库无外键约束 [Low]
 
@@ -1123,60 +1649,97 @@
 - **影响**: 可能出现孤立的 `comments`、`attachments` 等记录
 - **当前状态**: 设计选择，非必须修复
 
-### KNOWN-008: Sprint 快速创建限制前 5 个任务硬编码 [Low]
+### KNOWN-008: Sprint 快速创建限制前 5 个任务硬编码 [Low] — 2026-11-23 复核：已修复
 
 - **文件**: `backend/.../SprintService.java`
 - **现象**: `createQuickSprint()` 中 `if (added >= 5) break` 硬编码了 5 个任务的限制
 - **建议修复**: 改为可配置参数
+- **复核（2026-11-23）**: 已改成配置项 `sprint.quick-create-tasks:5`（`SprintService.java:27-28` 声明，
+  第 157 行 `if (added >= quickCreateTasks) break` 使用），调容量不用改代码。
 
-### KNOWN-009: 团队/项目/Sprint/评论均无更新端点 [Medium]
+### KNOWN-009: 团队/项目/Sprint/评论均无更新端点 [Medium] — 2026-11-23 已修复
 
-- **文件**: `TeamController`, `ProjectController`, `SprintController`, `CommentController`
+- **文件**: `TeamController`、`ProjectController`、`SprintController`、`CommentController` 及对应 Service/DTO
 - **现象**: 创建后可删除但无法编辑，缺少 PUT 更新端点
 - **影响**: 用户无法修改团队名/描述、项目名/Key、Sprint 名称/日期、评论内容
+- **已修复（2026-11-23 / v2.18.0）**，四个端点：
 
-### KNOWN-010: 默认看板列名硬编码中文 [Low]
+  | 端点 | 权限 | 可改字段 |
+  |---|---|---|
+  | `PUT /api/teams/{id}` | 团队管理员 | 名称（查重）、描述 |
+  | `PUT /api/projects/{projectId}` | 团队管理员 | 名称、描述 |
+  | `PUT /api/sprints/{id}` | 项目成员 | 名称、目标、起止日期（不可倒挂、已结束不可改） |
+  | `PUT /api/comments/{id}` | 仅评论作者 | 内容 |
+
+  - 项目 **Key 故意不可改**：任务编号 `issue_key` 的前缀就是项目 Key，改了会让所有历史编号失效
+  - 评论不做「管理员代改」：评论是审计痕迹，只有作者本人能改
+  - 团队改名会查重（沿用 `TEAM_NAME_EXISTS`），描述传空串表示清空、传 null 表示不改
+  - 用例：`TeamServiceTest`（改名/查重场景）、`SprintServiceTest` 4 项、`CommentServiceTest` 3 项
+- **仍未做**: 前端还没有接入这四个端点的编辑 UI（本轮只补后端能力），
+  接口文档 `接口文档.md` 已补，前端改动建议单独一轮做（涉及团队/项目设置页表单）
+
+### KNOWN-010: 默认看板列名硬编码中文 [Low] — 2026-11-23 复核：已修复
 
 - **文件**: `backend/.../ProjectService.java`
 - **现象**: 默认列名"待办/进行中/已完成"写死在代码中
 - **影响**: 非中文部署时列名不便
+- **复核（2026-11-23）**: 已改成配置项 `@Value("${board.default-columns:待办|#909399,进行中|#409EFF,已完成|#67C23A}")`
+  （`ProjectService.java:23`），默认值仍是中文，但新建项目时可用配置覆盖。
 
-### KNOWN-011: 聊天/评论使用 v-html 无 XSS 防护 [Medium]
+### KNOWN-011: 聊天/评论使用 v-html 无 XSS 防护 [Medium] — 2026-11-23 已修复（实测后升级为 BUG-092）
 
-- **文件**: `TeamDetail.vue`（@提及渲染）、`IssueDetailDialog.vue`（Markdown 渲染）
+- **文件**: `frontend/src/utils/markdown.ts`、`frontend/src/views/EmailInbox.vue` 及 6 处 `v-html` 调用点
 - **现象**: 用户输入的聊天内容和评论经 `renderMarkdown()`/`renderMention()` 后直接通过 `v-html` 渲染
-- **风险**: 若服务端未做 sanitize，恶意 `<script>` 标签可被执行
-- **建议修复**: 后端存储前 strip 危险 HTML 标签，或前端使用 DOMPurify
+- **本次复核结论（2026-11-23）**:
+  - `renderMention()` 早已先做 HTML 转义再高亮，这一条**不再是问题**（`TeamDetail.vue:780-789`）
+  - 真正的问题在 `renderMarkdown()`：`sanitize()` 是正则黑名单，被 `<details ontoggle>` 直接绕过并执行，
+    另两条（实体编码 `javascript:`、mXSS 留 `<style>`）也能穿；受影响面不止原记录的 2 处，实际 **8 处 `v-html`**
+  - 详细取证（真实浏览器 + 哨兵变量）与修法见 **BUG-092**
+- **已修复（2026-11-23 / v2.18.1）**: `sanitizeHtml()` 改用 DOMPurify 白名单，Markdown 与邮件正文共用；
+  `e2e/xss-markdown.mjs` 10 条载荷全绿（修复前 6/10）
+- **仍未做**: 后端不做 strip，导出件与第三方消费方需自行转义
 
-### KNOWN-012: 离开团队使用 window.location.href 触发全页刷新 [Low]
+### KNOWN-012: 离开团队使用 window.location.href 触发全页刷新 [Low] — 2026-11-23 复核：已修复
 
 - **文件**: `frontend/src/views/TeamDetail.vue`
 - **现象**: 移除成员自己离开团队后，使用 `window.location.href = '/teams'` 而非 Vue Router
 - **影响**: 全页刷新丢失 Vue 状态
+- **复核（2026-11-23）**: 全前端已无 `window.location.href`（0 命中），离开团队改走 router 跳转，本条关闭。
 
 ### KNOWN-013: 在线人数始终显示总成员数 [Low]
 
 - **文件**: `frontend/src/views/TeamDetail.vue`
 - **根因**: `onlineCount = computed(() => members.value.length)` 取的是成员总数
 - **建议修复**: 通过 WebSocket 统计真实在线连接数
+- **复核（2026-11-23）**: 仍在（`TeamDetail.vue:591`），但**文案已改成"N 位成员"**（第 166 行），
+  不再对外宣称是"在线人数"，误导消除；真实在线统计仍未实现，故保持未关闭。
 
-### KNOWN-014: 工作台快捷操作 5 个按钮 4 个指向同一路由 [Low]
+### KNOWN-014: 工作台快捷操作 5 个按钮 4 个指向同一路由 [Low] — 2026-11-23 已修复（v2.18.3 / BUG-095）
 
 - **文件**: `frontend/src/views/Dashboard.vue`
 - **现象**: "新建任务"/"看板视图"/"Sprint"/"报告" 都跳到 `/projects`
+- **复核（2026-11-23）**: 仍在 —— `Dashboard.vue:404-410` 的 `quickActions` 里
+  「项目管理 / 看板视图 / Sprint / 项目报告」四项 `route` 全是 `'/projects'`（只有团队管理是 `/teams`）。
 - **建议修复**: 分别路由到看板创建弹窗、Sprint 管理、报告页
+- **已修复（2026-11-23 / v2.18.3）**: `quickActions` 改为 `computed`，看板 / 迭代 / 报告三项带上
+  「我的项目」第一个（接口按最近活跃返回）的 projectId；没有项目时退回 `/projects` 并用 title 说明
+  "先创建或加入一个项目"。真实浏览器用例见 `e2e/chain-links.mjs` 用例 1。
 
-### KNOWN-015: 审批"拒绝原因"输入框取消时行为不一致 [Low]
+### KNOWN-015: 审批"拒绝原因"输入框取消时行为不一致 [Low] — 2026-11-23 复核：已修复
 
 - **文件**: `frontend/src/views/ApprovalList.vue`
 - **现象**: `ElMessageBox.prompt` 的 cancel 回调中，Element Plus 返回 `'cancel'` 或 `'close'`，但只检查了 `'cancel'`
 - **影响**: 某些情况下用户点 X 关闭后仍会执行 reject 请求
+- **复核（2026-11-23）**: 已修复 —— `ApprovalList.vue:92-93` 现在 `.catch(() => null)` 之后紧跟
+  `if (reason === null) return`，取消与关闭都不会再发 `rejectRequest`。
 
 ### KNOWN-016: 部署脚本 deploy.ps1 无确认步骤 [Low]
 
 - **文件**: `deploy.ps1`
 - **现象**: 执行即覆盖服务器生产环境，无确认提示
 - **建议修复**: 加 `Read-Host "确认部署? (y/n)"` 确认步骤
+- **复核（2026-11-23）**: 仍在 —— `deploy.ps1` 全文件无 `Read-Host` / 无二次确认，
+  0/4～4/4 五步直接连跑（其中第 0 步会 `Stop-Process` 杀掉占用 jar 的 java 进程）。
 
 
 ### KNOWN-017: 核心业务链路缺少端到端验证 [High] — 2026-11-20 部分已解决
@@ -1188,6 +1751,12 @@
   运行结果逐次写入 `e2e/last-run.md`，失败会截图。跑法与踩坑记录见 `e2e/README.md`
 - **已补充（2026-11-20 / v2.16.2）**: 越权访问 403 已覆盖——`e2e/authz.mjs` 注册一个不在团队里的外人账号，打 23 个项目/团队/Sprint/任务/管理端读接口，全被 403 拦住，同时验证成员自己访问仍为 200；首跑即发现 Wiki 目录泄漏（BUG-076）
 - **仍未覆盖**: 变更审批（申请 → 审批 → 自动执行）、Sprint 启动/完成与未完成任务迁移、Excel 导入 / PDF 导出、WebSocket 广播一致性
+- **再补（2026-11-23 / v2.19.0）**: 新增 `e2e/main-chain.mjs` —— **一个全新账号只走界面**，从建团队
+  一路走到看报告（11 个检查点，当前 11/11）。它和 `core-flows.mjs` 的区别是：不是"每个功能各验一次"，
+  而是"一条链必须首尾相接"，链路中间任何一环断掉都会红。首跑 5/9，抓到了 BUG-099 和单人团队验收死锁
+  （另有两条红是它自己没填必填项 / 引导遮罩没关好，属误报，已在校正里说明）。
+  仍留在"未关闭"的原因：只覆盖主线一遍、没有多角色矩阵（前端其余页面、健壮性/异常分支仍无自动化），
+  也还没接进 CI。
 - **风险**: 上述环节坏了仍不会被发现；后端只有 Service 层单测，前端其余页面无自动化
 - **建议**: 按 `e2e/README.md` 的"还没覆盖"清单继续补，最终接进 CI
 
@@ -1207,26 +1776,65 @@
 - **仍未验证**: 配置了真实 Key 后的正常返回路径（需要有效的 DeepSeek Key），
   以及 RAG 问答/AI Sprint 规划在 Key 有效时的引用质量
 
-### KNOWN-019: 空状态缺少「下一步」引导 [Medium]
+### KNOWN-019: 空状态缺少「下一步」引导 [Medium] — ✅ 已解决（v2.19.2）
 
 - **文件**: `views/Wiki.vue`、`views/ApprovalList.vue`、`views/Announcements.vue`、`views/TeamList.vue`、`views/ProjectList.vue`
 - **现象**: 多数空状态只有"暂无数据"；只有甘特图（"为 Issue 设置计划起止后…"）和收件箱（"尚未绑定任何邮箱，请先去邮箱绑定"）给了可执行指引
 - **风险**: 新用户面对空列表不知道点哪里，加剧"不知道怎么用"的观感
 - **建议**: 统一空状态组件，强制包含一句可操作指引 + 一个主按钮
+- **✅ v2.19.2 已解决**: 新增 `components/common/EmptyGuide.vue`（title / reason / action 三段式），
+  公告页、邮箱绑定、Webhook、审批管理两个页签、工作台空库均已换用它；
+  公告页对普通成员不显示"发布"按钮（见 v2.19.2 段）。
+  局部小面板的空态（工作台"暂无动态"、Wiki 历史版本/差异、迭代 Backlog）仍保持原样，理由同段内说明。
 
-### KNOWN-020: 缺少演示数据初始化入口 [Medium]
+### KNOWN-020: 缺少演示数据初始化入口 [Medium] — ✅ 已解决（v2.19.2）
 
 - **文件**: `backend/.../db/init.sql`、前端无对应入口
 - **现象**: 空库只有 3 用户 / 1 团队；工作台、Sprint 健康度、交付分析、RAG、审计日志等页面全为 0 或空，无法体验也无法演示
 - **风险**: 验收/答辩时看到的是"一堆 0"，容易被判定为未完成
 - **建议**: 提供「一键生成演示数据」脚本或 `/admin/demo-data` 接口（项目 + Sprint + 20 条 Issue + 评论 + 工时）
+- **✅ v2.19.2 已解决**: `POST /api/admin/demo-data`（只给系统管理员、幂等、不碰已有数据），
+  一次生成 项目 + 4 列 + 3 迭代 + 15 工作项 + 评论/工时/验收/报告/动态/通知；
+  前端入口在工作台空库末尾和项目列表页头。见 v2.19.2 段落（含写死 `DEMO` 导致 500 的自测记录）。
 
 ### KNOWN-021: 前端仍有硬编码颜色残留 [Low]
-
 - **文件**: `frontend/src/**/*.vue`、`styles/global.css`
 - **现象**: 全仓仍有约 42 处 `rgba(255,255,255,…)`、10 处 `background: #fff`、若干 `#f8fafc/#f5f7fa/#f1f5f9`；本次只修了已经被截图暴露出来的部分
 - **风险**: 换主题或新增页面时继续出现"某一块是白的"
 - **建议**: 增加 stylelint 规则禁止颜色字面量（或至少警告），逐步替换为 CSS 变量
+
+### KNOWN-022: `user_roles` 的唯一约束对 GLOBAL 角色失效，同一授权被重复写入 [Medium] — ✅ 已解决（v2.18.5）
+
+- **文件**: `backend/mimo-app/src/main/resources/db/migration/V11__rbac.sql`（建表 + `INSERT IGNORE`）、
+  `V12__fix_user_role_migration.sql`
+- **现象（v2.18.2 冒烟时实测）**: 本地开发库 `user_roles` 共 **50 行**，而实际只有
+  `admin→SUPER_ADMIN`、`zhangsan→DEVELOPER`、`lisi→DEVELOPER` 三条授权，每条重复 **10 次**。
+- **根因**: 表上确有 `UNIQUE KEY uk_user_role_scope (user_id, role_id, scope_type, scope_id)`，
+  但 GLOBAL 行的 `scope_id` 是 **NULL**，而 MySQL 的唯一索引把多个 NULL 视为互不相同 ——
+  唯一约束对全局角色**完全不生效**，`INSERT IGNORE` 便每次都能插进去一条。
+- **影响**: 每次重放迁移/重建演示库都会再叠一份；`PermissionMapper` 的 `JOIN user_roles` 结果集随之膨胀
+  （`SELECT DISTINCT` 兜住了正确性，所以表现为"悄悄变慢 + 数据看着很脏"，不是权限算错）。
+- **✅ v2.18.5 已解决（未动 schema，见 BUG-098）**:
+  - 写入侧两条路径全部改成 NULL 安全判重：迁移脚本 `INSERT ... SELECT ... NOT EXISTS`，
+    `RoleService.assignRole` 用 `isNull` / `selectCount`；
+  - `V12` 增加可重复执行的重复行清理，历史脏数据一次性收掉（本地实测 89 行 → 13 行）；
+  - 新增 `RoleMigrationScriptTest` 与两条断言 SQL 形状的 `RoleServiceTest` 用例守住回归。
+  - **为什么仍不改 schema**: 给 `scope_id` 加 `NOT NULL DEFAULT 0` 才是根治，但要占一个新迁移编号；
+    等你手上未推送的工作流/面板那批推上来、编号确定后再统一排，届时这两道判重仍然兼容 0 值。
+
+### KNOWN-023: e2e 用例不清自己造的账号 / 团队 / 项目，开发库会累积残留 [Low]
+
+- **文件**: `e2e/*.mjs`
+- **现象（v2.19.2 清库时实测）**: dev 库里躺着 8 个 `probe-*` / `wiki-probe-*` / `chain*` 账号、
+  一组「链路团队/链路项目」和 8 条 `E2E任务*`。issue 级数据大多删得干净，但**账号、团队、项目删不掉**——
+  删项目在本系统里要走审批流程，脚本没有"删掉我刚建的东西"的通道。
+- **风险**: 跑几十次 e2e 后，项目列表、团队列表全是 `链路团队741614` 这种名字，
+  演示和截图都没法用；也会干扰"工作台该显示什么"这类断言。
+- **现状**: 提供了可重复执行的清理脚本 `e2e/cleanup-residue.sql`（按前缀/名字定位，按依赖顺序删，
+  只碰用例数据），跑一次即可收干净（本地实测：用户 15 → 3、项目 3 → 2、`E2E任务*` → 0）。
+- **建议（未做）**: 给测试账号加"测试数据"标记 + 一个管理员专用的 `DELETE /api/admin/test-data`；
+  或者 CI 里用独立数据库，跑完直接丢弃容器。当前按 Low 挂着。
+
 
 ---
 
@@ -1235,15 +1843,22 @@
 | 严重程度 | 数量 |
 |---------|------|
 | Critical | 6 |
-| High | 36 |
-| Medium | 31 |
+| High | 42 |
+| Medium | 35 |
 | Low | 18 |
-| **已修复（BUG 条目）** | **91** |
-| **已知未修复（KNOWN 条目）** | **19** |
-| **总计** | **110** |
+| **已修复（BUG 条目）** | **101** |
+| **已知未修复（KNOWN 条目）** | **6** |
+| **总计** | **107** |
 
 | 版本段 | BUG 条数 |
 |--------|---------|
+| v2.19.2 — 空状态引导 + 演示数据入口（关闭 KNOWN-019/020，不新增 BUG）(2026-11-23) | 0 |
+| v2.19.1 — 工作流配好看不见 / 挡住不说往哪走（BUG-101）(2026-11-23) | 1 |
+| v2.19.0 — 主线自证（工作台看不到能验收的待验收 / Sprint 静默失败）(2026-11-23) | 2 |
+| v2.18.5 — 角色授权重复堆积 + 首屏假结论 (2026-11-23) | 1 |
+| v2.18.4 — 主链路「下一步」+ 菜单/守卫权限口径统一 (2026-11-23) | 1 |
+| v2.18.3 — 功能链路闭合（断链/假入口/切面 NPE）(2026-11-23) | 4 |
+| v2.18.1 — Markdown/邮件 XSS 修复（取证驱动）(2026-11-23) | 1 |
 | 历史补录 — 2026-11-20 审计 | 8 |
 | v2.17.0 — 新手引导重做 (2026-11-20) | 6 |
 | v2.16.2 — Wiki 目录越权修复 + 请求参数校验 (2026-11-20) | 2 |
@@ -1265,3 +1880,49 @@
 
 > 统计口径：直接按 `### BUG-0NN` / `### KNOWN-0NN` 标题解析，已知未修复 = KNOWN 条目里未标"已解决"的
 > （KNOWN-017 部分解决仍计为未关闭）。数字由 `tools/buglog_stats.py` 生成，改完条目后重跑即可校对，不再手写。
+>
+> **2026-11-23 校对**：`tools/buglog_stats.py` 不在当前工作区，本次按同一口径手工重算，并修掉三处不一致 ——
+> ① 上版 `总计 110` 是 KNOWN 未关闭还有 19 条时的旧值（v2.18.0 已降到 15，总计没跟着改），
+> 现按 `总计 = BUG 条目 + KNOWN 未关闭` 修正为 100；
+> ② 本轮复核把 6 条「其实早就修好、只是没标」的 KNOWN（001 / 003 / 008 / 010 / 012 / 015）标为已修复，
+> 加上 KNOWN-011 收口，未关闭 15 → 8；
+> ③ 严重程度四档合计仍等于 BUG 条目数（6 + 37 + 31 + 18 = 92）。
+>
+> **2026-11-23 补记**：v2.18.2 冒烟时新发现 KNOWN-022（`user_roles` 唯一约束对 GLOBAL 失效），
+> KNOWN 未关闭 8 → 9、总计 100 → 101；本轮的技术债修复不产生 BUG 条目，故 BUG 数仍为 92。
+>
+> **2026-11-23 补记（v2.18.3）**：功能链路闭合这一轮新增 4 条 BUG（093 切面 NPE / 094 邮件死链 /
+> 095 假入口 / 096 审批通知落地），并关闭 KNOWN-014（4 个入口同路由）。于是
+> BUG 已修复 92 → 96（High 37→39、Medium 31→33，四档合计 6+39+33+18 = 96）、
+> KNOWN 未关闭 9 → 8、总计 101 → 104。教程"等级≠权限"的说明与前端菜单权限口径修正属于
+> 表述/口径修正，不单列条目。
+>
+> **2026-11-23 补记（v2.18.4）**：新增 BUG-097（菜单可见但守卫拒绝 / 权限码并发拉取），
+> BUG 已修复 96 → 97（High 39 → 40，四档合计 6+40+33+18 = 97），总计 104 → 105。
+> 本轮的 P1/P2/P3（下一步、接下来做什么、每页一句话）是功能增强，不记 BUG 条目。
+>
+> **2026-11-23 补记（v2.18.5）**：新增 BUG-098（每次启动重复插角色授权 + assign 幂等失效），
+> 并关闭 KNOWN-022。于是 BUG 已修复 97 → 98（High 40 → 41，四档合计 6+41+33+18 = 98）、
+> KNOWN 未关闭 8 → 7、总计维持 98 + 7 = 105。首屏"数据未到先下结论"的假状态记在
+> BUG-098 同一版本段内，不单列条目（属于本轮新增功能的自身缺陷）。
+>
+> **2026-11-23 补记（v2.19.0）**：主线自证这一轮新增 BUG-099（能验收的人在待我处理里看不到，
+> High）与 BUG-100（Sprint 点创建静默失败，Medium）。于是 BUG 已修复 98 → 100
+> （High 41 → 42、Medium 33 → 34，四档合计 6+42+34+18 = 100）、KNOWN 未关闭仍为 7、
+> 总计 105 → 107。单人团队"验收死锁"的提示条属于补齐缺失指引，不单列 BUG；
+> KNOWN-017（核心链路缺 e2e）本轮补了 `e2e/main-chain.mjs` 但只覆盖主线一遍走通，
+> 仍按"部分解决"计为未关闭。
+>
+> **2026-11-23 补记（v2.19.1）**：新增 BUG-101（工作流配好之后看不懂、被拦住不说往哪走，Medium）。
+> 于是 BUG 已修复 100 → 101（Medium 34 → 35，四档合计 6+42+35+18 = 101）、
+> KNOWN 未关闭仍为 7、总计 107 → 108。
+> 另：BUG-100 的定级与描述在 v2.19.1 之前已自行更正过一次（原记"点创建没反应"是误判，
+> 真实缺陷是 `validate()` 的 reject 没人接），更正过程写在该条目开头。
+>
+> **2026-11-23 补记（v2.19.2）**：本轮不产生新的 BUG 条目，把两条 Medium 的 KNOWN 关掉——
+> KNOWN-019（空状态引导）与 KNOWN-020（演示数据入口）；同时新登记 KNOWN-023（e2e 用例不清
+> 自己造的账号/团队/项目，开发库会累积残留，Low，已给出 `e2e/cleanup-residue.sql`）。
+> 于是 KNOWN 未关闭 7 → 6（−2 已解决 +1 新登记）、总计按"BUG 条目 + KNOWN 未关闭"
+> 口径从 108 → 107（BUG 数仍为 101，四档合计不变）。
+> 演示数据生成器第一版写死项目 Key `DEMO` 触发过 `uk_project_key` 唯一索引冲突（500），
+> 属开发期自测发现、未进主干即已修掉，按既往口径只在段落里记录并补单测，不单列 BUG 编号。

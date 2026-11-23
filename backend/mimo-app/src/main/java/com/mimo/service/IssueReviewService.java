@@ -48,6 +48,7 @@ public class IssueReviewService {
     private final TeamService teamService;
     private final DeliveryAnalyticsService deliveryAnalyticsService;
     private final ObjectMapper objectMapper;
+    private final AccessControlService accessControlService;
 
     @Transactional
     public ReviewVO submit(Long issueId, SubmitReviewRequest request, Long submitterId) {
@@ -229,8 +230,7 @@ public class IssueReviewService {
     }
 
     private boolean isAdmin(Issue issue, Long userId) {
-        User user = userMapper.selectById(userId);
-        if (user != null && "ROLE_ADMIN".equals(user.getRole())) return true;
+        if (accessControlService.isSystemAdmin(userId)) return true;
         Project project = projectMapper.selectById(issue.getProjectId());
         return project != null && (Objects.equals(project.getOwnerId(), userId)
                 || teamService.isTeamAdmin(project.getTeamId(), userId));

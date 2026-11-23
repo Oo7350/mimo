@@ -20,7 +20,16 @@
         </div>
       </template>
 
-      <el-empty v-if="list.length === 0 && !loading" description="暂无 Webhook 配置，点击右上角创建" />
+      <PageHint>工作项新建 / 更新 / 删除时，Mimo 会 POST 一条 JSON 到你填的地址，用于对接 CI、IM 机器人等外部系统。当前只覆盖这三种事件。</PageHint>
+
+      <EmptyGuide
+        v-if="list.length === 0 && !loading"
+        :icon="Connection"
+        title="还没有配置 Webhook"
+        reason="配一个地址，Mimo 就会在工作项新建 / 更新 / 删除时 POST 一条 JSON 过去——用来接 CI、IM 机器人、你自己的自动化脚本。没配也不影响系统本身，只是外部系统收不到消息。"
+        action-label="创建第一个 Webhook"
+        @action="openCreate"
+      />
       <el-table :data="list" v-loading="loading" stripe>
         <el-table-column prop="id" label="ID" width="60" />
         <el-table-column prop="name" label="名称" min-width="160" />
@@ -173,9 +182,11 @@
 </template>
 
 <script setup lang="ts">
+import PageHint from "@/components/common/PageHint.vue"
 import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, Connection } from '@element-plus/icons-vue'
+import EmptyGuide from '@/components/common/EmptyGuide.vue'
 import {
   listWebhooks,
   createWebhook,

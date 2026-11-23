@@ -161,9 +161,9 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/store/user'
 import { useAppStore } from '@/store/app'
+import { usePermissionStore } from '@/store/permission'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import { getMyProjects } from '@/api/project'
-import { getIssueById } from '@/api/issue'
 import { getNotifications } from '@/api/notification'
 import type { ProjectVO } from '@/types'
 import BreadcrumbNav from './BreadcrumbNav.vue'
@@ -234,18 +234,39 @@ const adminNavGroup = {
   key: 'settings',
   label: '设置',
   items: [
-    { label: '等级管理', path: '/admin/levels', icon: Medal },
-    { label: '角色权限', path: '/admin/roles', icon: Lock },
-    { label: '审批管理', path: '/admin/approvals', icon: Checked },
-    { label: '操作审计', path: '/admin/audit-logs', icon: Document },
-    { label: 'Webhook 集成', path: '/admin/webhooks', icon: Setting },
-    { label: '邮件发送日志', path: '/admin/email-send-logs', icon: Message },
+    { label: '等级管理', path: '/admin/levels', icon: Medal, perm: 'level.manage' },
+    { label: '角色权限', path: '/admin/roles', icon: Lock, perm: 'role.manage' },
+    { label: '审批管理', path: '/admin/approvals', icon: Checked, perm: 'approval.manage' },
+    { label: '操作审计', path: '/admin/audit-logs', icon: Document, perm: 'audit.log.view' },
+    { label: 'Webhook 集成', path: '/admin/webhooks', icon: Setting, perm: 'settings.manage' },
+    { label: '邮件发送日志', path: '/admin/email-send-logs', icon: Message, perm: 'settings.manage' },
   ],
 }
 
-const visibleNavGroups = computed(() =>
-  userStore.userInfo?.role === 'ROLE_ADMIN' ? [...navGroups, adminNavGroup] : navGroups
+/**
+ * 菜单可见性用 **RBAC 能力** 判断，不再看 `users.role`。
+ *
+ * 改这一处的理由：后端 v2.18.2 已经把"是不是管理员"收敛到 AccessControlService（RBAC 优先），
+ * 前端却还在用旧字段 `role === 'ROLE_ADMIN'` 决定要不要显示整个「设置」分组 ——
+ * 结果是"只在 RBAC 里有角色、旧字段没同步"的管理员根本看不到这些页面（后端放行、前端藏起来）。
+ * 旧字段只保留一个用途：权限码还没拉回来时兜底，避免刷新瞬间菜单闪一下。
+ */
+const permissionStore = usePermissionStore()
+const isLegacyAdmin = computed(() => userStore.userInfo?.role === 'ROLE_ADMIN')
+
+const adminNavItems = computed(() =>
+  adminNavGroup.items.filter(
+    (item) => permissionStore.has(item.perm) || isLegacyAdmin.value
+  )
 )
+
+const visibleNavGroups = computed(() => {
+  const groups = [...navGroups]
+  if (adminNavItems.value.length) {
+    groups.push({ ...adminNavGroup, items: adminNavItems.value })
+  }
+  return groups
+})
 
 // 项目内导航：进入某个项目后，左侧只显示这个项目的功能
 const projectNavItems = computed(() => {
@@ -295,15 +316,20 @@ async function toggleNotifications() {
 async function handleNotifClick(n: any) {
   if (!n.isRead) await handleMarkRead(n.id)
   showNotifications.value = false
-  if (n.relatedId && n.relatedType === 'ISSUE') {
-    try {
-      const res = await getIssueById(n.relatedId)
-      const projectId = res.data?.projectId
-      if (projectId) {
-        router.push(`/projects/${projectId}/board?issue=${n.relatedId}`)
-        return
-      }
-    } catch { /* fallback */ }
+  const relatedId = n.relatedId
+  if (!relatedId) {
+    router.push('/')
+    return
+  }
+  // 工作项类通知统一走 /issues/:id 落地页 —— 和邮件里的链接是同一个入口，
+  // 免得同一件事在两个地方有两种行为（以前这里只认 ISSUE，审批类通知点了直接回工作台）。
+  if (n.relatedType === 'ISSUE') {
+    router.push(`/issues/${relatedId}`)
+    return
+  }
+  if (n.relatedType === 'APPROVAL_REQUEST') {
+    router.push(`/admin/approvals?id=${relatedId}`)
+    return
   }
   router.push('/')
 }
@@ -367,6 +393,8 @@ onMounted(() => {
   wsConnect()
   // 检查审批结果通知
   checkApprovalNotifications()
+  // 拉一次当前用户的权限码：左侧「设置」分组按能力显示，不再依赖 users.role
+  if (!permissionStore.loaded) permissionStore.fetch()
 })
 
 /** 检查是否有未读的审批通知，有则弹窗提示 */

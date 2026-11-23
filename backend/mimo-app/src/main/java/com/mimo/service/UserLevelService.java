@@ -23,6 +23,7 @@ public class UserLevelService {
     private final UserLevelMapper userLevelMapper;
     private final UserMapper userMapper;
     private final TeamMemberMapper teamMemberMapper;
+    private final AccessControlService accessControlService;
 
     /**
      * 获取用户等级
@@ -68,9 +69,8 @@ public class UserLevelService {
      */
     @Transactional
     public void setLevel(Long targetUserId, Integer newLevel, Long adminId) {
-        // 验证操作者是admin
-        User admin = userMapper.selectById(adminId);
-        if (admin == null || !"ROLE_ADMIN".equals(admin.getRole())) {
+        // 验证操作者是admin（口径统一在 AccessControlService）
+        if (!accessControlService.isSystemAdmin(adminId)) {
             throw new BusinessException(ResultCode.FORBIDDEN, "只有管理员可以设置用户等级");
         }
         // 验证目标用户存在

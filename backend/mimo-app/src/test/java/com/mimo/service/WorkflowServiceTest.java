@@ -50,6 +50,8 @@ class WorkflowServiceTest {
     private TeamMemberMapper teamMemberMapper;
     @Mock
     private UserMapper userMapper;
+    @Mock
+    private RoleService roleService;
 
     @Test
     void shouldAllowAnyTransitionWhenProjectHasNoWorkflow() {
@@ -302,7 +304,8 @@ class WorkflowServiceTest {
     }
 
     private WorkflowService service() {
-        return new WorkflowService(workflowMapper, boardColumnMapper, projectMapper, teamMemberMapper, userMapper);
+        return new WorkflowService(workflowMapper, boardColumnMapper, projectMapper, teamMemberMapper, userMapper,
+                new AccessControlService(roleService, userMapper, teamMemberMapper));
     }
 
     private Workflow workflow() {

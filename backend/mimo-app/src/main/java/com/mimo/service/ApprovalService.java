@@ -5,7 +5,6 @@ import com.mimo.common.BusinessException;
 import com.mimo.common.ResultCode;
 import com.mimo.dto.ApprovalRequestDTO;
 import com.mimo.dto.ApprovalRequestVO;
-import com.mimo.dto.ProjectDTO.ProjectVO;
 import com.mimo.entity.*;
 import com.mimo.mapper.ApprovalRequestMapper;
 import com.mimo.mapper.TeamMemberMapper;
@@ -15,8 +14,6 @@ import com.mimo.mapper.ProjectMapper;
 import com.mimo.mapper.NotificationMapper;
 import com.mimo.entity.Notification;
 import com.mimo.service.NotificationService;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -37,10 +34,9 @@ public class ApprovalService {
     private final UserMapper userMapper;
     private final TeamMapper teamMapper;
     private final ProjectMapper projectMapper;
-    private final ProjectService projectService;
-    private final IssueClaimService issueClaimService;
+    private final ApprovalExecutionService approvalExecutionService;
     private final NotificationService notificationService;
-    private final ObjectMapper objectMapper;
+    private final AccessControlService accessControlService;
 
     /**
      * 创建审批请求
@@ -150,8 +146,8 @@ public class ApprovalService {
         // 通知申请人审批已通过
         sendApprovalNotification(request, "APPROVED", null);
 
-        // 执行实际操作
-        executeApprovedAction(request);
+        // 执行实际操作：失败不再静默吞掉，执行结果记在 exec_status 上并可重试（KNOWN-006）
+        runApprovedAction(request);
     }
 
     /**
@@ -227,75 +223,67 @@ public class ApprovalService {
 
     /**
      * 检查是否为管理员(系统admin 或 团队admin)
+     *
+     * <p>判定口径统一在 {@link AccessControlService}，见计划书 §七「新旧权限判断并存」。
      */
     private boolean isAdmin(Long userId, Long teamId) {
-        // 系统admin
-        User user = userMapper.selectById(userId);
-        if (user != null && "ROLE_ADMIN".equals(user.getRole())) return true;
-
-        // 团队admin
-        TeamMember member = teamMemberMapper.selectOne(new LambdaQueryWrapper<TeamMember>()
-                .eq(TeamMember::getTeamId, teamId)
-                .eq(TeamMember::getUserId, userId)
-                .eq(TeamMember::getRole, "ROLE_ADMIN"));
-        return member != null;
+        return accessControlService.isTeamAdmin(userId, teamId);
     }
 
     /**
-     * 执行审批通过后的实际操作
+     * 重试执行（审批已通过但动作没执行成功时使用）。
+     *
+     * <p>KNOWN-006：审批通过后执行失败以前没有任何痕迹，用户只能看到「已通过」却拿不到东西。
+     * 现在执行结果落在 exec_status / exec_error / exec_attempts 上，失败可由此入口补执行。
+     *
+     * @return 本次执行后的 execStatus（SUCCESS / FAILED）
      */
-    @SuppressWarnings("unchecked")
-    private void executeApprovedAction(ApprovalRequest request) {
-        try {
-            String targetType = request.getTargetType();
-            String dataJson = request.getDataJson();
-
-            if ("PROJECT_CREATE".equals(targetType) && dataJson != null) {
-                // 创建项目
-                Map<String, Object> projectData = objectMapper.readValue(dataJson, Map.class);
-                com.mimo.dto.ProjectDTO.CreateRequest createReq = new com.mimo.dto.ProjectDTO.CreateRequest();
-                createReq.setName((String) projectData.get("name"));
-                createReq.setKey((String) projectData.get("key"));
-                createReq.setTemplate((String) projectData.getOrDefault("template", "SCRUM"));
-                createReq.setTeamId(request.getTeamId());
-                
-                ProjectVO createdProject = projectService.create(createReq, request.getRequesterId());
-                // 更新审批请求的projectId
-                request.setProjectId(createdProject.getId());
-                approvalRequestMapper.updateById(request);
-                
-            } else if ("PROJECT_DELETE".equals(targetType) && dataJson != null) {
-                // 删除项目
-                Map<String, Object> deleteData = objectMapper.readValue(dataJson, Map.class);
-                Number projectIdNum = (Number) deleteData.get("projectId");
-                if (projectIdNum != null) {
-                    projectService.deleteProject(projectIdNum.longValue(), request.getRequesterId());
-                }
-            } else if ("ISSUE_CLAIM".equals(targetType) && dataJson != null) {
-                // 认领任务：指派给申请人，并自动推进到工作流的「进行中」
-                Map<String, Object> claimData = objectMapper.readValue(dataJson, Map.class);
-                Long issueId = toLong(claimData.get("issueId"));
-                Long claimUserId = toLong(claimData.get("userId"));
-                Long toColumnId = toLong(claimData.get("toColumnId"));
-                if (issueId != null && claimUserId != null) {
-                    issueClaimService.applyClaim(issueId, claimUserId, toColumnId, request.getApproverId());
-                }
-            }
-            // 其他类型暂不处理，可后续扩展
-            
-        } catch (JsonProcessingException e) {
-            throw new BusinessException(ResultCode.BAD_REQUEST, "审批数据解析失败: " + e.getMessage());
-        } catch (Exception e) {
-            // 审批已通过，但执行失败 - 记录日志但不回滚审批状态
-            // 实际生产环境应该有补偿机制或重试队列
-            e.printStackTrace();
+    @Transactional
+    public String retryExecution(Long requestId, Long operatorId) {
+        ApprovalRequest request = approvalRequestMapper.selectById(requestId);
+        if (request == null) throw new BusinessException(ResultCode.NOT_FOUND, "审批请求不存在");
+        if (!isAdmin(operatorId, request.getTeamId())) {
+            throw new BusinessException(ResultCode.FORBIDDEN, "只有管理员可以重试执行");
         }
+        if (!"APPROVED".equals(request.getStatus())) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "只有已通过的审批才能重试执行");
+        }
+        if ("SUCCESS".equals(request.getExecStatus())) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "该审批已执行成功，无需重试");
+        }
+        runApprovedAction(request);
+        return request.getExecStatus();
     }
 
-    private Long toLong(Object value) {
-        if (value instanceof Number) return ((Number) value).longValue();
-        if (value instanceof String && !((String) value).isEmpty()) return Long.parseLong((String) value);
-        return null;
+    /**
+     * 执行审批通过后的实际操作，并把执行结果写回审批记录。
+     *
+     * <p>执行本身跑在独立事务里（{@link ApprovalExecutionService#execute}）：
+     * 失败只回滚执行自己，审批状态保留，失败原因落在 exec_error 上。
+     */
+    private void runApprovedAction(ApprovalRequest request) {
+        request.setExecAttempts((request.getExecAttempts() == null ? 0 : request.getExecAttempts()) + 1);
+        request.setLastExecAt(LocalDateTime.now());
+        try {
+            approvalExecutionService.execute(request);
+            request.setExecStatus("SUCCESS");
+            request.setExecError(null);
+        } catch (Exception e) {
+            request.setExecStatus("FAILED");
+            request.setExecError(buildExecError(e));
+            log.error("审批通过后执行失败，可通过重试接口补执行: approvalId={}, targetType={}, attempts={}",
+                    request.getId(), request.getTargetType(), request.getExecAttempts(), e);
+        }
+        approvalRequestMapper.updateById(request);
+    }
+
+    /** 失败原因截断到 500 字（列宽），避免长堆栈把记录撑爆 */
+    private String buildExecError(Exception e) {
+        String msg = e.getMessage();
+        if (msg == null || msg.isBlank()) {
+            msg = e.getClass().getSimpleName();
+        }
+        return msg.length() > 500 ? msg.substring(0, 500) : msg;
     }
 
     private ApprovalRequestVO toVO(ApprovalRequest entity) {
@@ -324,6 +312,11 @@ public class ApprovalService {
         vo.setApprovedAt(entity.getApprovedAt());
         vo.setRejectReason(entity.getRejectReason());
         vo.setCreatedAt(entity.getCreatedAt());
+        // KNOWN-006：审批结果和执行结果分开暴露，前端能看出「通过了但没执行成功」
+        vo.setExecStatus(entity.getExecStatus());
+        vo.setExecError(entity.getExecError());
+        vo.setExecAttempts(entity.getExecAttempts());
+        vo.setLastExecAt(entity.getLastExecAt());
 
         // 填充关联名称
         if (entity.getTeamId() != null) {

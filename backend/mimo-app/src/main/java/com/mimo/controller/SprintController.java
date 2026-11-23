@@ -50,6 +50,18 @@ public class SprintController {
         return Result.success(sprintService.listByProject(projectId));
     }
 
+    /**
+     * 更新 Sprint 名称/目标/起止日期（项目成员可用）
+     */
+    @PutMapping("/{id}")
+    public Result<SprintVO> update(@PathVariable Long id,
+                                   @Valid @RequestBody UpdateRequest request,
+                                   Authentication auth) {
+        Long userId = getLongPrincipal(auth);
+        assertTeamMemberBySprint(id, userId);
+        return Result.success(sprintService.updateSprint(id, request));
+    }
+
     @PutMapping("/{id}/start")
     public Result<Void> start(@PathVariable Long id, Authentication auth) {
         Long userId = getLongPrincipal(auth);

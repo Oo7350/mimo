@@ -51,6 +51,8 @@ public class NotificationService {
 
         if ("APPROVAL_REQUEST".equalsIgnoreCase(relatedType)) return "approval";
         if ("ASSIGNED".equalsIgnoreCase(type)) return "assignment";
+        // 评论里被 @ 到，走「评论」这一档偏好（个人中心里已经有这个开关，不用新增一项）
+        if ("MENTION".equalsIgnoreCase(type)) return "comment";
         if ("STATUS_CHANGED".equalsIgnoreCase(type)) {
             return content.contains("评论") ? "comment" : "issue_status";
         }

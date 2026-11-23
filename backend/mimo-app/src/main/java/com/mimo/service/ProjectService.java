@@ -104,6 +104,36 @@ public class ProjectService {
         return toVO(project);
     }
 
+    /**
+     * 更新项目名称/描述（KNOWN-009：以前只能建和删，改名必须删库重建，历史任务全丢）
+     *
+     * <p>刻意不支持改 Key：任务编号 {@code issue_key} 的前缀就是项目 Key，
+     * 改了会让所有历史任务编号失效。
+     */
+    @Transactional
+    public ProjectVO update(Long projectId, UpdateRequest request, Long operatorId) {
+        Project project = projectMapper.selectById(projectId);
+        if (project == null) throw new BusinessException(ResultCode.PROJECT_NOT_FOUND);
+
+        String oldName = project.getName();
+        project.setName(request.getName());
+        project.setDescription(request.getDescription());
+        projectMapper.updateById(project);
+
+        User operator = userMapper.selectById(operatorId);
+        ActivityLog log = new ActivityLog();
+        log.setUserId(operatorId);
+        log.setUsername(operator != null ? operator.getUsername() : "未知");
+        log.setProjectId(projectId);
+        log.setTargetType("PROJECT");
+        log.setTargetId(projectId);
+        log.setAction("UPDATE");
+        log.setDetail("更新项目: " + oldName + " -> " + project.getName());
+        activityLogMapper.insert(log);
+
+        return toVO(project);
+    }
+
     public List<ProjectVO> listByTeam(Long teamId) {
         return projectMapper.selectList(
                 new LambdaQueryWrapper<Project>().eq(Project::getTeamId, teamId))

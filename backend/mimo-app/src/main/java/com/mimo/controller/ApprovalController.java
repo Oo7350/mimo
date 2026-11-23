@@ -26,6 +26,7 @@ public class ApprovalController {
     private final ApprovalService approvalService;
     private final UserMapper userMapper;
     private final TeamService teamService;
+    private final com.mimo.service.AccessControlService accessControlService;
 
     @Value("${approval.expire-days:7}")
     private int expireDays;
@@ -95,6 +96,20 @@ public class ApprovalController {
     }
 
     /**
+     * 重试执行（审批已通过但动作没生效时使用，需管理员）
+     *
+     * <p>KNOWN-006：以前执行失败被静默吞掉，用户看到「已通过」却拿不到项目，也没有补救入口。
+     */
+    @PostMapping("/{id}/retry-execution")
+    public Result<String> retryExecution(@PathVariable Long id, Authentication auth) {
+        Long userId = getLongPrincipal(auth);
+        String execStatus = approvalService.retryExecution(id, userId);
+        return Result.success(
+                "SUCCESS".equals(execStatus) ? "补执行成功" : "补执行仍失败，请查看失败原因",
+                execStatus);
+    }
+
+    /**
      * 清理超时的审批请求（7天未处理自动拒绝）
      */
     @PostMapping("/cleanup-expired")
@@ -116,7 +131,7 @@ public class ApprovalController {
         Long userId = getLongPrincipal(auth);
         User user = userMapper.selectById(userId);
         if (user == null) throw new BusinessException(ResultCode.USER_NOT_FOUND);
-        if (!"ROLE_ADMIN".equals(user.getRole())) {
+        if (!accessControlService.isSystemAdmin(userId)) {
             throw new BusinessException(ResultCode.FORBIDDEN, "仅管理员可操作");
         }
         return userId;

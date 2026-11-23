@@ -10,6 +10,12 @@
         />
       </template>
       <template #action>
+        <!-- 空库/想演示时的入口：管理员一键铺一套示例数据（KNOWN-020） -->
+        <el-button
+          v-if="permissionStore.isSuperAdmin"
+          :loading="generating"
+          @click="generate(fetchProjects)"
+        >生成示例数据</el-button>
         <RippleButton @click="$router.push('/teams')">
           <el-icon><Plus /></el-icon> 创建项目
         </RippleButton>
@@ -74,6 +80,11 @@ import ShinyText from "@/components/common/ShinyText.vue"
 import RippleButton from "@/components/common/RippleButton.vue"
 import { Delete, Grid, DataAnalysis, Document } from "@element-plus/icons-vue"
 import { useUserStore } from "@/store/user"
+import { usePermissionStore } from "@/store/permission"
+import { useDemoData } from "@/composables/useDemoData"
+
+const permissionStore = usePermissionStore()
+const { generating, generate } = useDemoData()
 
 const userStore = useUserStore()
 const projects = ref<any[]>([])

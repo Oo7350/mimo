@@ -1,6 +1,31 @@
 <template>
   <div class="level-manage">
-    <PageHeader title="用户等级管理" subtitle="配置 L1-L4 铭牌权限体系" />
+    <PageHeader
+      title="用户等级管理"
+      subtitle="L1-L4 权益铭牌：只影响展示（头像徽章、等级名），不参与任何权限判断"
+    />
+
+    <!--
+      这段说明是必须的：后端只有 UserLevelService 自己的 CRUD，没有任何业务逻辑读这个等级，
+      改等级不会改变任何人的可用功能。原副标题写的是「配置 L1-L4 铭牌权限体系」，
+      与事实不符 —— 权限在「角色权限」页（RBAC 45 个权限码）。与其让人猜，不如写在页面上。
+    -->
+    <el-alert
+      class="level-manage__notice"
+      type="info"
+      show-icon
+      :closable="false"
+      title="等级 ≠ 权限"
+    >
+      <template #default>
+        <span>
+          用户等级目前只用于展示（头像徽章、等级名、团队内标识），<strong>不影响任何功能是否可用</strong>。
+          真正的功能权限请在
+          <el-button type="primary" link @click="$router.push('/admin/roles')">角色权限</el-button>
+          里配置（RBAC：角色绑定权限码，可按全局 / 团队 / 项目三种作用域下发）。
+        </span>
+      </template>
+    </el-alert>
 
     <!-- 等级权限卡片 -->
     <div class="level-cards">
@@ -210,6 +235,10 @@ onMounted(fetchData)
   padding: 24px;
   max-width: 1100px;
   margin: 0 auto;
+}
+
+.level-manage__notice {
+  margin-bottom: 20px;
 }
 
 /* ===== 等级权限卡片 ===== */

@@ -1,5 +1,7 @@
 package com.mimo.service;
 
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.mimo.common.BusinessException;
 import com.mimo.dto.RoleDTO.AssignRoleRequest;
 import com.mimo.entity.Permission;
@@ -9,6 +11,8 @@ import com.mimo.mapper.PermissionMapper;
 import com.mimo.mapper.RoleMapper;
 import com.mimo.mapper.RolePermissionMapper;
 import com.mimo.mapper.UserRoleMapper;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -26,6 +30,17 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class RoleServiceTest {
+
+    /**
+     * LambdaQueryWrapper 生成 SQL 片段时需要实体元数据（字段名 ↔ 列名）。
+     * 纯 Mockito 用例没有 MyBatis 上下文，得手动灌一次，否则 getSqlSegment() 抛
+     * "can not find lambda cache for this entity"。
+     */
+    @BeforeAll
+    static void initTableInfo() {
+        MapperBuilderAssistant assistant = new MapperBuilderAssistant(new MybatisConfiguration(), "");
+        TableInfoHelper.initTableInfo(assistant, UserRole.class);
+    }
 
     @Mock
     private RoleMapper roleMapper;
@@ -94,7 +109,7 @@ class RoleServiceTest {
     @Test
     void shouldSkipDuplicatedRoleAssignment() {
         when(roleMapper.selectById(1)).thenReturn(role("DEVELOPER"));
-        when(userRoleMapper.selectOne(any())).thenReturn(userRole(2L, "GLOBAL", null));
+        when(userRoleMapper.selectCount(any())).thenReturn(1L);
         AssignRoleRequest request = new AssignRoleRequest();
         request.setUserId(2L);
         request.setRoleId(1);
@@ -103,6 +118,51 @@ class RoleServiceTest {
         service().assignRole(request);
 
         verify(userRoleMapper, never()).insert(any());
+    }
+
+    /**
+     * BUG-098 的回归点：GLOBAL 分配的 scope_id 是 NULL，幂等查询必须生成 `scope_id IS NULL`。
+     * 以前用 `.eq(condition, col, null)` 会拼出 `scope_id = NULL`，永远查不到已存在的行，
+     * 于是每次调用都插一条，多次重启后 user_roles 里每个用户堆了十几份相同授权。
+     * 旧用例只 mock 了 mapper 返回值，看不到 SQL 长什么样，所以没拦住——这里直接断言生成的 SQL。
+     */
+    @Test
+    void shouldBuildIsNullPredicateForGlobalAssignment() {
+        when(roleMapper.selectById(1)).thenReturn(role("DEVELOPER"));
+        when(userRoleMapper.selectCount(any())).thenReturn(0L);
+        AssignRoleRequest request = new AssignRoleRequest();
+        request.setUserId(2L);
+        request.setRoleId(1);
+        request.setScopeType("GLOBAL");
+
+        service().assignRole(request);
+
+        org.mockito.ArgumentCaptor<com.baomidou.mybatisplus.core.conditions.Wrapper<UserRole>> captor =
+                org.mockito.ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.Wrapper.class);
+        verify(userRoleMapper).selectCount(captor.capture());
+        String sql = captor.getValue().getSqlSegment();
+        assertThat(sql).containsIgnoringCase("scope_id IS NULL");
+        verify(userRoleMapper).insert(any());
+    }
+
+    @Test
+    void shouldMatchScopeIdWhenAssigningScopedRole() {
+        when(roleMapper.selectById(1)).thenReturn(role("DEVELOPER"));
+        when(userRoleMapper.selectCount(any())).thenReturn(0L);
+        AssignRoleRequest request = new AssignRoleRequest();
+        request.setUserId(2L);
+        request.setRoleId(1);
+        request.setScopeType("TEAM");
+        request.setScopeId(7L);
+
+        service().assignRole(request);
+
+        org.mockito.ArgumentCaptor<com.baomidou.mybatisplus.core.conditions.Wrapper<UserRole>> captor =
+                org.mockito.ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.Wrapper.class);
+        verify(userRoleMapper).selectCount(captor.capture());
+        String sql = captor.getValue().getSqlSegment();
+        assertThat(sql).containsIgnoringCase("scope_id =");
+        assertThat(sql).doesNotContainIgnoringCase("scope_id IS NULL");
     }
 
     private RoleService service() {

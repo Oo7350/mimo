@@ -6,10 +6,12 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mimo.common.BusinessException;
 import com.mimo.common.ResultCode;
 import com.mimo.dto.TeamDTO.*;
+import com.mimo.entity.Project;
 import com.mimo.entity.Team;
 import com.mimo.entity.TeamMember;
 import com.mimo.entity.User;
 import com.mimo.entity.UserLevel;
+import com.mimo.mapper.ProjectMapper;
 import com.mimo.mapper.TeamMapper;
 import com.mimo.mapper.TeamMemberMapper;
 import com.mimo.mapper.UserMapper;
@@ -34,6 +36,9 @@ public class TeamService {
     private final UserMapper userMapper;
     private final ActivityLogMapper activityLogMapper;
     private final UserLevelMapper userLevelMapper;
+    private final ProjectMapper projectMapper;
+    private final ProjectService projectService;
+    private final AccessControlService accessControlService;
 
     public TeamVO create(CreateRequest request, Long ownerId) {
         if (teamMapper.exists(new LambdaQueryWrapper<Team>().eq(Team::getName, request.getName()))) {
@@ -56,6 +61,31 @@ public class TeamService {
     public TeamVO getById(Long teamId) {
         Team team = teamMapper.selectById(teamId);
         if (team == null) throw new BusinessException(ResultCode.TEAM_NOT_FOUND);
+        return toVO(team);
+    }
+
+    /**
+     * 更新团队名称/描述（KNOWN-009：以前建完就改不了，只能删了重建）
+     */
+    @Transactional
+    public TeamVO updateTeam(Long teamId, UpdateRequest request, Long operatorId) {
+        Team team = teamMapper.selectById(teamId);
+        if (team == null) throw new BusinessException(ResultCode.TEAM_NOT_FOUND);
+        if (!isTeamAdmin(teamId, operatorId)) {
+            throw new BusinessException(ResultCode.NOT_TEAM_ADMIN);
+        }
+        String newName = request.getName();
+        if (newName != null && !newName.isBlank() && !newName.equals(team.getName())) {
+            if (teamMapper.exists(new LambdaQueryWrapper<Team>().eq(Team::getName, newName))) {
+                throw new BusinessException(ResultCode.TEAM_NAME_EXISTS);
+            }
+            team.setName(newName.trim());
+        }
+        // 传空字符串表示「清空描述」，传 null 表示「不改」
+        if (request.getDescription() != null) {
+            team.setDescription(request.getDescription());
+        }
+        teamMapper.updateById(team);
         return toVO(team);
     }
 
@@ -143,9 +173,17 @@ public class TeamService {
         log.setAction("DELETE");
         log.setDetail("删除团队: " + team.getName());
         activityLogMapper.insert(log);
+        // 先删除团队下的所有项目（连带看板列/任务/成员关系/报告/Sprint）。
+        // 以前只删团队，项目会变成「没有团队的项目」：用户的项目列表按团队过滤，
+        // 这些项目从此谁都看不到，也删不掉，成了孤儿数据（KNOWN-005）。
+        List<Project> projects = projectMapper.selectList(
+                new LambdaQueryWrapper<Project>().eq(Project::getTeamId, teamId));
+        for (Project project : projects) {
+            projectService.deleteProject(project.getId(), operatorId);
+        }
         // 删除团队成员
         teamMemberMapper.delete(new LambdaQueryWrapper<TeamMember>().eq(TeamMember::getTeamId, teamId));
-        // 删除团队（关联项目不删除，项目独立存在）
+        // 删除团队
         teamMapper.deleteById(teamId);
     }
 
@@ -162,15 +200,12 @@ public class TeamService {
 
     /**
      * 检查用户是否为团队管理员（包括系统admin）
+     *
+     * <p>统一走 {@link AccessControlService}：旧字段 + RBAC 两套口径的收敛点在那边，
+     * 这里不再自己拼 {@code ROLE_ADMIN} 判断。
      */
     public boolean isTeamAdmin(Long teamId, Long userId) {
-        // 系统admin
-        User user = userMapper.selectById(userId);
-        if (user != null && "ROLE_ADMIN".equals(user.getRole())) return true;
-
-        // 团队admin
-        String role = getUserRoleInTeam(teamId, userId);
-        return "ROLE_ADMIN".equals(role);
+        return accessControlService.isTeamAdmin(userId, teamId);
     }
 
     /**

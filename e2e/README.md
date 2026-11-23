@@ -57,6 +57,92 @@
 | 8 | 错页面启动只给提示 | 在首页点「看板实操」→ 不启动、提示"需要在项目看板页启动" |
 | 9 | 走完记为完成 | 点完最后一步后 `status === 'done'` |
 
+## Markdown / 邮件正文 XSS 用例（`xss-markdown.mjs`）
+
+对应 `bug-log.md` **KNOWN-011**（修复记录见 **BUG-092**）。这条用例**不需要后端、也不需要前端 dev server**，
+只起一个空白页的真实 Chromium，因此在这台没有 MySQL/Redis 的机器上也能跑。
+
+做法是"验行为不验字符串"：
+
+1. 读仓库里真实的 `frontend/src/utils/markdown.ts`，用 esbuild 转成 JS 后**原样执行**（改了源码这里跟着变，不是抄副本）；
+2. 渲染结果用 `innerHTML` 注入 —— 与 Vue 的 `v-html` 完全一致；
+3. 载荷里塞 `window.__xssFired=true`，注入后等 180ms 再读这个**哨兵**，判断脚本是"真的执行了"还是"只是字符串里出现过"；
+4. 同一批载荷跑两个版本：`git show HEAD:…markdown.ts`（修复前基线，**只作对照、不计入退出码**）与当前工作区源码（**这才是断言**）。
+
+| # | 载荷 | 修复前（正则黑名单） | 现在（DOMPurify） |
+|---|---|---|---|
+| 1 | `<img src=x onerror=…>`（不带引号） | 挡住 | 挡住 |
+| 2 | `<img src=x onerror = …>`（等号带空格） | 挡住 | 挡住 |
+| 3 | `<svg/onload=…>` | 挡住 | 挡住 |
+| 4 | `<details open ontoggle=…>` | **真的执行了** | 挡住 |
+| 5 | `![a"onerror="…](x)` | 挡住 | 挡住 |
+| 6 | `<math><mtext><table><mglyph><style>…`（mXSS） | 留 `<style>` | 挡住 |
+| 7 | `[点我](jav&#x61;script:…)` | 留 `javascript:` 链接 | 挡住 |
+| 8 | `<scr<script>ipt>…` | 挡住 | 挡住 |
+| 9 | `<style>…url("javascript:…")</style>` | 留 `<style>` | 挡住 |
+| 10 | 正常 Markdown（粗体/代码/列表/链接） | 格式保留 | 格式保留（回归项） |
+
+结果写 `e2e/xss-report.md`（已 gitignore）：修复前基线 6/10、当前源码 10/10。
+`dompurify` 缺失时先 `cd frontend && npm i`。
+
+## 主线自证用例（`main-chain.mjs`）
+
+不是"每个功能各验一次"，而是**一条链必须首尾相接**：注册一个全新账号，然后只走界面，
+从建团队一路走到看报告。链路中间任何一环断掉都会红 —— v2.19.0 的 BUG-099 / BUG-100
+就是它首跑（5/9）时抓出来的。
+
+| # | 检查点 | 断言 |
+|---|--------|------|
+| 1 | 新账号建第一个团队 | 团队列表里能看到，`GET /api/teams/my` 有它 |
+| 2 | 团队页建项目 | `GET /api/projects/team/{id}` 里有它 |
+| 3 | 项目页建迭代 | `GET /api/sprints/project/{id}` 里有它（要点开日期面板选起止） |
+| 4 | 看板建任务 | 卡片出现在「待办」列 |
+| 5 | 待办 → 进行中 | 接口回读 `status=IN_PROGRESS` |
+| 6 | 提交验收 | 产生 `PENDING` 的 review |
+| 7 | 单人团队的死锁有说明 | 详情页出现 `.next-step-blocked`（"团队里除你之外没有别人"） |
+| 8 | 从界面邀请第二个成员 | 成员数 ≥ 2 |
+| 9 | 管理员从工作台验收通过 | 「待我处理」里有这条 → 点进去通过 → `APPROVED` |
+| 10 | 一键标记完成 | `status=DONE` |
+| 11 | 项目报告页 | 有「生成报告」入口 |
+
+```bash
+node e2e/main-chain.mjs http://localhost:5173   # 11 条，要前端 :5173 + 后端 :8080
+```
+
+用例自己注册 `chain<时间戳>` 账号、自己清理（先用新账号自己的权限删项目/团队，删不掉会打警告）。
+引导遮罩靠预先写入 `localStorage.mimo_tour_state` 关掉（见下面第 4 个坑）。
+
+## 清库（`cleanup-residue.sql`）
+
+用例会自己造数据。issue 级的都删得干净，但**注册出来的账号、它们建的团队/项目删不掉**——
+删项目在本系统里要走审批流程，脚本没有"删掉我刚建的东西"的通道。跑多了开发库会累积
+`probe-*` / `chain*` 账号和「链路团队/项目」（KNOWN-023）。
+
+```bash
+mysql -umimo -pmimo123 mimo < e2e/cleanup-residue.sql
+```
+
+只删带这些前缀/名字的用例数据，不碰 `admin`/`zhangsan`/`lisi` 和真实项目；可重复执行。
+**生产库不要执行。**
+
+## 工作流用例（`workflow-guard.mjs`）
+
+证明"工作流不是装饰"，同时盯住"看不懂"的那两处（v2.19.1）：
+
+| # | 检查点 | 断言 |
+|---|--------|------|
+| 1 | 设计器不点「编辑」就能看懂规则 | 出现只读概览，规则表 ≥1 行，表头含「谁可以这么做」 |
+| 2 | 越界拖拽被拦 | 把 STORY 卡从「待办」拖到「已完成」→ 提示含"工作流不允许"，`columnId` 仍是 1 |
+| 3 | 被拦时给方向 | 提示里含「当前可以从这里去：」+ 允许的目标列名 |
+| 4 | 允许的移动照常成功 | 拖到「进行中」→ `columnId=2`、`status=IN_PROGRESS` |
+
+```bash
+node e2e/workflow-guard.mjs http://localhost:5173
+```
+
+前置：项目 id=1 上配了 STORY 工作流（demo 库是 scrum 模板：待办↔进行中↔已完成）。
+用例自己建一张卡、自己删，不碰 demo 数据。
+
 ## 怎么跑
 
 前置：MySQL :3306、后端 :8080、前端 :5173 都已启动，且库里有项目 id=1（种子数据或自己造）。
@@ -74,6 +160,7 @@ node e2e/core-flows.mjs http://localhost:5173   # 核心业务链路 6 条（要
 node e2e/ai-degrade.mjs http://localhost:5173  # AI 未配置场景 3 条（要前端 :5173）
 node e2e/authz.mjs http://localhost:8080/api   # 越权拦截 25 条（只要后端 :8080）
 node e2e/tour.mjs http://localhost:5173        # 新手引导 9 条（要前端 :5173）
+node e2e/xss-markdown.mjs                      # Markdown/邮件 XSS 10 条（只要浏览器，不用起服务）
 ```
 
 Playwright 装在仓库外时靠 `PLAYWRIGHT_MODULE` 指过去；直接装在仓库里则不用设，脚本自己会找到。
@@ -88,6 +175,9 @@ Playwright 装在仓库外时靠 `PLAYWRIGHT_MODULE` 指过去；直接装在仓
 2. **Element Plus 的页签要 `dispatchEvent('click')`**：`getByRole('tab')` / `.click()` 在弹窗里点不生效，
    用 `.el-tabs__item` 文本定位 + `dispatchEvent("click")` 才切换（见 `clickTab()`）。
 3. 拖拽用的是 vuedraggable(SortableJS)，`locator.dragTo()` 不触发，必须手工 `mouse.down/move/up`。
+4. **关引导要写对 key**：真状态是 `localStorage.mimo_tour_state`（按主题存 `{status:'done'|'skipped', v:2}`），
+   写 `sessionStorage` 的假 key 完全无效。引导一旦自动启动，遮罩会把后续点击全吃掉，
+   页面看起来"按钮点不动"。（`main-chain.mjs` 的 `addInitScript` 就是标准写法。）
 
 ## 还没覆盖的（后续补）
 
@@ -95,3 +185,4 @@ Playwright 装在仓库外时靠 `PLAYWRIGHT_MODULE` 指过去；直接装在仓
 - Sprint 启动 / 完成 / 未完成任务迁移
 - 导出 PDF / 导入 Excel
 - 配置了真实 Key 后的 AI 正常返回路径（RAG 引用质量、AI Sprint 规划）
+- 多角色验收矩阵（`main-chain.mjs` 目前只跑"创建者 + 一名管理员"这一种角色组合）

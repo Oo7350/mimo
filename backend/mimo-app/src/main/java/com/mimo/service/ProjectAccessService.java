@@ -19,6 +19,7 @@ public class ProjectAccessService {
     private final IssueMapper issueMapper;
     private final UserMapper userMapper;
     private final TeamService teamService;
+    private final AccessControlService accessControlService;
 
     public Project requireProject(Long projectId, Long userId) {
         Project project = projectMapper.selectById(projectId);
@@ -47,7 +48,6 @@ public class ProjectAccessService {
     }
 
     public boolean isSystemAdmin(Long userId) {
-        User user = userMapper.selectById(userId);
-        return user != null && "ROLE_ADMIN".equals(user.getRole());
+        return accessControlService.isSystemAdmin(userId);
     }
 }

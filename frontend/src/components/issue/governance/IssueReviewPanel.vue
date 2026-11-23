@@ -80,7 +80,7 @@ import {
 import type { IssueReview } from '@/types/governance'
 
 const props = defineProps<{ issueId: number }>()
-const emit = defineEmits(['updated'])
+const emit = defineEmits(['updated', 'loaded'])
 
 const reviews = ref<IssueReview[]>([])
 const dialogVisible = ref(false)
@@ -91,6 +91,9 @@ async function load() {
   if (!props.issueId) return
   const res = await listIssueReviews(props.issueId)
   reviews.value = res.data || []
+  // 把验收记录交给外面（详情页的「下一步」要据此判断走到哪一步了），
+  // 避免详情页再发一次同样的请求
+  emit('loaded', reviews.value)
 }
 
 async function submit() {
@@ -172,6 +175,14 @@ function formatTime(value?: string) {
 }
 
 watch(() => props.issueId, load, { immediate: true })
+
+/** 给详情页的「下一步」用：直接拉起提交验收弹窗，不用让用户自己找到这个 Tab 再点按钮 */
+defineExpose({
+  openSubmitDialog: () => {
+    dialogVisible.value = true
+  },
+  reload: load,
+})
 </script>
 
 <style scoped>

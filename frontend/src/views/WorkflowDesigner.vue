@@ -23,22 +23,65 @@
       </div>
     </div>
 
+    <!-- 这一页解决什么问题：以前只有标题 + 两个按钮，看完不知道它管什么 -->
+    <PageHint>
+      工作流规定「任务在看板上能怎么移动」。默认会按看板列自动生成（Scrum，前进+回退都允许）；
+      <b>删掉配置 = 随便拖</b>，配置之后只能走下面列出的路径，
+      其它拖法会被看板拦下，并告诉你还能往哪去。规则按「工作项类型」分别生效（现在看的是
+      <b>{{ typeLabel }}</b> 这一套），保存后立即生效，不用重启也不用刷新。
+    </PageHint>
+
     <!-- 现有工作流信息 -->
     <el-alert v-if="currentWorkflow && !editing" type="info" :closable="false" class="workflow-designer__alert">
       <template #title>
         <el-tag v-if="currentWorkflow.isDefault" size="small" type="success" effect="plain" class="workflow-designer__tag">
           自动生成
         </el-tag>
-        当前「{{ selectedIssueType }}」类型已配置工作流: {{ currentWorkflow.name }}
+        当前「{{ typeLabel }}」类型已配置工作流: {{ currentWorkflow.name }}
         <el-button text type="primary" @click="startEditing">编辑</el-button>
         <el-button text type="danger" @click="onDelete">删除</el-button>
       </template>
     </el-alert>
 
-    <p class="workflow-designer__hint">
-      工作流会按看板列自动生成：新建项目即生成 STORY / TASK / BUG 三套默认配置（默认 Scrum，前进和回退都允许）。
-      这里只用来微调转换规则，或换成更严格的 Kanban / Bug 模板。
-    </p>
+    <!-- 只读概览：不点「编辑」也要能看懂规则到底允许什么 -->
+    <div v-if="currentWorkflow && !editing" class="workflow-designer__overview">
+      <div class="workflow-designer__section-title">
+        <span>现在允许的移动</span>
+        <el-tooltip content="节点 = 看板上的列；「终态」表示走到这一列就算结束">
+          <el-icon><InfoFilled /></el-icon>
+        </el-tooltip>
+      </div>
+      <div class="workflow-designer__node-grid">
+        <div
+          v-for="node in currentWorkflow.config.nodes"
+          :key="node.columnId"
+          class="workflow-designer__node"
+          :style="{ borderColor: node.color, background: node.color + '15' }"
+        >
+          <span class="workflow-designer__node-name">{{ node.name }}</span>
+          <el-tag v-if="node.isTerminal" size="small" type="success" effect="plain">终态</el-tag>
+        </div>
+      </div>
+
+      <el-table v-if="ruleRows.length" :data="ruleRows" size="small" class="workflow-designer__rules">
+        <el-table-column prop="from" label="从" width="140" />
+        <el-table-column width="50" align="center">
+          <template #default>→</template>
+        </el-table-column>
+        <el-table-column prop="to" label="到" width="140" />
+        <el-table-column prop="who" label="谁可以这么做" />
+      </el-table>
+      <p v-else class="workflow-designer__hintline">
+        这套工作流一条转换规则都没有 —— 等于所有移动都会被拦。要么加规则，要么直接删除它。
+      </p>
+      <p class="workflow-designer__hintline">
+        看板上被挡住时，会直接告诉你「当前可以从这里去：…」;规则改了立刻生效。
+      </p>
+      <p class="workflow-designer__hintline">
+        工作流默认按看板列自动生成（新建项目即生成 STORY / TASK / BUG 三套，Scrum 前进+回退）。
+        这里只用于微调规则，或换成更严格的 Kanban / Bug 模板。
+      </p>
+    </div>
 
     <!-- 设计画布 -->
     <div v-if="editing" class="workflow-designer__canvas">
@@ -46,7 +89,7 @@
       <div class="workflow-designer__nodes">
         <div class="workflow-designer__section-title">
           <span>看板列 (状态节点)</span>
-          <el-tooltip content="从下方看板列中添加节点到工作流">
+          <el-tooltip content="把看板列拖到下面的画布，它们就是这套流程允许停留的状态">
             <el-icon><InfoFilled /></el-icon>
           </el-tooltip>
         </div>
@@ -69,12 +112,15 @@
       <div class="workflow-designer__transitions">
         <div class="workflow-designer__section-title">
           <span>转换规则 (允许的状态跳转)</span>
+          <el-tooltip content="每条规则 = 一次被允许的移动；「执行条件」是『谁可以这么拖』，留空表示任何人都可以">
+            <el-icon><InfoFilled /></el-icon>
+          </el-tooltip>
           <el-button text type="primary" @click="addTransition">
             <el-icon><Plus /></el-icon>添加规则
           </el-button>
         </div>
         <div v-if="config.transitions.length === 0" class="workflow-designer__empty">
-          暂无转换规则，拖拽列到节点区域后添加
+          还没有任何转换规则 —— 这样保存下去，看板上所有移动都会被拦住。点「添加规则」开始。
         </div>
         <div
           v-for="(t, idx) in config.transitions"
@@ -146,15 +192,19 @@
       <el-empty description="该项目还没有看板列，暂时无法自动生成工作流；先创建看板列即可自动生成">
         <el-button type="primary" @click="startEditing">手动配置</el-button>
       </el-empty>
+      <p class="workflow-designer__hintline">
+        提示：工作流默认按看板列自动生成；想收紧某一种，用上面的下拉框切换类型单独调整。
+      </p>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Plus, Delete, Right, Close, InfoFilled } from '@element-plus/icons-vue'
+import PageHint from '@/components/common/PageHint.vue'
 import {
   listWorkflows,
   getActiveWorkflow,
@@ -179,6 +229,28 @@ const saving = ref(false)
 const currentWorkflow = ref<WorkflowVO | null>(null)
 const boardColumns = ref<{ id: number; name: string; color: string }[]>([])
 const config = ref<WorkflowConfig>({ nodes: [], transitions: [] })
+
+const TYPE_LABEL: Record<string, string> = { STORY: '需求（Story）', TASK: '任务（Task）', BUG: '缺陷（Bug）' }
+const typeLabel = computed(() => TYPE_LABEL[selectedIssueType.value] || selectedIssueType.value)
+
+/** 只读概览用：把保存好的转换规则翻成人话（从哪 → 到哪 → 谁能做） */
+const ruleRows = computed(() => {
+  const wf = currentWorkflow.value
+  if (!wf?.config) return []
+  const nameOf = (columnId: number) =>
+    wf.config.nodes.find((n) => n.columnId === columnId)?.name || `列#${columnId}`
+  const whoText = (conditions?: string[]) => {
+    if (!conditions || conditions.length === 0) return '任何成员'
+    return conditions
+      .map((c) => ({ ROLE_ADMIN: '仅管理员', ASSIGNEE: '仅指派人', REPORTER: '仅报告人' })[c] || c)
+      .join('、')
+  }
+  return (wf.config.transitions || []).map((t) => ({
+    from: nameOf(t.fromColumnId),
+    to: nameOf(t.toColumnId),
+    who: whoText(t.conditions),
+  }))
+})
 
 watch(selectedIssueType, () => loadWorkflow())
 
@@ -267,7 +339,7 @@ async function onApplyTemplate(templateName: string) {
     currentWorkflow.value = res.data
     config.value = JSON.parse(JSON.stringify(res.data.config))
     editing.value = true
-    ElMessage.success('模板已应用')
+    ElMessage.success('模板已套用，确认或修改后点「保存工作流」才真正生效')
   } catch {
     selectedTemplate.value = ''
   }
@@ -288,7 +360,12 @@ async function onSave() {
     })
     currentWorkflow.value = res.data
     editing.value = false
-    ElMessage.success('工作流保存成功')
+    const ruleCount = (res.data?.config?.transitions || []).length
+    ElMessage.success(
+      ruleCount > 0
+        ? `已保存并生效：现在看板上「${typeLabel.value}」只能按这 ${ruleCount} 条规则移动`
+        : `已保存：这套工作流没有任何转换规则，看板上「${typeLabel.value}」将无法移动`,
+    )
   } catch (e: any) {
     ElMessage.error(e.response?.data?.message || '保存失败')
   } finally {
@@ -338,6 +415,24 @@ async function onDelete() {
 
   &__alert {
     margin-bottom: 16px;
+  }
+
+  &__overview {
+    border: 1px solid var(--el-border-color);
+    border-radius: 8px;
+    padding: 16px;
+    background: var(--el-bg-color);
+  }
+
+  &__rules {
+    margin-top: 12px;
+  }
+
+  &__hintline {
+    margin: 8px 0 0;
+    font-size: 12px;
+    line-height: 1.7;
+    color: var(--el-text-color-secondary);
   }
 
   &__canvas {

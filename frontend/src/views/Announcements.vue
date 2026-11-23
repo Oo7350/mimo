@@ -12,8 +12,17 @@
       </div>
     </div>
 
+    <PageHint>面向全体成员的公告栏：版本发布、维护通知、制度变更放这里。管理员可以发布，其他人只看。</PageHint>
+
     <div v-loading="loading" class="ann-list">
-      <el-empty v-if="!loading && list.length === 0" description="暂无公告" />
+      <EmptyGuide
+        v-if="!loading && list.length === 0"
+        :icon="Bell"
+        :title="emptyTitle"
+        :reason="emptyReason"
+        :action-label="userStore.isAdmin ? '发布第一条公告' : ''"
+        @action="openCreate"
+      />
       <el-card
         v-for="a in list"
         :key="a.id"
@@ -82,9 +91,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import PageHint from "@/components/common/PageHint.vue"
+import { ref, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Refresh } from '@element-plus/icons-vue'
+import { Plus, Refresh, Bell } from '@element-plus/icons-vue'
+import EmptyGuide from '@/components/common/EmptyGuide.vue'
 import { useUserStore } from '@/store/user'
 import {
   listAnnouncements,
@@ -104,6 +115,17 @@ const editing = ref<{ id?: number; title: string; content: string; pinned: numbe
   title: '', content: '', pinned: 0,
 })
 const current = ref<AnnouncementVO | null>(null)
+
+/**
+ * 空状态分管理员 / 普通成员两种说法：
+ * 前者该去发一条，后者只能等 —— 让普通成员看到"发布公告"按钮才是骗人。
+ */
+const emptyTitle = computed(() => (userStore.isAdmin ? '还没有发布过公告' : '现在没有公告'))
+const emptyReason = computed(() =>
+  userStore.isAdmin
+    ? '公告会出现在所有人的公告页和通知里，用来同步版本发布、维护窗口、制度变更这类「全团队都需要知道」的事。'
+    : '公告只在管理员发布后出现，用于同步版本发布、维护窗口、制度变更这类全员信息。有需要的话可以找团队管理员发一条。',
+)
 
 async function loadList() {
   loading.value = true

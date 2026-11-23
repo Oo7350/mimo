@@ -15,10 +15,11 @@ public class TeamDTO {
         private String description;
     }
 
+    /**
+     * 团队更新：路径里带 id，body 只需可改字段（KNOWN-009 补的更新端点）
+     */
     @Data
     public static class UpdateRequest {
-        @NotNull
-        private Long id;
         private String name;
         private String description;
     }
