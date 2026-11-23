@@ -423,6 +423,24 @@ async function handleAvatarChange(e: Event) {
   reader.readAsDataURL(file)
 }
 
+/** 转义 HTML：动态里的任务标题属于用户输入，直接拼进 v-html 会造成存储型 XSS */
+function escapeHtml(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+}
+
+function actionLabel(action: string): string {
+  const map: Record<string, string> = {
+    CREATE: "创建了", UPDATE: "更新了", MOVE: "移动了", DELETE: "删除了",
+    COMMENT: "评论了", ASSIGN: "指派了",
+  }
+  return map[action] || action
+}
+
 async function fetchProfile() {
   try {
     const res = await getUserProfile()
@@ -450,14 +468,14 @@ async function fetchProfile() {
         : 0,
       thisWeekActivity: d.thisWeekActivity || 0,
     })
-    // 真实动态
+    // 真实动态（activity detail 含任务标题，属于用户输入，必须转义后再拼 HTML）
     activities.value = (d.recentActivities || []).slice(0, 5).map((a: any) => {
       const colorMap: Record<string, string> = {
         CREATE: '#10b981', UPDATE: '#f59e0b', MOVE: '#6366f1',
         DELETE: '#ef4444', COMMENT: '#06b6d4', ASSIGN: '#8b5cf6',
       }
       return {
-        text: `${a.action === 'CREATE' ? '创建了' : a.action === 'UPDATE' ? '更新了' : a.action === 'MOVE' ? '移动了' : a.action === 'DELETE' ? '删除了' : a.action === 'COMMENT' ? '评论了' : a.action === 'ASSIGN' ? '指派了' : a.action} <strong>${a.detail || ''}</strong>`,
+        text: `${escapeHtml(actionLabel(a.action))} <strong>${escapeHtml(a.detail || '')}</strong>`,
         time: formatRelativeTime(a.createdAt),
         color: colorMap[a.action] || '#6366f1',
       }

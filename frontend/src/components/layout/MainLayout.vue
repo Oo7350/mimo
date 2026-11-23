@@ -144,7 +144,10 @@
       </el-aside>
 
       <el-main class="mimo-content">
-        <router-view />
+        <router-view v-slot="{ Component }">
+          <!-- 页面级 key：切换项目/页面时重挂载页面组件，但保留外层布局与连接 -->
+          <component :is="Component" :key="route.path" />
+        </router-view>
       </el-main>
     </el-container>
 

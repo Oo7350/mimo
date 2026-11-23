@@ -2,9 +2,11 @@
   <!-- Element Plus 改为按需引入后不再有 app.use(ElementPlus, { locale })，
        中文语言包通过 ElConfigProvider 提供给内部组件（分页/日期选择器等） -->
   <el-config-provider :locale="zhCn">
-    <router-view v-slot="{ Component, route }">
+    <router-view v-slot="{ Component }">
       <transition name="page-fade" mode="out-in" appear>
-        <component :is="Component" :key="route.path" />
+        <!-- 不要按 route.path 加 key：那会让 MainLayout 每次路由跳转都整块重挂载，
+             导致 WebSocket 重连、审批通知弹窗在每个页面重复弹一次 -->
+        <component :is="Component" />
       </transition>
     </router-view>
   </el-config-provider>
