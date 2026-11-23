@@ -1,6 +1,6 @@
 # AGENTS.md
 
-> **最新版本**：v2.18.5（2026-11-23）— 修掉"每启动一次后端就重复插一遍角色授权"（`user_roles` 堆到每人十几份：`INSERT IGNORE` 对 NULL 唯一键无效 + assign 幂等条件写成 `scope_id = NULL`），并关闭 KNOWN-022；同时修掉首屏「接下来做什么」在工作台数据未到时先报"没有卡在你这儿的事"的假状态。详见末尾"版本变更记录"。
+> **最新版本**：v2.19.0（2026-11-23）— 主线自证：用一个全新账号只走界面，把"建团队 → 建项目 → 建迭代 → 建任务 → 开始 → 提交验收 → 验收 → 完成 → 报告"整条链跑通（`e2e/main-chain.mjs`，11/11）。路上修掉两处"做了但两头对不上"：有资格验收的人在工作台看不到那条待验收（`WorkbenchService` 用"我的项目"二次过滤，与 `IssueReviewService` 的权限口径不一致），以及新建 Sprint 弹窗在没选日期时点"创建"完全没反应（静默 return）；并给单人团队补上"没人能验收"的说明与出口。详见末尾"版本变更记录"。
 
 This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
@@ -8,8 +8,8 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 Mimo is a lightweight Trello-like project management platform for small teams. It supports team collaboration, kanban task tracking, and progress visualization.
 
-- **Version**: v2.18.5 — 角色授权不再重复堆积 + 首屏别先下结论 (2026-11-23)
-- **Previous**: v2.18.4 — 主链路「下一步」+ 菜单/守卫权限口径统一 (2026-11-23)
+- **Version**: v2.19.0 — 主线自证：新账号走完整条链 (2026-11-23)
+- **Previous**: v2.18.5 — 角色授权不再重复堆积 + 首屏别先下结论 (2026-11-23)
 - **GitHub**: https://github.com/Oo7350/mimo
 - **API docs**: `接口文档.md` (70+ endpoints, Chinese)
 - **User manual**: `操作手册.md` (Chinese)
@@ -213,6 +213,34 @@ All v2.15 AI roadmap items are implemented. Future work may replace the lexical 
 - **Board Sync Flow**: Drag → `PUT /api/board/issue/move` → backend updates issue + logs + WebSocket broadcast → all board subscribers receive event → optimistic UI update
 
 ## Version History
+
+### v2.19.0 — 主线自证：新账号走完整条链 (2026-11-23)
+
+这一轮不加功能：拿一个刚注册的账号，只走界面，从"建团队"走到"看报告"，
+卡在哪一步就当成 bug 修。首轮 5/9 → 现在 **11/11**（`e2e/main-chain.mjs`）。
+
+- **BUG-099（High）有资格验收的人在「待我处理」里看不到待验收**：两处口径不一致 ——
+  `IssueReviewService.listPendingForUser` 的规则是"团队成员 + 非提交人 + （系统管理员 /
+  项目负责人 / 团队管理员 / 报告人）"，而 `WorkbenchService.mapPendingReviews` 又按
+  `projectService.listByUser`（我的项目）过滤了一遍；系统管理员、团队管理员通常不在
+  项目成员表里，于是"能批的人看不到"。`getMyWorkbench` 开头的
+  `if (projectIds.isEmpty()) return emptyWorkbench();` 还会让"不在任何项目里的人"整页空白。
+  - 修复：两个 map 去掉"我的项目"二次过滤（权限只由 `listPendingForUser` 决定）；
+    `projectName()` 现查未缓存的项目，`loadProjects` 改为可变 `HashMap`；
+    "没有项目"不再整页返回空，只跳过需要项目列表的查询。
+  - 防线：`WorkbenchServiceTest.shouldShowPendingReviewsFromProjectsImNotIn`；
+    `main-chain.mjs` 第 8 步走工作台入口验收。
+- **BUG-100（Medium）新建 Sprint 点"创建"没反应**：`SprintView.handleCreate()` 在
+  `dateRange.length !== 2` 时静默 `return`（日期是必填但没配 rules，`validate()` 也不报），
+  用户只看到"按钮坏了"。改为 `ElMessage.warning('请选择 Sprint 的起止时间')`。
+- **单人团队验收死锁**：验收规则要求"非提交人"，单人团队里提交人就是 owner + 报告人，
+  唯一能验收的是自己 —— 任务永远停在待验收且毫无提示。详情页新增
+  `.next-step-blocked` 警示（`checkReviewable()` 读团队成员）+"去邀请成员"入口。
+- **e2e 可靠性**：引导遮罩的真 key 是 `localStorage.mimo_tour_state`（按主题存
+  `{status, v}`），用例里之前写的 `sessionStorage` 假 key 完全无效，导致 sprint 页引导
+  自动启动、遮罩吃掉点击；报告页断言前也不再读未挂载的 `body.innerText`。
+- 验证：后端 `mvn test` **138 通过**；`vue-tsc` 通过；e2e `main-chain` 11/11、
+  `next-step` 6/6、`chain-links` 5/5。
 
 ### v2.18.5 — 角色授权不再重复堆积 + 首屏别先下结论 (2026-11-23)
 
