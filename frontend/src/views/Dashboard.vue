@@ -78,8 +78,16 @@
         <span class="dash-next__hint">{{ nextUpHint }}</span>
       </div>
 
+      <!--
+        工作台数据还在路上时必须显示"正在整理"，不能直接说"没有卡在你这儿的事"——
+        那是在数据还没到的时候下结论，界面会先撒一次谎再改口。
+      -->
+      <div v-if="workbenchLoading" class="dash-next__loading">
+        <SkeletonLoader variant="list-item" :count="2" />
+      </div>
+
       <!-- 空库：三步上手 -->
-      <ol v-if="!hasProjects" class="dash-next__steps">
+      <ol v-else-if="!hasProjects" class="dash-next__steps">
         <li>
           <span class="dash-next__no">1</span>
           <div class="dash-next__step-text">
@@ -593,6 +601,7 @@ const nextUps = computed(() => {
 })
 
 const nextUpHint = computed(() => {
+  if (workbenchLoading.value) return '正在整理你今天该做的事…'
   if (!hasProjects.value) return '第一次用：三步就能跑起来'
   return nextUps.value.length ? '按"卡住别人 → 卡住自己 → 快到期"排的序' : '当前没有卡在你这儿的事'
 })
@@ -868,6 +877,10 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.dash-next__loading {
+  padding: 4px 0;
 }
 
 .dash-next__item {

@@ -1,6 +1,6 @@
 # AGENTS.md
 
-> **最新版本**：v2.18.4（2026-11-23）— 主链路给出「下一步」：工作项详情四段链路 + 唯一主动作、工作台首屏「接下来做什么」、每页一句话定位；并修掉「设置」菜单可见却点不进去的权限口径问题。详见末尾"版本变更记录"。
+> **最新版本**：v2.18.5（2026-11-23）— 修掉"每启动一次后端就重复插一遍角色授权"（`user_roles` 堆到每人十几份：`INSERT IGNORE` 对 NULL 唯一键无效 + assign 幂等条件写成 `scope_id = NULL`），并关闭 KNOWN-022；同时修掉首屏「接下来做什么」在工作台数据未到时先报"没有卡在你这儿的事"的假状态。详见末尾"版本变更记录"。
 
 This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
@@ -8,8 +8,8 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 Mimo is a lightweight Trello-like project management platform for small teams. It supports team collaboration, kanban task tracking, and progress visualization.
 
-- **Version**: v2.18.4 — 主链路「下一步」+ 菜单/守卫权限口径统一 (2026-11-23)
-- **Previous**: v2.18.3 — 功能链路闭合：断链接上、假入口修真、切面 NPE 修复 (2026-11-23)
+- **Version**: v2.18.5 — 角色授权不再重复堆积 + 首屏别先下结论 (2026-11-23)
+- **Previous**: v2.18.4 — 主链路「下一步」+ 菜单/守卫权限口径统一 (2026-11-23)
 - **GitHub**: https://github.com/Oo7350/mimo
 - **API docs**: `接口文档.md` (70+ endpoints, Chinese)
 - **User manual**: `操作手册.md` (Chinese)
@@ -213,6 +213,31 @@ All v2.15 AI roadmap items are implemented. Future work may replace the lexical 
 - **Board Sync Flow**: Drag → `PUT /api/board/issue/move` → backend updates issue + logs + WebSocket broadcast → all board subscribers receive event → optimistic UI update
 
 ## Version History
+
+### v2.18.5 — 角色授权不再重复堆积 + 首屏别先下结论 (2026-11-23)
+
+收尾时顺手数了一下 `user_roles`：89 行，而库里只有 13 个用户，每人本该一行。
+
+- **BUG-098（High）每次启动重复插一遍角色授权**：
+  1. `V11__rbac.sql` / `V12__fix_user_role_migration.sql` 用
+     `INSERT IGNORE INTO user_roles … scope_id = NULL` 做幂等。唯一键
+     `uk_user_role_scope` 虽然存在，但 MySQL 认为 NULL 互不相等，GLOBAL 行完全不受约束；
+     而 `MigrationRunner` **每次启动都会重跑所有 `V*.sql`**，于是每启动一次 +1 行。
+  2. `RoleService.assignRole` 的幂等检查 `.eq(req.getScopeId() == null, UserRole::getScopeId, null)`
+     生成 `scope_id = NULL`（恒假），走接口分配同样每次插一条。
+  - 修复：迁移脚本改 `INSERT … SELECT … WHERE NOT EXISTS (… scope_id IS NULL)`，`V12` 前置一段
+    可重复执行的重复行清理；`assignRole` 改 `isNull` / `selectCount`。
+  - **未新建迁移号**：`scope_id BIGINT NOT NULL DEFAULT 0` 的 schema 根治要占新编号，与今晚要推的
+    工作流/面板那批迁移有撞号风险，改以代码层幂等覆盖两条写入路径，schema 变更后续统一排。
+  - 防线：`RoleServiceTest` 新增两条断言生成 SQL 的用例（旧用例只 mock 返回值，看不到 SQL，
+    所以这个 bug 一直没被拦住）；新增 `RoleMigrationScriptTest` 禁止迁移脚本再用 `INSERT IGNORE`
+    写 `user_roles`。顺带关闭 KNOWN-022。
+- **首屏「接下来做什么」的假结论（Medium）**：区块挂在首屏 dashboard 的加载状态上，但它依赖
+  工作台的另一路请求；数据未到时 `nextUps` 为空就直接渲染"当前没有卡在你这儿的事"。
+  改为加载中显示骨架屏 + "正在整理你今天该做的事…"，用例侧改为等待结论态。
+- **验证**：`mvn test` **137 通过**（新增 4 条）；真实栈两次启动 `user_roles` 13 → 13 行，
+  `POST /api/role/assign` 连续 3 次后分配记录仍为 1；`e2e/next-step.mjs` 6/6 连跑两次、
+  `e2e/chain-links.mjs` 5/5、`vue-tsc` 通过。
 
 ### v2.18.4 — 主链路「下一步」+ 菜单/守卫权限口径统一 (2026-11-23)
 
