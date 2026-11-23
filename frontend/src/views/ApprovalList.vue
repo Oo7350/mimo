@@ -18,9 +18,16 @@
         <el-table
           :data="pendingList"
           v-loading="loading"
-          empty-text="暂无待审批请求"
           :row-class-name="highlightRowClass"
         >
+          <!-- 表格空态也要说清"这条流程长什么样"，不能只写"暂无" -->
+          <template #empty>
+            <EmptyGuide
+              :icon="Stamp"
+              title="现在没有需要你审批的请求"
+              reason="别人删项目、删任务这类敏感操作会先落到这里，由你通过或拒绝；处理完会通知申请人。你所在的团队/项目里有人提请求时，这里会自动出现。"
+            />
+          </template>
           <el-table-column prop="title" label="请求" min-width="180" />
           <el-table-column prop="requesterUsername" label="申请人" width="100" />
           <el-table-column label="类型" width="100">
@@ -41,7 +48,14 @@
       </el-tab-pane>
 
       <el-tab-pane label="我的申请" name="mine">
-        <el-table :data="myList" v-loading="loading" empty-text="暂无申请">
+        <el-table :data="myList" v-loading="loading">
+          <template #empty>
+            <EmptyGuide
+              :icon="DocumentChecked"
+              title="你还没提过审批请求"
+              reason="删项目、删任务这类动到别人东西的操作，不会直接生效，而是先在这里生成一条请求，等管理员通过。列表里能看到自己提交过的每一条和它们的处理结果。"
+            />
+          </template>
           <el-table-column prop="title" label="请求" min-width="180" />
           <el-table-column label="类型" width="100">
             <template #default="{ row }">
@@ -71,6 +85,8 @@ import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { getPendingApprovals, getAllPendingApprovals, getMyApprovals, approveRequest, rejectRequest } from '@/api/approval'
 import PageHeader from '@/components/common/PageHeader.vue'
+import EmptyGuide from '@/components/common/EmptyGuide.vue'
+import { Stamp, DocumentChecked } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { formatRelativeTime } from '@/utils/constants'
 

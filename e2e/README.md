@@ -112,6 +112,19 @@ node e2e/main-chain.mjs http://localhost:5173   # 11 条，要前端 :5173 + 后
 用例自己注册 `chain<时间戳>` 账号、自己清理（先用新账号自己的权限删项目/团队，删不掉会打警告）。
 引导遮罩靠预先写入 `localStorage.mimo_tour_state` 关掉（见下面第 4 个坑）。
 
+## 清库（`cleanup-residue.sql`）
+
+用例会自己造数据。issue 级的都删得干净，但**注册出来的账号、它们建的团队/项目删不掉**——
+删项目在本系统里要走审批流程，脚本没有"删掉我刚建的东西"的通道。跑多了开发库会累积
+`probe-*` / `chain*` 账号和「链路团队/项目」（KNOWN-023）。
+
+```bash
+mysql -umimo -pmimo123 mimo < e2e/cleanup-residue.sql
+```
+
+只删带这些前缀/名字的用例数据，不碰 `admin`/`zhangsan`/`lisi` 和真实项目；可重复执行。
+**生产库不要执行。**
+
 ## 工作流用例（`workflow-guard.mjs`）
 
 证明"工作流不是装饰"，同时盯住"看不懂"的那两处（v2.19.1）：

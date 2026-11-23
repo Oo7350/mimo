@@ -1,6 +1,6 @@
 # AGENTS.md
 
-> **最新版本**：v2.19.1（2026-11-23）— 「工作流不知所云」的用户反馈落地：设计器以前只显示工作流名字 + 编辑/删除，允许什么、禁止什么都没说，得先点「编辑」进拖拽画布才看得见；看板上被挡住时也只说"不允许"，不说还能往哪拖（`/api/workflow/transitions` 前端从未调用）。现在不点编辑就能看到「从 → 到 → 谁可以这么做」的规则表，被拦时直接告诉你去向。详见末尾"版本变更记录"。
+> **最新版本**：v2.19.2（2026-11-23）— 空状态别只说"暂无"、空库要有数据可看。新增 `EmptyGuide` 组件（空状态必须说清"这里会出现什么 / 为什么是空的 / 下一步点哪里"），替换了公告、邮箱绑定、Webhook、审批两个页签的空态；后端新增 `POST /api/admin/demo-data`（只给系统管理员、幂等、不碰已有数据），一次生成 项目 + 3 迭代 + 15 工作项 + 评论/工时/验收/报告/动态/通知，前端入口在工作台空库末尾和项目列表页头。顺带清掉了 dev 库里早期 e2e 残留（8 条 `E2E任务*` 与一组「链路团队/项目」）。详见末尾"版本变更记录"。
 
 This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
@@ -8,8 +8,8 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 Mimo is a lightweight Trello-like project management platform for small teams. It supports team collaboration, kanban task tracking, and progress visualization.
 
-- **Version**: v2.19.1 — 工作流：配好了要看得懂，挡住了要指条路 (2026-11-23)
-- **Previous**: v2.19.0 — 主线自证：新账号走完整条链 (2026-11-23)
+- **Version**: v2.19.2 — 空状态引导 + 演示数据入口 (2026-11-23)
+- **Previous**: v2.19.1 — 工作流：配好了要看得懂，挡住了要指条路 (2026-11-23)
 - **GitHub**: https://github.com/Oo7350/mimo
 - **API docs**: `接口文档.md` (70+ endpoints, Chinese)
 - **User manual**: `操作手册.md` (Chinese)
@@ -213,6 +213,26 @@ All v2.15 AI roadmap items are implemented. Future work may replace the lexical 
 - **Board Sync Flow**: Drag → `PUT /api/board/issue/move` → backend updates issue + logs + WebSocket broadcast → all board subscribers receive event → optimistic UI update
 
 ## Version History
+
+### v2.19.2 — 空状态引导 + 演示数据入口 (2026-11-23)
+
+清掉两条一直挂着的 Medium：KNOWN-019（空状态缺下一步）与 KNOWN-020（没有演示数据入口）。
+病根是同一个：页面在"什么都还没有"的时候不给用户任何出路。
+
+- **空状态（KNOWN-019）**：新增 `components/common/EmptyGuide.vue`，把空状态定成三段——
+  这里会出现什么、为什么现在是空的／它有什么用、下一步点哪里。替换了公告（管理员才看到"发布"
+  按钮）、邮箱绑定、Webhook、审批管理两个页签（改用 `el-table` 的 `#empty` 插槽）、工作台空库。
+- **演示数据（KNOWN-020）**：`POST /api/admin/demo-data` + `DemoDataService`，一个事务生成
+  团队 → 项目 → 4 看板列 → 3 迭代 → 15 工作项（四状态三类型，含逾期）→ 5 评论 → 6 工时
+  → 3 验收（其中 2 条 PENDING 且提交人不是管理员，这样"待我处理"才有东西）→ 2 报告
+  → 5 条审计 → 2 条通知。**幂等**（以项目名做标记）、**只给系统管理员**、**不碰已有数据**。
+  前端 `composables/useDemoData.ts` 共用逻辑，入口在工作台空库末尾与项目列表页头。
+- **自测撞到的坑**：第一版把项目 Key 写死 `DEMO`，`projects.key` 是**全局**唯一索引，
+  dev 库的 demo 项目正占着它 → 一点就 500 `Duplicate entry 'DEMO'`。改为 `allocateProjectKey()`
+  先读再取，并补单测钉住。
+- **顺手清理**：dev 库里早期 e2e 跑挂留下的 8 条 `E2E任务*` 和一组「链路团队 / 链路项目」已按依赖顺序删除；
+  同时提供一个可重复执行的 `e2e/cleanup-residue.sql`，并把"e2e 不清账号/团队/项目"登记为 KNOWN-023（Low）。
+- **测试**：后端 138 → **142 项**（`DemoDataServiceTest` 4 项）。
 
 ### v2.19.1 — 工作流：配好了要看得懂，挡住了要指条路 (2026-11-23)
 

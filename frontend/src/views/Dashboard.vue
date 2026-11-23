@@ -112,6 +112,21 @@
           </div>
           <span class="dash-next__muted">建迭代后可用</span>
         </li>
+        <!--
+          空库的第四条：别让新用户对着三步发呆。
+          管理员可以一键铺一套示例数据（项目 / 迭代 / 15 个工作项 / 评论 / 工时 / 报告），
+          这样工作台、迭代健康度、交付分析、审计日志都不是"一堆 0"（KNOWN-020）。
+        -->
+        <li v-if="permissionStore.isSuperAdmin" class="dash-next__demo">
+          <span class="dash-next__no dash-next__no--alt">或</span>
+          <div class="dash-next__step-text">
+            <b>一键生成示例数据，先看看满起来是什么样</b>
+            <span>会建一个示例项目（含 3 个迭代 / 15 个工作项 / 评论 / 工时 / 验收 / 报告），不影响你已有的数据</span>
+          </div>
+          <el-button size="small" :loading="generatingDemo" @click="handleGenerateDemo">
+            生成示例数据
+          </el-button>
+        </li>
       </ol>
 
       <!-- 有数据：三件最该做的事 -->
@@ -425,6 +440,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/store/user'
+import { usePermissionStore } from '@/store/permission'
+import { useDemoData } from '@/composables/useDemoData'
 import request from '@/api/request'
 import { getMyWorkbench } from '@/api/workbench'
 import { PRIORITY_LABEL } from '@/utils/constants'
@@ -452,11 +469,19 @@ type TaskTab = 'all' | 'today' | 'overdue'
 
 const router = useRouter()
 const userStore = useUserStore()
+const permissionStore = usePermissionStore()
 const dashboard = ref<DashboardData | null>(null)
 const workbench = ref<WorkbenchData | null>(null)
 const loading = ref(true)
 const workbenchLoading = ref(true)
 const taskTab = ref<TaskTab>('all')
+
+const { generating: generatingDemo, generate: generateDemo } = useDemoData()
+/** 生成完就地刷新，让页面立刻满起来 */
+const handleGenerateDemo = () =>
+  generateDemo(async () => {
+    await Promise.all([fetchDashboard(), fetchWorkbench()])
+  })
 
 const TYPE_ICONS: Record<IssueType, string> = { STORY: 'S', TASK: 'T', BUG: 'B' }
 const EMPTY_WEEKLY: WorkbenchWeeklySummary = {
@@ -848,6 +873,18 @@ onMounted(() => {
   font-size: 12px;
   color: var(--text-secondary);
   border: 1px solid var(--border-color);
+}
+
+.dash-next__no--alt {
+  border-style: dashed;
+  font-size: 11px;
+}
+
+/* 「生成示例数据」这一条：视觉上和前三步区分开，是"另走一条路" */
+.dash-next__demo {
+  margin-top: 2px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border-color);
 }
 
 .dash-next__step-text {
