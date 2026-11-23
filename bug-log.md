@@ -4,6 +4,90 @@
 
 ---
 
+## v2.18.3 — 功能链路闭合：把"散着的功能"接成一条路 (2026-11-23)
+
+> 起因是你那句"很多功能遍布很散，没有形成一股完整的链条……很多东西浮于形式"。
+> 逐个查下去，功能其实都在，坏的是**页与页之间的那一步**：入口指向重复、链接落不到地方、
+> 通知点了没反应、菜单还在用旧字段判断。这一轮**不加任何新功能**，只把已有的线接上。
+
+### BUG-093: `@RequirePermission` 切面 NPE，「角色权限」页所有写操作 500 [High]
+
+- **现象**: `POST /api/role/assign` 直接 `500 服务器内部错误`。后端日志：
+  `NullPointerException: Cannot invoke "com.mimo.common.RequirePermission.scopeType()" because "rp" is null`。
+- **根因**: `PermissionAspect` 写的是 `@Around("@annotation(rp) || @within(rp)")`。
+  两个切点用 `||` 合并时，参数绑定**只在命中的那一支有效**，另一支传 `null`；
+  `RoleController` 用的是方法级注解 → 命中 `@annotation`，`@within` 那支给的就是 `null`。
+- **影响**: 角色新增 / 删除 / 分配 / 撤销 **四个写接口全部 500** ——
+  也就是说 v2.18.2 刚统一的 RBAC 权限口径，在管理页面上根本没有被真正用过。
+- **修复**: 切点改成全限定名（不再绑定参数），advice 内用 `resolveAnnotation()` 依次从
+  方法 → 实现方法 → 声明类取注解；取不到就放行而不是 NPE。
+- **验证**: 新增 `PermissionAspectTest` 5 项（方法级拒绝 / 方法级放行 / 类级生效 / 未登录 401 /
+  无注解放行）；真实栈 `POST /api/role/assign` → `code=200`，`DELETE /api/role/assign` → `code=200`
+  （修复前同一个请求是 500）。
+
+### BUG-094: 所有通知邮件里的「查看详情」都是死链 [High]
+
+- **现象**: `EmailNotificationService#buildActionUrl` 给 comment / assignment / mention / issue_status
+  一律返回 `/issues/{id}`；而 `frontend/src/router/index.ts` **没有这条路由**，也没有 `addRoute`
+  动态注册 → 点开被 catch-all 兜走，落到登录页或工作台。等于每封通知邮件的按钮都作废。
+- **修复**: 新增落地页 `frontend/src/views/IssueRedirect.vue` + 路由 `issues/:id`：
+  用 issueId 反查 projectId，再 `replace` 到 `/projects/{pid}/board?issue={id}`（用 replace 是为了
+  按"返回"不回到中转页）；403 / 404 分别给出"无权限 / 已删除"的提示与两个出口，不留白屏。
+  后端不用改 —— 它拼的 `/issues/{id}` 现在真的存在了。
+- **验证**: `e2e/chain-links.mjs` 用例 2，真实浏览器访问 `/issues/13` →
+  落到 `/projects/1/board?issue=13` 且详情弹窗打开。**基线（改动收起后）同一用例 20s 超时失败。**
+
+### BUG-095: 工作台 4 个快捷入口指向同一个页面 [Medium]（KNOWN-014 收口）
+
+- **现象**: `Dashboard.vue` 的 `quickActions` 里「项目管理 / 看板视图 / Sprint / 项目报告」
+  四项 `route` 全是 `/projects` —— 点"看板视图"永远看不到看板，用户以为功能没做。
+- **修复**: 改为 `computed`，看板 / 迭代 / 报告带上「我的项目」第一个（接口按最近活跃返回）的
+  projectId；没有项目时退回项目列表，并用按钮 title 说明"先创建或加入一个项目"。
+- **验证**: `e2e/chain-links.mjs` 用例 1，落到 `/projects/1/board`，title=`打开「Mimo 演示项目」的看板`
+  （基线 15s 超时失败）。
+
+### BUG-096: 审批类通知点了回工作台 [Medium]
+
+- **现象**: `handleNotifClick` 只认 `relatedType === 'ISSUE'`，其余一律 `router.push('/')`。
+  审批结果通知（`relatedType = APPROVAL_REQUEST`）就这样被吞掉 —— 收到"审批已通过"，
+  点进去却回到工作台，还得自己去设置里翻。
+- **修复**: ISSUE → `/issues/{id}`（和邮件同一个入口，一处修两处通）；
+  APPROVAL_REQUEST → `/admin/approvals?id={id}`；`ApprovalList.vue` 支持 `?id=`，
+  高亮那一行并在顶部提示"来自通知"。
+- **验证**: `e2e/chain-links.mjs` 用例 5（lisi 提 PROJECT_UPDATE → admin 通过 → lisi 点通知 →
+  `/admin/approvals?id=3`）；基线代码读 `git show HEAD:` 可见只有 ISSUE 分支、其余 `push('/')`。
+
+### 技术债（不计入条目）：前端「设置」菜单改按 RBAC 能力判断
+
+- **现象**: `MainLayout.vue` 用 `userStore.userInfo?.role === 'ROLE_ADMIN'` 决定要不要显示整个
+  「设置」分组。后端 v2.18.2 已把"是不是管理员"收敛到 `AccessControlService`（RBAC 优先），
+  前端还在看旧字段 → 只在 RBAC 里有角色的管理员**后端放行、前端藏起来**。
+- **修复**: 用 `usePermissionStore` 逐项判权限码（`level.manage` / `role.manage` /
+  `approval.manage` / `audit.log.view` / `settings.manage`），分组成员为空则整组不显示；
+  旧字段只保留"权限码还没拉回来"时的兜底，避免刷新瞬间菜单闪一下。
+- **验证**: `e2e/chain-links.mjs` 用例 3 —— lisi（`users.role=ROLE_MEMBER`）临时授予 RBAC
+  `SUPER_ADMIN`：授权前看不到管理项 → 授权后看得到 → 用例结束时自动撤销。
+  基线代码读的是旧字段，这条恒为 false，所以该用例在基线上必红。
+
+### 等级 ≠ 权限：把话说在页面上
+
+- **问题**: `UserLevel` 后端只有 `UserLevelService` 自己的 CRUD，**没有任何业务逻辑读它** ——
+  改 L1-L4 不改变任何人的可用功能。而页面副标题写的是"配置 L1-L4 铭牌权限体系"，与事实不符。
+- **处理**: 副标题改为"权益铭牌：只影响展示（头像徽章、等级名），不参与任何权限判断"，
+  顶部加一条 `el-alert` 说明"等级 ≠ 权限"并给出跳转「角色权限」的入口。
+  **没有删功能**，只是不再让它假装有作用。
+
+### 验证
+
+- `mvn test`：**133 通过**（v2.18.2 是 128，新增 `PermissionAspectTest` 5 项）。
+- 前端 `npm run build`（含 `vue-tsc` 类型检查）通过。
+- 真实浏览器 `e2e/chain-links.mjs`（新增）：**5/5 通过**；同文件在基线代码上 **2/4 通过**
+  （用例 1、2 必红；用例 4/5 是新增后才有诊断力）。
+- 真实栈冒烟：`POST /api/role/assign` 200 / `DELETE` 200；`/issues/13` 落地；
+  用例产生的审批、通知、临时角色授权已从开发库清理（approvals=0、stray_grants=0）。
+
+---
+
 ## v2.18.2 — 技术债清理：权限口径 / AI 可复现 / 通知触发点 (2026-11-23)
 
 > 计划书 §七 的三条遗留项。都不是"新 bug"，是"老做法会持续产生 bug"的结构性欠账，
@@ -1320,13 +1404,16 @@
 - **复核（2026-11-23）**: 仍在（`TeamDetail.vue:591`），但**文案已改成"N 位成员"**（第 166 行），
   不再对外宣称是"在线人数"，误导消除；真实在线统计仍未实现，故保持未关闭。
 
-### KNOWN-014: 工作台快捷操作 5 个按钮 4 个指向同一路由 [Low]
+### KNOWN-014: 工作台快捷操作 5 个按钮 4 个指向同一路由 [Low] — 2026-11-23 已修复（v2.18.3 / BUG-095）
 
 - **文件**: `frontend/src/views/Dashboard.vue`
 - **现象**: "新建任务"/"看板视图"/"Sprint"/"报告" 都跳到 `/projects`
 - **复核（2026-11-23）**: 仍在 —— `Dashboard.vue:404-410` 的 `quickActions` 里
   「项目管理 / 看板视图 / Sprint / 项目报告」四项 `route` 全是 `'/projects'`（只有团队管理是 `/teams`）。
 - **建议修复**: 分别路由到看板创建弹窗、Sprint 管理、报告页
+- **已修复（2026-11-23 / v2.18.3）**: `quickActions` 改为 `computed`，看板 / 迭代 / 报告三项带上
+  「我的项目」第一个（接口按最近活跃返回）的 projectId；没有项目时退回 `/projects` 并用 title 说明
+  "先创建或加入一个项目"。真实浏览器用例见 `e2e/chain-links.mjs` 用例 1。
 
 ### KNOWN-015: 审批"拒绝原因"输入框取消时行为不一致 [Low] — 2026-11-23 复核：已修复
 
@@ -1418,15 +1505,16 @@
 | 严重程度 | 数量 |
 |---------|------|
 | Critical | 6 |
-| High | 37 |
-| Medium | 31 |
+| High | 39 |
+| Medium | 33 |
 | Low | 18 |
-| **已修复（BUG 条目）** | **92** |
-| **已知未修复（KNOWN 条目）** | **9** |
-| **总计** | **101** |
+| **已修复（BUG 条目）** | **96** |
+| **已知未修复（KNOWN 条目）** | **8** |
+| **总计** | **104** |
 
 | 版本段 | BUG 条数 |
 |--------|---------|
+| v2.18.3 — 功能链路闭合（断链/假入口/切面 NPE）(2026-11-23) | 4 |
 | v2.18.1 — Markdown/邮件 XSS 修复（取证驱动）(2026-11-23) | 1 |
 | 历史补录 — 2026-11-20 审计 | 8 |
 | v2.17.0 — 新手引导重做 (2026-11-20) | 6 |
@@ -1459,3 +1547,9 @@
 >
 > **2026-11-23 补记**：v2.18.2 冒烟时新发现 KNOWN-022（`user_roles` 唯一约束对 GLOBAL 失效），
 > KNOWN 未关闭 8 → 9、总计 100 → 101；本轮的技术债修复不产生 BUG 条目，故 BUG 数仍为 92。
+>
+> **2026-11-23 补记（v2.18.3）**：功能链路闭合这一轮新增 4 条 BUG（093 切面 NPE / 094 邮件死链 /
+> 095 假入口 / 096 审批通知落地），并关闭 KNOWN-014（4 个入口同路由）。于是
+> BUG 已修复 92 → 96（High 37→39、Medium 31→33，四档合计 6+39+33+18 = 96）、
+> KNOWN 未关闭 9 → 8、总计 101 → 104。教程"等级≠权限"的说明与前端菜单权限口径修正属于
+> 表述/口径修正，不单列条目。

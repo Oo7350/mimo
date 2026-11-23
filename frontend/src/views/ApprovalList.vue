@@ -2,9 +2,25 @@
   <div class="approval-page">
     <PageHeader title="审批管理" subtitle="处理团队成员的审批请求" />
 
+    <!-- 从通知点进来时高亮那条请求：否则用户落到一个列表页，还得自己找刚收到的是哪一条 -->
+    <el-alert
+      v-if="highlightId"
+      class="approval-page__from-notif"
+      type="info"
+      show-icon
+      closable
+      :title="`来自通知：正在高亮审批 #${highlightId}`"
+      @close="highlightId = null"
+    />
+
     <el-tabs v-model="activeTab" @tab-change="fetchData">
       <el-tab-pane label="待审批" name="pending">
-        <el-table :data="pendingList" v-loading="loading" empty-text="暂无待审批请求">
+        <el-table
+          :data="pendingList"
+          v-loading="loading"
+          empty-text="暂无待审批请求"
+          :row-class-name="highlightRowClass"
+        >
           <el-table-column prop="title" label="请求" min-width="180" />
           <el-table-column prop="requesterUsername" label="申请人" width="100" />
           <el-table-column label="类型" width="100">
@@ -52,15 +68,27 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { getPendingApprovals, getAllPendingApprovals, getMyApprovals, approveRequest, rejectRequest } from '@/api/approval'
 import PageHeader from '@/components/common/PageHeader.vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { formatRelativeTime } from '@/utils/constants'
 
+const route = useRoute()
+
 const activeTab = ref('pending')
 const loading = ref(false)
 const pendingList = ref<any[]>([])
 const myList = ref<any[]>([])
+
+/** 通知里带过来的审批 id，用来高亮那一行（通知点击 → /admin/approvals?id=…） */
+const highlightId = ref<number | null>(
+  route.query.id ? Number(route.query.id) || null : null
+)
+
+function highlightRowClass({ row }: { row: any }) {
+  return highlightId.value && Number(row.id) === highlightId.value ? 'approval-row--highlight' : ''
+}
 
 function typeLabel(t: string) {
   const m: Record<string, string> = {
@@ -98,3 +126,18 @@ async function handleReject(row: any) {
 
 onMounted(fetchData)
 </script>
+
+<style scoped>
+.approval-page__from-notif {
+  margin-bottom: 12px;
+}
+
+/* 通知带来的那条请求：用左侧色条 + 淡背景标出来，不刺眼但能一眼找到 */
+:deep(.approval-row--highlight) > td {
+  background: var(--mimo-highlight-bg, rgba(99, 102, 241, 0.08)) !important;
+}
+
+:deep(.approval-row--highlight) > td:first-child {
+  box-shadow: inset 3px 0 0 var(--mimo-primary, #6366f1);
+}
+</style>

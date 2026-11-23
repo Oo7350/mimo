@@ -73,6 +73,7 @@
         v-for="qa in quickActions"
         :key="qa.label"
         class="dash-sc"
+        :title="qa.hint || undefined"
         @click="$router.push(qa.route)"
       >
         <el-icon><component :is="qa.icon" /></el-icon>
@@ -401,13 +402,42 @@ const EMPTY_WEEKLY: WorkbenchWeeklySummary = {
   activeSprints: [],
 }
 
-const quickActions = [
-  { label: '项目管理', icon: Plus, route: '/projects' },
-  { label: '看板视图', icon: Grid, route: '/projects' },
-  { label: 'Sprint', icon: DataAnalysis, route: '/projects' },
-  { label: '项目报告', icon: Document, route: '/projects' },
-  { label: '团队管理', icon: UserFilled, route: '/teams' },
-]
+/**
+ * 快捷入口必须真的到得了地方。
+ *
+ * 以前 5 个入口里 4 个 `route: '/projects'`：点「看板视图」「Sprint」「项目报告」都只是回到项目列表，
+ * 用户以为功能没做（KNOWN-014）。看板/迭代/报表本来就挂在具体项目下，所以这里取
+ * 「我的项目」第一个（接口按最近活跃返回）作为默认落地项目；没有项目时退回项目列表并给出提示文案。
+ */
+const quickProjectId = computed(() => dashboard.value?.myProjects?.[0]?.id ?? null)
+const quickProjectName = computed(() => dashboard.value?.myProjects?.[0]?.name ?? '')
+
+const quickActions = computed(() => {
+  const pid = quickProjectId.value
+  const noProjectHint = '先创建或加入一个项目'
+  return [
+    { label: '项目管理', icon: Plus, route: '/projects', hint: '' },
+    {
+      label: '看板视图',
+      icon: Grid,
+      route: pid ? `/projects/${pid}/board` : '/projects',
+      hint: pid ? `打开「${quickProjectName.value}」的看板` : noProjectHint,
+    },
+    {
+      label: 'Sprint',
+      icon: DataAnalysis,
+      route: pid ? `/projects/${pid}/sprints` : '/projects',
+      hint: pid ? `打开「${quickProjectName.value}」的迭代列表` : noProjectHint,
+    },
+    {
+      label: '项目报告',
+      icon: Document,
+      route: pid ? `/projects/${pid}/reports` : '/projects',
+      hint: pid ? `打开「${quickProjectName.value}」的报告列表` : noProjectHint,
+    },
+    { label: '团队管理', icon: UserFilled, route: '/teams', hint: '' },
+  ]
+})
 
 const tasks = computed(() => workbench.value?.tasks || [])
 const overdueCount = computed(() => workbench.value?.overdue?.length || 0)
