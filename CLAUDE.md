@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-> **最新版本**：v2.17.0（2026-11-20）— 新手引导重做：分主题、锚点自解析、干净退出。详见末尾"版本变更记录"。
+> **最新版本**：v2.17.1（2026-11-21）— 工作流按看板列自动生成 + 认领/审批自动推进。详见末尾"版本变更记录"。
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -229,6 +229,32 @@ All v2.15 AI roadmap items are implemented; see `项目功能完善计划.md` §
 - **Board Sync Flow**: Drag → `PUT /api/board/issue/move` → backend updates issue + logs + WebSocket broadcast → all board subscribers receive event → optimistic UI update
 
 ## Version History
+
+### v2.17.1 — 工作流自动生成 + 认领/审批自动推进 (2026-11-21)
+
+用户反馈"工作流不能自动生成吗？自己生成什么工作流啊"——原来的设计器要求手工拖节点、手工配转换规则。
+
+**工作流自动生成（不再手画）**
+- `WorkflowService.ensureDefaultWorkflows(projectId, userId)`：按项目看板列生成 STORY/TASK/BUG 三套默认工作流
+  （Scrum 模板，前进+回退都允许，所以不改变原有拖拽行为；`is_default=1`，名称"默认工作流（自动生成）"），幂等。
+- 触发点：`ProjectService.create` 建完默认列后立即生成；`GET /api/workflow/project/{id}` 对存量项目懒补齐
+  （打开设计器即生成，现有 5 个项目已验证全部补齐）。
+- 设计器：自动生成的显示「自动生成」标签 + 顶部说明；空态改为"该项目还没有看板列"；
+  管理员仍可改节点/转换/执行条件，或切换 Scrum/Kanban/Bug 模板收紧。
+- 无列归属的历史任务在认领时先落到第一列，工作流才有起点。
+
+**认领 → 审批 → 自动推进**
+- 新增 `POST /api/issues/{id}/claim`（`IssueClaimService`）：
+  - 管理员 / 项目负责人 / 团队管理员：直接指派本人 + 自动移到「进行中」+ 计时开始
+    （复用 `BoardService.moveIssue`，工作流校验、活动日志、WebSocket 广播一次到位）。
+  - 普通成员：生成 `ISSUE_CLAIM` 审批请求（`dataJson={issueId,userId,toColumnId}`）并通知项目负责人/团队管理员；
+    审批通过后 `ApprovalService.executeApprovedAction` 回调 `IssueClaimService.applyClaim` 自动指派并推进。
+  - 已被他人认领 → `409` 并提示认领人；重复申请复用已有待处理请求。
+- 前端：任务详情底部「认领任务」按钮（仅未指派时显示）；审批列表类型显示「认领任务」。
+- 测试：后端 86 → 90 项全绿（工作流自动生成 3 项 + `IssueClaimService` 4 项）；前端 `vue-tsc` 通过。
+
+**已知差距（未做）**：看板仍是固定 3 列，工作流节点无法独立于列存在，所以还没有
+「开发→测试→验收→上线」这种多人多步交接；下一步需要可自定义列/节点 + 每节点责任人（角色或成员）+ 交接审批。
 
 ### v2.17.0 — 新手引导重做：分主题 + 锚点自解析 + 干净退出 (2026-11-20)
 
