@@ -22,4 +22,13 @@ public class ApprovalRequestVO {
     private LocalDateTime approvedAt;
     private String rejectReason;
     private LocalDateTime createdAt;
+
+    /** 执行结果：SUCCESS / FAILED；null = 未跟踪（历史数据） */
+    private String execStatus;
+    /** 最近一次执行失败原因 */
+    private String execError;
+    /** 执行尝试次数 */
+    private Integer execAttempts;
+    /** 最近一次执行时间 */
+    private LocalDateTime lastExecAt;
 }

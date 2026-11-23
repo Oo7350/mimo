@@ -70,6 +70,25 @@ public class ProjectController {
         return Result.successMessage("添加成功");
     }
 
+    /**
+     * 更新项目名称/描述（仅团队管理员）
+     */
+    @PutMapping("/{projectId}")
+    @AuditLog(targetType = "'PROJECT'", targetId = "#projectId", action = "'UPDATE'", detail = "'更新项目#' + #projectId")
+    public Result<ProjectVO> updateProject(@PathVariable Long projectId,
+                                           @Valid @RequestBody UpdateRequest request,
+                                           Authentication auth) {
+        Long userId = getLongPrincipal(auth);
+        Project project = projectMapper.selectById(projectId);
+        if (project == null) {
+            throw new BusinessException(ResultCode.PROJECT_NOT_FOUND);
+        }
+        if (!teamService.isTeamAdmin(project.getTeamId(), userId)) {
+            throw new BusinessException(ResultCode.FORBIDDEN, "仅管理员可修改项目");
+        }
+        return Result.success(projectService.update(projectId, request, userId));
+    }
+
     @DeleteMapping("/{projectId}")
     @AuditLog(targetType = "'PROJECT'", targetId = "#projectId", action = "'DELETE'", detail = "'删除项目#' + #projectId")
     public Result<Void> deleteProject(@PathVariable Long projectId, Authentication auth) {

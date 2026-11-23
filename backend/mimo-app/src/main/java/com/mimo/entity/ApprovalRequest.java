@@ -25,4 +25,13 @@ public class ApprovalRequest {
     private String rejectReason;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    /** 执行结果：SUCCESS / FAILED；NULL = 未跟踪（KNOWN-006） */
+    private String execStatus;
+    /** 最近一次执行失败原因（截断到 500 字） */
+    private String execError;
+    /** 执行尝试次数（含首次） */
+    private Integer execAttempts;
+    /** 最近一次执行时间 */
+    private LocalDateTime lastExecAt;
 }

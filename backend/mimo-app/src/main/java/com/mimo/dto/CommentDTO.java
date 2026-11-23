@@ -17,6 +17,12 @@ public class CommentDTO {
     }
 
     @Data
+    public static class UpdateRequest {
+        @NotBlank(message = "评论内容不能为空")
+        private String content;
+    }
+
+    @Data
     public static class CommentVO {
         private Long id;
         private Long issueId;

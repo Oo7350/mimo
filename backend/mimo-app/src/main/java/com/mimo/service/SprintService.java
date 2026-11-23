@@ -60,6 +60,26 @@ public class SprintService {
         return toVO(sprint);
     }
 
+    /**
+     * 更新 Sprint 名称/目标/起止日期（KNOWN-009：以前建完只能启停，名字和日期都改不了）
+     */
+    public SprintVO updateSprint(Long sprintId, UpdateRequest request) {
+        Sprint sprint = sprintMapper.selectById(sprintId);
+        if (sprint == null) throw new BusinessException(ResultCode.SPRINT_NOT_FOUND);
+        if ("COMPLETED".equals(sprint.getStatus())) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "已结束的 Sprint 不能修改");
+        }
+        if (request.getStartDate().isAfter(request.getEndDate())) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "开始日期不能晚于结束日期");
+        }
+        sprint.setName(request.getName());
+        sprint.setGoal(request.getGoal());
+        sprint.setStartDate(request.getStartDate());
+        sprint.setEndDate(request.getEndDate());
+        sprintMapper.updateById(sprint);
+        return toVO(sprint);
+    }
+
     public void startSprint(Long sprintId) {
         Sprint sprint = sprintMapper.selectById(sprintId);
         if (sprint == null) throw new BusinessException(ResultCode.SPRINT_NOT_FOUND);

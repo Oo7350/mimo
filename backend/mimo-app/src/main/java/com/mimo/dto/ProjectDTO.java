@@ -19,6 +19,17 @@ public class ProjectDTO {
         private Long teamId;
     }
 
+    /**
+     * 项目更新：只允许改名称和描述。
+     * Key 故意不可改——任务编号（issue_key）的前缀就是它，改了会让历史任务编号与项目对不上。
+     */
+    @Data
+    public static class UpdateRequest {
+        @NotBlank(message = "项目名称不能为空")
+        private String name;
+        private String description;
+    }
+
     @Data
     public static class ProjectVO {
         private Long id;

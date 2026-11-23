@@ -1093,28 +1093,49 @@
 - **现象**: `mimo.upload.dir` 属性未在 `application.yml` 中设置，使用默认值 `./uploads`
 - **影响**: 部署时附件保存路径不可控
 
-### KNOWN-004: Issue Key 生成存在并发冲突风险 [Medium]
+### KNOWN-004: Issue Key 生成存在并发冲突风险 [Medium] — 2026-11-23 已修复
 
-- **文件**: `backend/.../IssueService.java`
+- **文件**: `backend/.../IssueService.java`、新增 `backend/.../IssueKeyAllocator.java`
 - **现象**: 多个用户同时创建任务时，`issueKey` 可能重复
 - **根因**: `count + 1` 方式非原子操作，高并发下可能生成相同 Key
-- **建议修复**: 使用数据库序列或 `SELECT ... FOR UPDATE` 悲观锁
-- **当前状态**: 未修复（依赖 `uk_issue_key` 唯一约束兜底，但冲突时用户收到 500）
+  （后来改过一版「取项目内最大值 + 1」，但两个并发事务仍可能读到同一个最大值，非原子问题依旧）
+- **已修复（2026-11-23 / v2.18.0）**:
+  - 抽出 `IssueKeyAllocator`，把「取号 + 插入」收成一个可重试单元：撞 `uk_issue_key` 就重新取号再插，
+    最多 5 次；仍冲突才抛 `409 任务编号分配冲突，请稍后重试`，不再把 DuplicateKeyException 抛成 500
+  - 能在同一事务内重试的依据：MySQL/InnoDB 的重复键错误只回滚当前语句，事务仍然可用
+  - 用例：`IssueKeyAllocatorTest` 3 项（首次取号 / 撞号后重新取号成功 / 连续撞号给出可读错误）
+- **仍未做**: 没上真正的数据库序列或分布式锁——单库单实例够用，多实例部署前需要换方案
 
-### KNOWN-005: 删除团队后项目数据成为孤儿 [Medium]
+### KNOWN-005: 删除团队后项目数据成为孤儿 [Medium] — 2026-11-23 已修复
 
 - **文件**: `backend/.../TeamService.java`
 - **现象**: 删除团队后，该团队下的项目及其 issues/board/sprints 不受影响但无归属团队
 - **根因**: `deleteTeam()` 仅删除 `team_members` 和 `teams`，项目表标注"独立存在"
-- **建议修复**: 要么级联删除项目，要么提供"无团队项目"的管理视图
+- **为什么必须修**: 项目列表按「用户所在团队」过滤（`ProjectService.listByUser`），
+  失去团队的项目谁都看不到、也删不掉，只能靠手工改库
+- **已修复（2026-11-23 / v2.18.0）**: 删除团队时先遍历该团队下所有项目，
+  逐个走 `projectService.deleteProject()`（复用既有的级联删除：看板列 / 任务 / 项目成员 / 报告 / Sprint），
+  再删成员关系和团队本身；整体在一个事务里，中途失败会整体回滚
+- **用例**: `TeamServiceTest` 4 项（连带删项目 / 无项目不误删 / 非所有者拒绝 / 团队不存在）
+- **取舍说明**: 选的是「级联删除」而不是「保留孤儿 + 管理视图」——团队删除本就是不可逆操作，
+  留一堆没人能访问的数据只是延迟爆炸
 
-### KNOWN-006: 审批通过后执行失败无补偿机制 [Medium]
+### KNOWN-006: 审批通过后执行失败无补偿机制 [Medium] — 2026-11-23 已修复
 
-- **文件**: `backend/.../ApprovalService.java`
+- **文件**: `backend/.../ApprovalService.java`、新增 `ApprovalExecutionService.java`、`V24__approval_execution_tracking.sql`、`ApprovalController`
 - **现象**: 审批通过后 `executeApprovedAction()` 若执行失败（如项目创建失败），审批状态已变更为 APPROVED，但操作未实际生效
-- **根因**: 审批和执行在同一个事务中，但异常被 catch 后没有回滚
-- **代码注释明确标注**："实际生产环境应该有补偿机制或重试队列"
-- **当前状态**: 未修复
+- **根因**: 审批和执行在同一个事务中，但异常被 catch 后没有回滚，只 `e.printStackTrace()`
+- **已修复（2026-11-23 / v2.18.0）**:
+  - 审批结果与执行结果拆成两个状态：`approval_requests` 新增
+    `exec_status` / `exec_error` / `exec_attempts` / `last_exec_at`
+  - 执行挪进独立的 `ApprovalExecutionService`，用 `REQUIRES_NEW` 单独事务：
+    执行失败只回滚执行自己（不会留下「项目建了一半」的脏数据），审批结果仍然有效
+  - 失败原因落库（截断 500 字），日志用 SLF4J 记全栈，不再 printStackTrace
+  - 新增补偿入口 `POST /api/approvals/{id}/retry-execution`（需管理员）：
+    只允许「已通过且未执行成功」的审批重试，已成功的直接拒绝
+  - 前端展示字段：`ApprovalRequestVO` 增加 `execStatus` / `execError` / `execAttempts` / `lastExecAt`
+  - 用例：`ApprovalServiceTest` 6 项（失败留痕 / 成功标记 / 重试成功 / 重试仍失败 / 已成功拒绝重试 / 非管理员拒绝）
+- **仍未做**: 没有接自动重试队列（失败需人工点重试）；执行成功但审批更新提交失败这种极端窗口仍未处理
 
 ### KNOWN-007: 数据库无外键约束 [Low]
 
@@ -1129,11 +1150,26 @@
 - **现象**: `createQuickSprint()` 中 `if (added >= 5) break` 硬编码了 5 个任务的限制
 - **建议修复**: 改为可配置参数
 
-### KNOWN-009: 团队/项目/Sprint/评论均无更新端点 [Medium]
+### KNOWN-009: 团队/项目/Sprint/评论均无更新端点 [Medium] — 2026-11-23 已修复
 
-- **文件**: `TeamController`, `ProjectController`, `SprintController`, `CommentController`
+- **文件**: `TeamController`、`ProjectController`、`SprintController`、`CommentController` 及对应 Service/DTO
 - **现象**: 创建后可删除但无法编辑，缺少 PUT 更新端点
 - **影响**: 用户无法修改团队名/描述、项目名/Key、Sprint 名称/日期、评论内容
+- **已修复（2026-11-23 / v2.18.0）**，四个端点：
+
+  | 端点 | 权限 | 可改字段 |
+  |---|---|---|
+  | `PUT /api/teams/{id}` | 团队管理员 | 名称（查重）、描述 |
+  | `PUT /api/projects/{projectId}` | 团队管理员 | 名称、描述 |
+  | `PUT /api/sprints/{id}` | 项目成员 | 名称、目标、起止日期（不可倒挂、已结束不可改） |
+  | `PUT /api/comments/{id}` | 仅评论作者 | 内容 |
+
+  - 项目 **Key 故意不可改**：任务编号 `issue_key` 的前缀就是项目 Key，改了会让所有历史编号失效
+  - 评论不做「管理员代改」：评论是审计痕迹，只有作者本人能改
+  - 团队改名会查重（沿用 `TEAM_NAME_EXISTS`），描述传空串表示清空、传 null 表示不改
+  - 用例：`TeamServiceTest`（改名/查重场景）、`SprintServiceTest` 4 项、`CommentServiceTest` 3 项
+- **仍未做**: 前端还没有接入这四个端点的编辑 UI（本轮只补后端能力），
+  接口文档 `接口文档.md` 已补，前端改动建议单独一轮做（涉及团队/项目设置页表单）
 
 ### KNOWN-010: 默认看板列名硬编码中文 [Low]
 
@@ -1239,7 +1275,7 @@
 | Medium | 31 |
 | Low | 18 |
 | **已修复（BUG 条目）** | **91** |
-| **已知未修复（KNOWN 条目）** | **19** |
+| **已知未修复（KNOWN 条目）** | **15** |
 | **总计** | **110** |
 
 | 版本段 | BUG 条数 |

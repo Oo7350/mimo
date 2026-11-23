@@ -41,6 +41,7 @@ public class IssueService {
     private final IssueChangeRequestMapper issueChangeRequestMapper;
     private final IssueReviewMapper issueReviewMapper;
     private final ObjectMapper objectMapper;
+    private final IssueKeyAllocator issueKeyAllocator;
 
     // ---- BUG status transition rules ----
     private static final Map<String, Set<String>> BUG_TRANSITIONS = Map.of(
@@ -58,17 +59,11 @@ public class IssueService {
         Project project = projectMapper.selectById(request.getProjectId());
         if (project == null) throw new BusinessException(ResultCode.PROJECT_NOT_FOUND);
 
-        // Generate issue key — 查询当前项目最大编号，避免并发冲突和软删除计数错误
-        String keyPrefix = project.getKey() + "-";
-        Integer maxSequence = issueMapper.selectMaxIssueKeySequence(request.getProjectId(), keyPrefix);
-        int nextNum = (maxSequence == null ? 0 : maxSequence) + 1;
-        String key = project.getKey() + "-" + nextNum;
-
+        // 任务编号在插入时分配（见 IssueKeyAllocator，KNOWN-004：撞号自动重新取号）
         Issue issue = new Issue();
         issue.setProjectId(request.getProjectId());
         issue.setColumnId(request.getColumnId());
         issue.setSprintId(request.getSprintId());
-        issue.setIssueKey(key);
         issue.setTitle(request.getTitle());
         issue.setDescription(request.getDescription());
         issue.setType(request.getType());
@@ -116,7 +111,7 @@ public class IssueService {
             }
         }
 
-        issueMapper.insert(issue);
+        String key = issueKeyAllocator.insertWithAllocatedKey(issue, project.getKey());
         issueVersionService.recordCurrent(issue, reporterId, "CREATE", "创建初始版本");
 
         // Activity log

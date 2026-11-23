@@ -39,6 +39,18 @@ public class CommentController {
     }
 
     /**
+     * 修改评论（仅评论作者可改）
+     */
+    @PutMapping("/{id}")
+    @AuditLog(targetType = "'COMMENT'", targetId = "#id", action = "'UPDATE'", detail = "'修改评论#' + #id")
+    public Result<CommentVO> update(@PathVariable Long id,
+                                    @Valid @RequestBody UpdateRequest request,
+                                    Authentication auth) {
+        Long userId = getLongPrincipal(auth);
+        return Result.success(commentService.update(id, request, userId));
+    }
+
+    /**
      * 删除评论（仅评论作者可删除）
      */
     @DeleteMapping("/{id}")

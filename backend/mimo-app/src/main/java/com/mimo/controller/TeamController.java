@@ -33,6 +33,18 @@ public class TeamController {
         return Result.success(teamService.getById(id));
     }
 
+    /**
+     * 更新团队名称/描述（仅团队管理员）
+     */
+    @PutMapping("/{id}")
+    @AuditLog(targetType = "'TEAM'", targetId = "#id", action = "'UPDATE'", detail = "'更新团队#' + #id")
+    public Result<TeamVO> update(@PathVariable Long id,
+                                 @RequestBody UpdateRequest request,
+                                 Authentication auth) {
+        Long userId = getLongPrincipal(auth);
+        return Result.success(teamService.updateTeam(id, request, userId));
+    }
+
     @GetMapping("/my")
     public Result<List<TeamVO>> myTeams(Authentication auth) {
         Long userId = getLongPrincipal(auth);

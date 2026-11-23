@@ -1,6 +1,6 @@
 # AGENTS.md
 
-> **最新版本**：v2.17.0（2026-11-20）— 新手引导重做：分主题、锚点自解析、干净退出。详见末尾"版本变更记录"。
+> **最新版本**：v2.18.0（2026-11-23）— 清掉一批 KNOWN 遗留：任务编号并发冲突、删团队留孤儿、审批执行无补偿、四类资源缺更新端点。详见末尾"版本变更记录"。
 
 This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
@@ -8,7 +8,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 Mimo is a lightweight Trello-like project management platform for small teams. It supports team collaboration, kanban task tracking, and progress visualization.
 
-- **Version**: v2.15.7 — Frontend Bundle Size Optimization + Board Null-Column Fix (2026-11-20)
+- **Version**: v2.18.0 — KNOWN 遗留收口（编号并发 / 团队孤儿 / 审批补偿 / 更新端点）(2026-11-23)
 - **Previous**: v2.15.6 — Access Control and Change Governance Hardening (2026-11-12)
 - **GitHub**: https://github.com/Oo7350/mimo
 - **API docs**: `接口文档.md` (70+ endpoints, Chinese)
@@ -212,6 +212,27 @@ All v2.15 AI roadmap items are implemented. Future work may replace the lexical 
 - **Board Sync Flow**: Drag → `PUT /api/board/issue/move` → backend updates issue + logs + WebSocket broadcast → all board subscribers receive event → optimistic UI update
 
 ## Version History
+
+### v2.18.0 — KNOWN 遗留四连修：编号冲突 / 团队孤儿 / 审批补偿 / 更新端点 (2026-11-23)
+
+按 bug-log「已知未修复」清单里 Medium/High 的条目批量收口，后端测试 83 → 103 全绿。
+
+- **KNOWN-004 任务编号并发冲突**：新增 `IssueKeyAllocator`，把「取号 + 插入」收成一个可重试单元，
+  撞 `uk_issue_key` 就重新取号（最多 5 次），超限返回 `409 任务编号分配冲突`，
+  不再把 `DuplicateKeyException` 抛成 500。`IssueService.create()` 改为调用它。
+- **KNOWN-005 删团队留孤儿项目**：`TeamService.deleteTeam()` 先遍历团队下的项目逐个
+  `projectService.deleteProject()`（复用既有级联：看板列/任务/项目成员/报告/Sprint），再删成员与团队。
+  此前项目失去团队后谁都看不见也删不掉（`listByUser` 按团队过滤）。
+- **KNOWN-006 审批执行无补偿**：审批结果与执行结果拆成两个状态，`approval_requests` 新增
+  `exec_status` / `exec_error` / `exec_attempts` / `last_exec_at`（`V24`）。
+  执行挪进 `ApprovalExecutionService` 并用 `REQUIRES_NEW` 独立事务——失败只回滚执行自己，
+  不再出现「项目建了一半」；失败原因落库、日志走 SLF4J，新增补偿入口
+  `POST /api/approvals/{id}/retry-execution`（管理员，仅「已通过且未成功」可重试）。
+- **KNOWN-009 缺更新端点**：补 `PUT /api/teams/{id}`（管理员）、`PUT /api/projects/{projectId}`（管理员）、
+  `PUT /api/sprints/{id}`（成员，日期不可倒挂、已结束不可改）、`PUT /api/comments/{id}`（仅作者）。
+  项目 **Key 刻意不可改**（任务编号前缀就是它），评论不做管理员代改。前端编辑 UI 尚未接入。
+- **测试**：新增 `IssueKeyAllocatorTest`(3) / `TeamServiceTest`(4) / `ApprovalServiceTest`(6) /
+  `CommentServiceTest`(3) / `SprintServiceTest`(4)，共 20 条；统计口径上「已知未修复 KNOWN」19 → 15。
 
 ### v2.17.0 — 新手引导重做：分主题 + 锚点自解析 + 干净退出 (2026-11-20)
 

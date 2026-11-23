@@ -1,6 +1,8 @@
 package com.mimo.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.mimo.common.BusinessException;
+import com.mimo.common.ResultCode;
 import com.mimo.dto.CommentDTO.*;
 import com.mimo.entity.Comment;
 import com.mimo.entity.Issue;
@@ -71,8 +73,25 @@ public class CommentService {
         return toVO(comment);
     }
 
-    public List<CommentVO> listByIssue(Long issueId) {
-        List<Comment> comments = commentMapper.selectList(
+    /**
+     * 修改评论内容（KNOWN-009：以前评论发出去只能删，不能改）
+     *
+     * <p>只有作者本人可以改，管理员也不例外——评论是审计痕迹，不做「管理员代改」。
+     */
+    public CommentVO update(Long commentId, UpdateRequest request, Long userId) {
+        Comment comment = commentMapper.selectById(commentId);
+        if (comment == null) {
+            throw new BusinessException(ResultCode.NOT_FOUND, "评论不存在");
+        }
+        if (!comment.getUserId().equals(userId)) {
+            throw new BusinessException(ResultCode.FORBIDDEN, "只能修改自己的评论");
+        }
+        comment.setContent(request.getContent());
+        commentMapper.updateById(comment);
+        return toVO(comment);
+    }
+
+    public List<CommentVO> listByIssue(Long issueId) {        List<Comment> comments = commentMapper.selectList(
             new LambdaQueryWrapper<Comment>()
                 .eq(Comment::getIssueId, issueId)
                 .orderByDesc(Comment::getCreatedAt)
