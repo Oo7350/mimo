@@ -9,7 +9,9 @@ import com.mimo.entity.Issue;
 import com.mimo.entity.Project;
 import com.mimo.mapper.IssueMapper;
 import com.mimo.mapper.ProjectMapper;
+import com.mimo.dto.IssueClaimResult;
 import com.mimo.service.IssueService;
+import com.mimo.service.IssueClaimService;
 import com.mimo.service.TeamService;
 import com.mimo.service.WebhookDispatcherService;
 import com.mimo.service.ProjectAccessService;
@@ -33,6 +35,7 @@ public class IssueController {
     private final WebhookDispatcherService webhookDispatcher;
     private final ProjectAccessService projectAccessService;
     private final ProjectService projectService;
+    private final IssueClaimService issueClaimService;
 
     @PostMapping
     @AuditLog(targetType = "'ISSUE'", targetId = "#request.projectId", action = "'CREATE'", detail = "'创建任务: ' + #request.title")
@@ -93,6 +96,16 @@ public class IssueController {
                 .map(com.mimo.dto.ProjectDTO.ProjectVO::getId)
                 .toList();
         return Result.success(issueService.query(request, projectIds));
+    }
+
+    // ---- 认领：管理员直通，普通成员走审批后自动推进 ----
+
+    @PostMapping("/{id}/claim")
+    @AuditLog(targetType = "'ISSUE'", targetId = "#id", action = "'CLAIM'", detail = "'认领任务#' + #id")
+    public Result<IssueClaimResult> claim(@PathVariable Long id, Authentication auth) {
+        Long userId = getLongPrincipal(auth);
+        projectAccessService.requireIssue(id, userId);
+        return Result.success(issueClaimService.claim(id, userId));
     }
 
     // ---- BUG status management ----

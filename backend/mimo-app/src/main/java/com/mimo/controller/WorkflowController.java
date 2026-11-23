@@ -27,11 +27,11 @@ public class WorkflowController {
     private final ProjectMapper projectMapper;
     private final TeamService teamService;
 
-    /** 获取项目的所有工作流 */
+    /** 获取项目的所有工作流（首次访问时按看板列自动生成默认配置） */
     @GetMapping("/project/{projectId}")
     public Result<List<WorkflowVO>> listByProject(@PathVariable Long projectId, Authentication auth) {
         assertTeamMember(projectId, auth);
-        return Result.success(workflowService.listByProject(projectId));
+        return Result.success(workflowService.listByProject(projectId, getLongPrincipal(auth)));
     }
 
     /** 获取项目+类型的激活工作流 */

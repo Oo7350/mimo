@@ -20,6 +20,12 @@ export function queryIssues(data: any) {
   return request.post("/issues/query", data);
 }
 
+// ---- 认领：管理员直接认领并推进，普通成员提交审批 ----
+
+export function claimIssue(id: number) {
+  return request.post(`/issues/${id}/claim`);
+}
+
 // ---- BUG status management ----
 
 export function updateBugStatus(id: number, data: { bugStatus: string }) {

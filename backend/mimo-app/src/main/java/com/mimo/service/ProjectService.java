@@ -33,6 +33,7 @@ public class ProjectService {
     private final IssueMapper issueMapper;
     private final ReportMapper reportMapper;
     private final SprintMapper sprintMapper;
+    private final WorkflowService workflowService;
 
     @Transactional
     public ProjectVO create(CreateRequest request, Long ownerId) {
@@ -75,6 +76,9 @@ public class ProjectService {
 
         // 创建默认看板列
         createDefaultColumns(project.getId(), request.getTemplate());
+
+        // 按看板列自动生成默认工作流（STORY/TASK/BUG），无需用户手工配置
+        workflowService.ensureDefaultWorkflows(project.getId(), ownerId);
 
         return toVO(project);
     }

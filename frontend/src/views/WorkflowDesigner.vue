@@ -26,11 +26,19 @@
     <!-- 现有工作流信息 -->
     <el-alert v-if="currentWorkflow && !editing" type="info" :closable="false" class="workflow-designer__alert">
       <template #title>
+        <el-tag v-if="currentWorkflow.isDefault" size="small" type="success" effect="plain" class="workflow-designer__tag">
+          自动生成
+        </el-tag>
         当前「{{ selectedIssueType }}」类型已配置工作流: {{ currentWorkflow.name }}
         <el-button text type="primary" @click="startEditing">编辑</el-button>
         <el-button text type="danger" @click="onDelete">删除</el-button>
       </template>
     </el-alert>
+
+    <p class="workflow-designer__hint">
+      工作流会按看板列自动生成：新建项目即生成 STORY / TASK / BUG 三套默认配置（默认 Scrum，前进和回退都允许）。
+      这里只用来微调转换规则，或换成更严格的 Kanban / Bug 模板。
+    </p>
 
     <!-- 设计画布 -->
     <div v-if="editing" class="workflow-designer__canvas">
@@ -133,10 +141,10 @@
       </div>
     </div>
 
-    <!-- 无工作流时显示 -->
+    <!-- 无工作流时显示（仅当项目还没有看板列） -->
     <div v-else-if="!currentWorkflow" class="workflow-designer__start">
-      <el-empty description="该项目未配置工作流，拖拽任务不受限制">
-        <el-button type="primary" @click="startEditing">开始配置</el-button>
+      <el-empty description="该项目还没有看板列，暂时无法自动生成工作流；先创建看板列即可自动生成">
+        <el-button type="primary" @click="startEditing">手动配置</el-button>
       </el-empty>
     </div>
   </div>
@@ -423,6 +431,18 @@ async function onDelete() {
     font-size: 14px;
     text-align: center;
     padding: 20px;
+  }
+
+  &__tag {
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+
+  &__hint {
+    margin: 4px 0 12px;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--el-text-color-secondary);
   }
 
   &__start {

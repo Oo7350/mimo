@@ -41,11 +41,52 @@ public class WorkflowService {
 
     // ========== CRUD ==========
 
-    /** 获取项目的所有工作流 */
-    public List<WorkflowVO> listByProject(Long projectId) {
+    /** 默认自动生成的类型（与前端类型选择器一致） */
+    private static final List<String> DEFAULT_ISSUE_TYPES = Arrays.asList("STORY", "TASK", "BUG");
+
+    /** 获取项目的所有工作流；项目还没有任何工作流时，按看板列自动生成默认配置 */
+    @Transactional
+    public List<WorkflowVO> listByProject(Long projectId, Long userId) {
+        ensureDefaultWorkflows(projectId, userId);
         List<Workflow> workflows = workflowMapper.selectList(
                 new LambdaQueryWrapper<Workflow>().eq(Workflow::getProjectId, projectId));
         return workflows.stream().map(this::toVO).collect(Collectors.toList());
+    }
+
+    /**
+     * 项目缺少工作流时，按看板列自动生成默认工作流（幂等）。
+     *
+     * <p>默认采用 Scrum 模板（允许前进与回退），因此不会改变既有的拖拽行为；
+     * 需要更严格约束时，可在设计器里切换 Kanban / Bug 模板或手工调整转换规则。</p>
+     */
+    @Transactional
+    public void ensureDefaultWorkflows(Long projectId, Long userId) {
+        List<BoardColumn> columns = boardColumnMapper.selectList(
+                new LambdaQueryWrapper<BoardColumn>().eq(BoardColumn::getProjectId, projectId)
+                        .orderByAsc(BoardColumn::getSortOrder));
+        if (columns.isEmpty()) {
+            // 没有看板列就没有状态可编排，等列建好后再生成
+            return;
+        }
+        for (String issueType : DEFAULT_ISSUE_TYPES) {
+            boolean exists = workflowMapper.exists(new LambdaQueryWrapper<Workflow>()
+                    .eq(Workflow::getProjectId, projectId)
+                    .eq(Workflow::getIssueType, issueType));
+            if (exists) {
+                continue;
+            }
+            Workflow wf = new Workflow();
+            wf.setProjectId(projectId);
+            wf.setIssueType(issueType);
+            wf.setName("默认工作流（自动生成）");
+            wf.setConfig(writeConfig(buildScrumTemplate(columns)));
+            wf.setIsActive(1);
+            wf.setIsDefault(1);
+            wf.setCreatedBy(userId);
+            workflowMapper.insert(wf);
+            log.info("自动生成默认工作流: projectId={}, issueType={}, workflowId={}",
+                    projectId, issueType, wf.getId());
+        }
     }
 
     /** 获取项目+类型的激活工作流 */
@@ -69,27 +110,32 @@ public class WorkflowService {
                         .eq(Workflow::getProjectId, request.getProjectId())
                         .eq(Workflow::getIssueType, request.getIssueType()));
 
-        try {
-            String configJson = objectMapper.writeValueAsString(request.getConfig());
+        String configJson = writeConfig(request.getConfig());
 
-            if (existing != null) {
-                existing.setName(request.getName());
-                existing.setConfig(configJson);
-                existing.setIsActive(1);
-                workflowMapper.updateById(existing);
-                return toVO(existing);
-            } else {
-                Workflow wf = new Workflow();
-                wf.setProjectId(request.getProjectId());
-                wf.setIssueType(request.getIssueType());
-                wf.setName(request.getName());
-                wf.setConfig(configJson);
-                wf.setIsActive(1);
-                wf.setIsDefault(0);
-                wf.setCreatedBy(userId);
-                workflowMapper.insert(wf);
-                return toVO(wf);
-            }
+        if (existing != null) {
+            existing.setName(request.getName());
+            existing.setConfig(configJson);
+            existing.setIsActive(1);
+            workflowMapper.updateById(existing);
+            return toVO(existing);
+        } else {
+            Workflow wf = new Workflow();
+            wf.setProjectId(request.getProjectId());
+            wf.setIssueType(request.getIssueType());
+            wf.setName(request.getName());
+            wf.setConfig(configJson);
+            wf.setIsActive(1);
+            wf.setIsDefault(0);
+            wf.setCreatedBy(userId);
+            workflowMapper.insert(wf);
+            return toVO(wf);
+        }
+    }
+
+    /** 序列化工作流配置，失败时给出可读提示 */
+    private String writeConfig(WorkflowConfig config) {
+        try {
+            return objectMapper.writeValueAsString(config);
         } catch (Exception e) {
             throw new BusinessException(ResultCode.BAD_REQUEST, "工作流配置序列化失败: " + e.getMessage());
         }

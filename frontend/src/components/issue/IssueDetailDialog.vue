@@ -226,6 +226,15 @@
 
     <template #footer>
       <el-button @click="$emit('update:visible', false)">取消</el-button>
+      <el-button
+        v-if="canClaim"
+        type="warning"
+        plain
+        :loading="claiming"
+        @click="handleClaim"
+      >
+        <el-icon><Pointer /></el-icon>认领任务
+      </el-button>
       <el-button v-if="isEdit && form.type === 'STORY'" type="success" plain @click="showAiSplitter = true">
         <el-icon><MagicStick /></el-icon>AI 拆分
       </el-button>
@@ -249,7 +258,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, watch, computed } from "vue"
-import { createIssue, getIssueById, updateIssue, deleteIssue, addAcceptanceCriteria, updateAcceptanceCriteria, deleteAcceptanceCriteria } from "@/api/issue"
+import { createIssue, getIssueById, updateIssue, deleteIssue, claimIssue, addAcceptanceCriteria, updateAcceptanceCriteria, deleteAcceptanceCriteria } from "@/api/issue"
 import { getIssueAttachments, uploadAttachment, downloadAttachment, deleteAttachment } from "@/api/attachment"
 import { getCommentsByIssue } from "@/api/comment"
 import { getMembers } from "@/api/team"
@@ -267,7 +276,7 @@ import WorkLogTab from "./WorkLogTab.vue"
 import IssueVersionPanel from "./governance/IssueVersionPanel.vue"
 import IssueReviewPanel from "./governance/IssueReviewPanel.vue"
 import { useUserStore } from "@/store/user"
-import { Notebook, Check, WarningFilled, Upload, Document, Download, Delete, MagicStick, DataLine } from "@element-plus/icons-vue"
+import { Notebook, Check, WarningFilled, Upload, Document, Download, Delete, MagicStick, DataLine, Pointer } from "@element-plus/icons-vue"
 import type { IssueCard, AcceptanceCriterion } from "@/types"
 
 const props = defineProps<{
@@ -288,6 +297,7 @@ const members = ref<any[]>([])
 const stories = ref<IssueCard[]>([])
 const bugFormRef = ref<any>(null)
 const showAiSplitter = ref(false)
+const claiming = ref(false)
 
 // 当前用户（用于工时删除权限）
 const userStore = useUserStore()
@@ -298,6 +308,8 @@ const comments = ref<any[]>([])
 const commentsLoading = ref(false)
 
 const isEdit = computed(() => props.mode === "edit")
+// 未指派的任务才显示「认领」；认领后由管理员审批或直接推进
+const canClaim = computed(() => isEdit.value && !!form.id && !form.assigneeId)
 const changeGoverned = computed(() =>
   isEdit.value && Boolean(form.sprintId) && form.status !== "DONE"
 )
@@ -374,6 +386,25 @@ async function loadIssue() {
     fixedVersion: issue.fixedVersion || "",
   })
   await fetchAttachments()
+}
+
+async function handleClaim() {
+  if (!form.id) return
+  claiming.value = true
+  try {
+    const res: any = await claimIssue(form.id)
+    const data = res.data || {}
+    ElMessage.success(data.message || "认领成功")
+    if (data.status !== "PENDING") {
+      await loadIssue()
+    }
+    emit("updated")
+  } catch (error: any) {
+    const message = error?.response?.data?.message || error?.message || "认领失败"
+    ElMessage.error(message)
+  } finally {
+    claiming.value = false
+  }
 }
 
 async function fetchAttachments() {

@@ -38,6 +38,7 @@ public class ApprovalService {
     private final TeamMapper teamMapper;
     private final ProjectMapper projectMapper;
     private final ProjectService projectService;
+    private final IssueClaimService issueClaimService;
     private final NotificationService notificationService;
     private final ObjectMapper objectMapper;
 
@@ -270,6 +271,15 @@ public class ApprovalService {
                 if (projectIdNum != null) {
                     projectService.deleteProject(projectIdNum.longValue(), request.getRequesterId());
                 }
+            } else if ("ISSUE_CLAIM".equals(targetType) && dataJson != null) {
+                // 认领任务：指派给申请人，并自动推进到工作流的「进行中」
+                Map<String, Object> claimData = objectMapper.readValue(dataJson, Map.class);
+                Long issueId = toLong(claimData.get("issueId"));
+                Long claimUserId = toLong(claimData.get("userId"));
+                Long toColumnId = toLong(claimData.get("toColumnId"));
+                if (issueId != null && claimUserId != null) {
+                    issueClaimService.applyClaim(issueId, claimUserId, toColumnId, request.getApproverId());
+                }
             }
             // 其他类型暂不处理，可后续扩展
             
@@ -280,6 +290,12 @@ public class ApprovalService {
             // 实际生产环境应该有补偿机制或重试队列
             e.printStackTrace();
         }
+    }
+
+    private Long toLong(Object value) {
+        if (value instanceof Number) return ((Number) value).longValue();
+        if (value instanceof String && !((String) value).isEmpty()) return Long.parseLong((String) value);
+        return null;
     }
 
     private ApprovalRequestVO toVO(ApprovalRequest entity) {

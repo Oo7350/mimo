@@ -65,7 +65,7 @@ const myList = ref<any[]>([])
 function typeLabel(t: string) {
   const m: Record<string, string> = {
     PROJECT_CREATE: '创建项目', PROJECT_UPDATE: '修改项目', PROJECT_DELETE: '删除项目',
-    PROJECT_MEMBER_ADD: '添加成员'
+    PROJECT_MEMBER_ADD: '添加成员', ISSUE_CLAIM: '认领任务'
   }
   return m[t] || t
 }
