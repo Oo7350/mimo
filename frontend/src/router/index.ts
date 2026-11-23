@@ -117,6 +117,14 @@ const routes: RouteRecordRaw[] = [
         component: () => import("@/views/EmailAccounts.vue"),
       },
       {
+        // 工作项的"落地页"：邮件通知、站内通知、外部链接统一指到 /issues/:id，
+        // 由它解析出 projectId 再转到看板并打开详情。
+        // 此前没有这条路由，EmailNotificationService 拼出来的 /issues/{id} 全是死链。
+        path: "issues/:id",
+        name: "IssueRedirect",
+        component: () => import("@/views/IssueRedirect.vue"),
+      },
+      {
         path: "admin/levels",
         name: "LevelManage",
         component: () => import("@/views/LevelManage.vue"),

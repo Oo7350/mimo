@@ -1,6 +1,6 @@
 # AGENTS.md
 
-> **最新版本**：v2.18.2（2026-11-23）— 技术债清理：权限判定收敛到 `AccessControlService`、AI 提示词版本化并让采样参数真正生效、评论 @提及补上通知。详见末尾"版本变更记录"。
+> **最新版本**：v2.18.3（2026-11-23）— 功能链路闭合：新增 `/issues/:id` 落地页（邮件与站内通知不再死链）、工作台快捷入口真的到得了对应视图、审批通知点击直达审批页、前端「设置」菜单改按 RBAC 能力判断，并修掉 `@RequirePermission` 切面 NPE（角色权限页写操作曾全部 500）。详见末尾"版本变更记录"。
 
 This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
@@ -8,8 +8,8 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 Mimo is a lightweight Trello-like project management platform for small teams. It supports team collaboration, kanban task tracking, and progress visualization.
 
-- **Version**: v2.18.2 — 技术债清理：权限单一入口 + AI 可复现 + @提及通知 (2026-11-23)
-- **Previous**: v2.18.1 — Markdown/邮件 XSS 修复 + 浏览器取证用例 (2026-11-23)
+- **Version**: v2.18.3 — 功能链路闭合：断链接上、假入口修真、切面 NPE 修复 (2026-11-23)
+- **Previous**: v2.18.2 — 技术债清理：权限单一入口 + AI 可复现 + @提及通知 (2026-11-23)
 - **GitHub**: https://github.com/Oo7350/mimo
 - **API docs**: `接口文档.md` (70+ endpoints, Chinese)
 - **User manual**: `操作手册.md` (Chinese)
@@ -213,6 +213,32 @@ All v2.15 AI roadmap items are implemented. Future work may replace the lexical 
 - **Board Sync Flow**: Drag → `PUT /api/board/issue/move` → backend updates issue + logs + WebSocket broadcast → all board subscribers receive event → optimistic UI update
 
 ## Version History
+
+### v2.18.3 — 功能链路闭合：断链接上 / 假入口修真 / 切面 NPE 修复 (2026-11-23)
+
+起因是一句使用感受："功能遍布很散，没有形成一股完整的链条……很多东西浮于形式"。
+查下来功能都在，坏的是**页与页之间的那一步**。本轮不加新功能，只接线；证据全部来自真实浏览器。
+
+- **BUG-093 权限切面 NPE（High）**：`PermissionAspect` 用 `@Around("@annotation(rp) || @within(rp)")`，
+  两个切点用 `||` 合并时参数绑定只在命中的一支有效，另一支为 `null` → `RoleController` 的方法级注解
+  走到 `rp.scopeType()` 直接 NPE，角色新增/删除/分配/撤销**四个写接口全部 500**。
+  改为全限定名切点 + `resolveAnnotation()`（方法 → 实现方法 → 声明类），取不到则放行。
+  新增 `PermissionAspectTest` 5 项；真实栈 `POST/DELETE /api/role/assign` 由 500 变 200。
+- **BUG-094 邮件死链（High）**：`EmailNotificationService#buildActionUrl` 拼的 `/issues/{id}`
+  在前端根本没有对应路由（也没有 `addRoute`），点开被 catch-all 兜到登录页/工作台。
+  新增 `views/IssueRedirect.vue` + 路由 `issues/:id`：反查 projectId 后 `replace` 到
+  看板并打开详情，403/404 给可执行提示。后端无需改动。
+- **BUG-095 假入口（Medium）**：工作台「看板视图 / Sprint / 项目报告」三个快捷入口
+  `route` 全是 `/projects`（KNOWN-014 收口）。改为 `computed`，带上「我的项目」第一个的 id。
+- **BUG-096 审批通知落地（Medium）**：`handleNotifClick` 只认 `ISSUE`，其余 `push('/')`。
+  现在 ISSUE → `/issues/{id}`（与邮件同一入口）、`APPROVAL_REQUEST` → `/admin/approvals?id=`，
+  审批页支持 `?id=` 高亮。
+- **前端菜单权限口径**：`MainLayout` 的「设置」分组从 `users.role === 'ROLE_ADMIN'` 改为
+  `usePermissionStore` 逐项判权限码（旧字段仅作权限码未加载时的兜底）。
+- **等级 ≠ 权限**：`UserLevel` 无任何业务消费方，页面副标题却写"权限体系"；
+  改为"权益铭牌（只影响展示）" + 顶部说明条 + 跳「角色权限」入口。功能未删，只是不再误导。
+- **验证**：`mvn test` 133 通过（原 128）；`npm run build` 通过；
+  新增 `e2e/chain-links.mjs` 5 项真实浏览器用例全绿，同一文件在基线代码上仅 2/4（用例 1、2 必红）。
 
 ### v2.18.2 — 技术债清理：权限单一入口 / AI 参数可追溯 / 评论 @提及 (2026-11-23)
 

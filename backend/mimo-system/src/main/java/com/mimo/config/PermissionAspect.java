@@ -37,8 +37,13 @@ public class PermissionAspect {
     private final RoleService roleService;
     private final ExpressionParser parser = new SpelExpressionParser();
 
-    @Around("@annotation(rp) || @within(rp)")
-    public Object around(ProceedingJoinPoint pjp, RequirePermission rp) throws Throwable {
+    @Around("@annotation(com.mimo.common.RequirePermission) || @within(com.mimo.common.RequirePermission)")
+    public Object around(ProceedingJoinPoint pjp) throws Throwable {
+        RequirePermission rp = resolveAnnotation(pjp);
+        if (rp == null) {
+            // 切点已经限定过，正常不会走到这里；保底放行，绝不抛 NPE
+            return pjp.proceed();
+        }
         Long userId = currentUserId();
         if (userId == null) {
             throw new BusinessException(ResultCode.UNAUTHORIZED, "未登录");
@@ -55,6 +60,33 @@ public class PermissionAspect {
             throw new BusinessException(ResultCode.FORBIDDEN, "无权限: " + rp.value());
         }
         return pjp.proceed();
+    }
+
+    /**
+     * 取当前调用上的 {@link RequirePermission}：先方法、再实现方法、最后声明类。
+     *
+     * <p>为什么不再用 {@code @Around("@annotation(rp) || @within(rp)")} 直接绑定参数：
+     * 两个切点用 {@code ||} 合并时，参数绑定只在**命中的那一支**有效，另一支给 null。
+     * RoleController 是方法级注解 → 命中 {@code @annotation}，{@code @within} 那一支传的就是 null，
+     * 于是 {@code rp.scopeType()} 直接 NPE、接口回 500（BUG-059：角色新增/删除/分配/撤销全报错）。
+     * 自己解析注解没有这个问题，也不依赖切入点表达式的绑定行为。
+     */
+    private RequirePermission resolveAnnotation(ProceedingJoinPoint pjp) {
+        MethodSignature ms = (MethodSignature) pjp.getSignature();
+        Method method = ms.getMethod();
+        RequirePermission rp = method.getAnnotation(RequirePermission.class);
+        if (rp != null) return rp;
+
+        Object target = pjp.getTarget();
+        if (target == null) return null;
+        try {
+            Method targetMethod = target.getClass().getMethod(method.getName(), method.getParameterTypes());
+            rp = targetMethod.getAnnotation(RequirePermission.class);
+            if (rp != null) return rp;
+        } catch (NoSuchMethodException ignored) {
+            // 退到类级注解
+        }
+        return target.getClass().getAnnotation(RequirePermission.class);
     }
 
     private Long currentUserId() {
