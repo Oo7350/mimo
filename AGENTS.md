@@ -1,6 +1,6 @@
 # AGENTS.md
 
-> **最新版本**：v2.18.3（2026-11-23）— 功能链路闭合：新增 `/issues/:id` 落地页（邮件与站内通知不再死链）、工作台快捷入口真的到得了对应视图、审批通知点击直达审批页、前端「设置」菜单改按 RBAC 能力判断，并修掉 `@RequirePermission` 切面 NPE（角色权限页写操作曾全部 500）。详见末尾"版本变更记录"。
+> **最新版本**：v2.18.4（2026-11-23）— 主链路给出「下一步」：工作项详情四段链路 + 唯一主动作、工作台首屏「接下来做什么」、每页一句话定位；并修掉「设置」菜单可见却点不进去的权限口径问题。详见末尾"版本变更记录"。
 
 This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
@@ -8,8 +8,8 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 Mimo is a lightweight Trello-like project management platform for small teams. It supports team collaboration, kanban task tracking, and progress visualization.
 
-- **Version**: v2.18.3 — 功能链路闭合：断链接上、假入口修真、切面 NPE 修复 (2026-11-23)
-- **Previous**: v2.18.2 — 技术债清理：权限单一入口 + AI 可复现 + @提及通知 (2026-11-23)
+- **Version**: v2.18.4 — 主链路「下一步」+ 菜单/守卫权限口径统一 (2026-11-23)
+- **Previous**: v2.18.3 — 功能链路闭合：断链接上、假入口修真、切面 NPE 修复 (2026-11-23)
 - **GitHub**: https://github.com/Oo7350/mimo
 - **API docs**: `接口文档.md` (70+ endpoints, Chinese)
 - **User manual**: `操作手册.md` (Chinese)
@@ -213,6 +213,31 @@ All v2.15 AI roadmap items are implemented. Future work may replace the lexical 
 - **Board Sync Flow**: Drag → `PUT /api/board/issue/move` → backend updates issue + logs + WebSocket broadcast → all board subscribers receive event → optimistic UI update
 
 ## Version History
+
+### v2.18.4 — 主链路「下一步」+ 菜单/守卫权限口径统一 (2026-11-23)
+
+v2.18.3 把断掉的线接上了，这一轮回答"接上之后每一步该点哪里"。
+
+- **P1 工作项详情的「下一步」**：`IssueDetailDialog.vue` 顶部新增四段链路条
+  `待办 → 进行中 → 待验收 → 已完成`（按 status + 最新验收记录高亮），并给出唯一主动作：
+  开始处理 / 提交验收（直接拉起提交弹窗）/ 去验收处理 / 重新提交验收（带打回原因）/
+  标记完成 / 查看项目报告。状态推进复用抽出的 `buildPayload()`，与「保存」同一条路径，
+  看板列与 bugStatus 不会分叉；失败回滚界面状态。
+  `IssueReviewPanel` 新增 `@loaded` 回传验收记录 + `defineExpose({ openSubmitDialog })`。
+- **P2 工作台首屏「接下来做什么」**：`Dashboard.vue` 按"卡住别人 → 卡住自己 → 快到期"排序
+  给最多三件事（被打回 / 待我处理 / 已逾期 / 进行中 / 待开始），每条直达对应工作项；
+  一个项目都没有时切成三步上手清单（建项目 → 建迭代 → 建第一个任务）。
+- **P3 每页一句话定位**：新增 `components/common/PageHint.vue`，为 Webhook 集成、操作审计、
+  邮件发送日志、公告、日历、收件箱、邮箱绑定补上"这一页解决什么问题"；Webhook 那句如实写明
+  目前只覆盖工作项新建/更新/删除三种事件。
+- **BUG-097（High）菜单可见但点不进去**：菜单可见性判 `RBAC ∪ 旧字段 ROLE_ADMIN`，
+  路由守卫的 `meta.requiresPermission` 却只判 RBAC；加上 `store/permission.ts` 的 `fetch()`
+  在并发时直接 `return`，导致 `loaded` 仍为 false → 判无权限并弹回工作台。
+  修复：守卫与后端 `AccessControlService.isSystemAdmin` 同口径（并集），`fetch()` 返回同一个
+  在途 Promise。决定性对照：把 lisi 的 `users.role` 临时改成 `ROLE_ADMIN`（RBAC 仍 DEVELOPER）
+  访问 `/admin/audit-logs`，旧行为 `url=/`、新行为正常渲染页面；验证后已改回。
+- **验证**：新增 `e2e/next-step.mjs` 6/6 通过；回归 `e2e/chain-links.mjs` 5/5 通过；
+  前端 `npm run build`（含 `vue-tsc`）通过。本轮无后端改动。
 
 ### v2.18.3 — 功能链路闭合：断链接上 / 假入口修真 / 切面 NPE 修复 (2026-11-23)
 

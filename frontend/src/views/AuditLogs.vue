@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="audit-logs-page">
     <el-card>
       <template #header>
@@ -7,6 +7,8 @@
           <el-button :loading="loading" @click="load">刷新</el-button>
         </div>
       </template>
+
+      <PageHint>谁在什么时候改了什么：登录、权限、审批、成员、工作项等敏感操作都会留痕，用来事后追查。</PageHint>
 
       <el-form :inline="true" class="filter-form">
         <el-form-item label="用户ID">
@@ -75,6 +77,7 @@
 </template>
 
 <script setup lang="ts">
+import PageHint from "@/components/common/PageHint.vue"
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import request from '@/api/request'
