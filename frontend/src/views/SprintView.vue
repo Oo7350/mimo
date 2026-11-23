@@ -683,7 +683,12 @@ function selectSprint(id: number) {
 async function handleCreate() {
   if (!createFormRef.value) return
   await createFormRef.value.validate()
-  if (createForm.value.dateRange.length !== 2) return
+  // 起止时间没选时直接 return，界面上什么都不发生、也没有任何提示 ——
+  // 用户只会以为"创建"按钮坏了（主线自证用例正是卡在这一步）。
+  if (createForm.value.dateRange.length !== 2) {
+    ElMessage.warning('请选择 Sprint 的起止时间')
+    return
+  }
   creating.value = true
   try {
     const [startDate, endDate] = createForm.value.dateRange

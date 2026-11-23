@@ -122,6 +122,47 @@ class WorkbenchServiceTest {
         assertThat(result.getWeeklySummary().getWorkHours()).isEqualByComparingTo("0");
     }
 
+    @Test
+    void shouldShowPendingReviewsFromProjectsImNotIn() {
+        // 系统管理员 / 团队管理员常常不在项目成员表里，但按 IssueReviewService 的规则
+        // 他们是有资格验收的人 —— 工作台必须把这条待验收显示出来，否则"能批但看不到"。
+        when(projectService.listByUser(1L)).thenReturn(List.of());
+
+        Issue issue = issue(31L, "TASK", "外部项目的待验收任务", "HIGH",
+                LocalDate.now().plusDays(3), 77L, null);
+        when(issueReviewService.listPendingForUser(1L)).thenReturn(List.of(review(5L, 31L, 18L)));
+        when(issueMapper.selectBatchIds(any())).thenReturn(List.of(issue));
+        when(projectMapper.selectById(77L)).thenReturn(project(77L, "别人的项目"));
+
+        WorkbenchVO result = service().getMyWorkbench(1L);
+
+        assertThat(result.getPendingTaskReviews()).hasSize(1);
+        assertThat(result.getPendingTaskReviews().get(0).getIssueTitle())
+                .isEqualTo("外部项目的待验收任务");
+        assertThat(result.getPendingTaskReviews().get(0).getProjectName())
+                .isEqualTo("别人的项目");
+    }
+
+    private com.mimo.dto.IssueGovernanceDTO.ReviewVO review(Long id, Long issueId, Long submitterId) {
+        com.mimo.dto.IssueGovernanceDTO.ReviewVO review = new com.mimo.dto.IssueGovernanceDTO.ReviewVO();
+        review.setId(id);
+        review.setIssueId(issueId);
+        review.setRoundNo(1);
+        review.setSubmitterId(submitterId);
+        review.setSubmitterName("chain");
+        review.setStatus("PENDING");
+        review.setCompletionNote("做完了");
+        review.setSubmittedAt(LocalDateTime.now());
+        return review;
+    }
+
+    private Project project(Long id, String name) {
+        Project project = new Project();
+        project.setId(id);
+        project.setName(name);
+        return project;
+    }
+
     private WorkbenchService service() {
         return new WorkbenchService(issueMapper, issueReviewMapper, issueChangeRequestMapper,
                 sprintMapper, projectMapper, workLogMapper, projectService,

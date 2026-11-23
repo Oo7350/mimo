@@ -55,13 +55,15 @@ public class WorkbenchService {
         List<Long> projectIds = projectService.listByUser(userId).stream()
                 .map(ProjectVO::getId)
                 .toList();
-        if (projectIds.isEmpty()) {
-            return emptyWorkbench();
-        }
+        // 注意：不能因为"我不在任何项目里"就整页返回空。待审批 / 待验收可能来自
+        // 我能审批但不参与的项目（系统管理员、团队管理员）——这类人恰恰最需要看到它。
+        boolean hasProjects = !projectIds.isEmpty();
 
-        List<Issue> assignedIssues = issueMapper.selectList(new LambdaQueryWrapper<Issue>()
-                .eq(Issue::getAssigneeId, userId)
-                .in(Issue::getProjectId, projectIds));
+        List<Issue> assignedIssues = hasProjects
+                ? issueMapper.selectList(new LambdaQueryWrapper<Issue>()
+                        .eq(Issue::getAssigneeId, userId)
+                        .in(Issue::getProjectId, projectIds))
+                : List.of();
         List<Issue> openIssues = assignedIssues.stream()
                 .filter(issue -> !isCompleted(issue))
                 .toList();
@@ -86,11 +88,9 @@ public class WorkbenchService {
                 .toList();
 
         List<PendingReviewVO> pendingChanges =
-                mapPendingChanges(issueChangeRequestService.listPendingForUser(userId),
-                        projects, projectIds);
+                mapPendingChanges(issueChangeRequestService.listPendingForUser(userId), projects);
         List<PendingReviewVO> pendingReviews =
-                mapPendingReviews(issueReviewService.listPendingForUser(userId),
-                        projects, projectIds);
+                mapPendingReviews(issueReviewService.listPendingForUser(userId), projects);
         List<RejectedItemVO> rejectedItems =
                 loadRejectedItems(userId, projects, projectIds);
         WeeklySummaryVO weeklySummary =
@@ -104,30 +104,6 @@ public class WorkbenchService {
         vo.setPendingTaskReviews(pendingReviews);
         vo.setRejectedItems(rejectedItems);
         vo.setWeeklySummary(weeklySummary);
-        return vo;
-    }
-
-    private WorkbenchVO emptyWorkbench() {
-        LocalDate monday = LocalDate.now().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
-        WeeklySummaryVO summary = new WeeklySummaryVO();
-        summary.setWeekStart(monday);
-        summary.setWeekEnd(monday.plusDays(6));
-        summary.setWorkHours(BigDecimal.ZERO);
-        summary.setCompletedTaskCount(0);
-        summary.setActiveSprintCount(0);
-        summary.setActiveSprintStoryPoints(0);
-        summary.setActiveSprintDoneStoryPoints(0);
-        summary.setActiveSprintHours(BigDecimal.ZERO);
-        summary.setActiveSprints(List.of());
-
-        WorkbenchVO vo = new WorkbenchVO();
-        vo.setTasks(List.of());
-        vo.setDueToday(List.of());
-        vo.setOverdue(List.of());
-        vo.setPendingChangeReviews(List.of());
-        vo.setPendingTaskReviews(List.of());
-        vo.setRejectedItems(List.of());
-        vo.setWeeklySummary(summary);
         return vo;
     }
 
@@ -194,16 +170,17 @@ public class WorkbenchService {
     }
 
     private List<PendingReviewVO> mapPendingChanges(List<ChangeRequestVO> changes,
-                                                    Map<Long, Project> projects,
-                                                    List<Long> allowedProjectIds) {
+                                                    Map<Long, Project> projects) {
         if (changes.isEmpty()) return List.of();
         Map<Long, Issue> issues = loadIssues(changes.stream()
                 .map(ChangeRequestVO::getIssueId).collect(Collectors.toSet()));
-        Set<Long> allowed = new HashSet<>(allowedProjectIds);
         List<PendingReviewVO> result = new ArrayList<>();
         for (ChangeRequestVO change : changes) {
             Issue issue = issues.get(change.getIssueId());
-            if (issue == null || !allowed.contains(issue.getProjectId())) continue;
+            // 这里不再按"我的项目"过滤：listPendingForUser 已经按
+            // "团队成员 + 非提交人 + 管理员/报告人"筛过一遍，能审批的人就该看得到。
+            // 以前两处口径不一致，导致"系统管理员明明可以批，工作台里却一条都没有"。
+            if (issue == null) continue;
             PendingReviewVO vo = new PendingReviewVO();
             vo.setId(change.getId());
             vo.setKind("CHANGE");
@@ -222,16 +199,15 @@ public class WorkbenchService {
     }
 
     private List<PendingReviewVO> mapPendingReviews(List<ReviewVO> reviews,
-                                                    Map<Long, Project> projects,
-                                                    List<Long> allowedProjectIds) {
+                                                    Map<Long, Project> projects) {
         if (reviews.isEmpty()) return List.of();
         Map<Long, Issue> issues = loadIssues(reviews.stream()
                 .map(ReviewVO::getIssueId).collect(Collectors.toSet()));
-        Set<Long> allowed = new HashSet<>(allowedProjectIds);
         List<PendingReviewVO> result = new ArrayList<>();
         for (ReviewVO review : reviews) {
             Issue issue = issues.get(review.getIssueId());
-            if (issue == null || !allowed.contains(issue.getProjectId())) continue;
+            // 同上：能验收的人就该看到，不再要求项目也在"我的项目"里
+            if (issue == null) continue;
             PendingReviewVO vo = new PendingReviewVO();
             vo.setId(review.getId());
             vo.setKind("REVIEW");
@@ -378,9 +354,11 @@ public class WorkbenchService {
     }
 
     private Map<Long, Project> loadProjects(List<Long> projectIds) {
-        if (projectIds.isEmpty()) return Collections.emptyMap();
-        return projectMapper.selectBatchIds(projectIds).stream()
-                .collect(Collectors.toMap(Project::getId, Function.identity()));
+        // 可变 Map：projectName() 会往里补"我不在但有权审批"的项目
+        Map<Long, Project> map = new HashMap<>();
+        if (projectIds.isEmpty()) return map;
+        projectMapper.selectBatchIds(projectIds).forEach(p -> map.put(p.getId(), p));
+        return map;
     }
 
     private Map<Long, Sprint> loadSprints(List<Issue> issues) {
@@ -398,8 +376,16 @@ public class WorkbenchService {
     }
 
     private String projectName(Map<Long, Project> projects, Long projectId) {
+        if (projectId == null) return "";
         Project project = projects.get(projectId);
-        return project == null ? "" : project.getName();
+        if (project == null) {
+            // 待审批/待验收可能来自"我不在这个项目里、但我有资格审批"的工作项，
+            // 名字要现查一次，不能因为不在缓存里就显示空白。
+            project = projectMapper.selectById(projectId);
+            if (project == null) return "";
+            projects.put(projectId, project);
+        }
+        return project.getName();
     }
 
     private BigDecimal sumHours(List<WorkLog> logs) {

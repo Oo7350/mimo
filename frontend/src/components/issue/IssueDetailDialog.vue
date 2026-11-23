@@ -49,6 +49,25 @@
       </div>
     </div>
 
+    <!--
+      死锁提示：验收人必须是团队成员、且不能是提交人。单人团队里，提交人自己就是
+      owner/报告人，唯一"能验收"的只剩自己 —— 任务会永远停在待验收。
+      与其让人对着"待验收"发呆，不如直接说明白并给个入口。
+    -->
+    <el-alert
+      v-if="isEdit && noOtherReviewer"
+      class="next-step-blocked"
+      type="warning"
+      :closable="false"
+      show-icon
+      title="这个任务卡在验收，但团队里除你之外没有别人"
+    >
+      <div class="next-step-blocked__body">
+        <span>验收需要一名团队成员来做（且不能是提交人）。现在团队里只有你自己，自己验收不了自己。</span>
+        <el-button size="small" type="primary" @click="goTeamMembers">去邀请成员</el-button>
+      </div>
+    </el-alert>
+
     <el-tabs v-model="activeTab" class="issue-dialog__tabs">
       <!-- Tab 1: Type-specific form -->
       <el-tab-pane :label="tab1Label" name="basic">
@@ -301,6 +320,7 @@ import { createIssue, getIssueById, updateIssue, deleteIssue, addAcceptanceCrite
 import { getIssueAttachments, uploadAttachment, downloadAttachment, deleteAttachment } from "@/api/attachment"
 import { getCommentsByIssue } from "@/api/comment"
 import { getMembers } from "@/api/team"
+import { getProjectById } from "@/api/project"
 import { queryIssues } from "@/api/issue"
 import { ElMessage, ElMessageBox } from "element-plus"
 import { renderMarkdown } from "@/utils/markdown"
@@ -363,6 +383,43 @@ const latestReview = computed(() => {
 
 function onReviewsLoaded(list: any[]) {
   reviews.value = list || []
+  void checkReviewable()
+}
+
+/**
+ * 待验收状态下检查"还有没有别人能验收"。
+ *
+ * 后端规则（IssueReviewService.assertReviewer）：验收人必须是项目成员 + 不能是提交人 +
+ * （系统管理员 / 项目负责人 / 团队管理员 / 报告人）。单人团队里提交人往往同时是
+ * 报告人和项目负责人 —— 于是谁都验收不了，任务静默停在待验收。
+ */
+const noOtherReviewer = ref(false)
+const reviewTeamId = ref<number | null>(null)
+
+async function checkReviewable() {
+  noOtherReviewer.value = false
+  if (!isEdit.value || latestReview.value?.status !== "PENDING") return
+  try {
+    let teamId = props.teamId
+    if (!teamId) {
+      const project = await getProjectById(props.projectId)
+      teamId = project?.data?.teamId
+    }
+    reviewTeamId.value = teamId || null
+    if (!teamId) return
+    const res = await getMembers(teamId)
+    const me = Number(userStore.userInfo?.id)
+    const others = (res?.data || []).filter((m: any) => Number(m.userId) !== me)
+    noOtherReviewer.value = others.length === 0
+  } catch {
+    // 查不到就别吓唬人
+    noOtherReviewer.value = false
+  }
+}
+
+function goTeamMembers() {
+  emit("update:visible", false)
+  if (reviewTeamId.value) router.push(`/teams/${reviewTeamId.value}`)
 }
 
 /** 四段链路节点：done=已经走过，active=现在就停在这一段 */
@@ -875,6 +932,19 @@ async function handleGovernanceUpdated() {
 </script>
 
 <style scoped lang="scss">
+/* 待验收但团队里没人能验收（单人团队）时的提示条 */
+.next-step-blocked {
+  margin: 0 0 12px;
+}
+
+.next-step-blocked__body {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 /* 「下一步」条 —— 四段链路 + 当前唯一该做的动作 */
 .next-step {
   display: flex;
