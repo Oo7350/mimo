@@ -230,9 +230,12 @@ All v2.15 AI roadmap items are implemented. Future work may replace the lexical 
     "没有项目"不再整页返回空，只跳过需要项目列表的查询。
   - 防线：`WorkbenchServiceTest.shouldShowPendingReviewsFromProjectsImNotIn`；
     `main-chain.mjs` 第 8 步走工作台入口验收。
-- **BUG-100（Medium）新建 Sprint 点"创建"没反应**：`SprintView.handleCreate()` 在
-  `dateRange.length !== 2` 时静默 `return`（日期是必填但没配 rules，`validate()` 也不报），
-  用户只看到"按钮坏了"。改为 `ElMessage.warning('请选择 Sprint 的起止时间')`。
+- **BUG-100（Medium）表单校验失败时 `validate()` 的 reject 没人接**：`SprintView` /
+  `WorkLogTab` 都写成 `await validate()` 不接 reject —— 异常被吞（控制台 pageerror），
+  而且**代码会继续往下跑**（工时弹窗校验没过照样发请求）。改为
+  `const valid = await validate().catch(() => false); if (!valid) return`。
+  > 更正说明：这条最初记成"点创建没有任何反应"，回查发现界面本来就有红字「请选择起止时间」，
+  > 是被自己的用例（从没选日期、只断言接口）带偏的。校正过程写在该条目开头。
 - **单人团队验收死锁**：验收规则要求"非提交人"，单人团队里提交人就是 owner + 报告人，
   唯一能验收的是自己 —— 任务永远停在待验收且毫无提示。详情页新增
   `.next-step-blocked` 警示（`checkReviewable()` 读团队成员）+"去邀请成员"入口。

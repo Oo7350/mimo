@@ -223,7 +223,10 @@ function openCreate() {
 
 async function handleCreate() {
   if (!createFormRef.value) return
-  await createFormRef.value.validate()
+  // validate() 校验不过会 reject。以前没接住：异常被吞掉，代码继续往下跑，
+  // 于是"工时/日期没填全"也会照发一次请求（服务端再报一次错）。
+  const valid = await createFormRef.value.validate().catch(() => false)
+  if (!valid) return
   creating.value = true
   try {
     await createWorkLog({ issueId: props.issueId, ...createForm.value })

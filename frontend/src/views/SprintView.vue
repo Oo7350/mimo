@@ -682,9 +682,11 @@ function selectSprint(id: number) {
 
 async function handleCreate() {
   if (!createFormRef.value) return
-  await createFormRef.value.validate()
-  // 起止时间没选时直接 return，界面上什么都不发生、也没有任何提示 ——
-  // 用户只会以为"创建"按钮坏了（主线自证用例正是卡在这一步）。
+  // validate() 校验不过时是 reject：不接住它就是一个未处理的 Promise 异常
+  // （控制台报 pageerror，错误被悄悄吞掉）。表单红字照常会显示，但没人知道异常发生过。
+  const valid = await createFormRef.value.validate().catch(() => false)
+  if (!valid) return
+  // 理论上 validate 通过就不会走到这里；留着兜底，别再出现"点了没反应"。
   if (createForm.value.dateRange.length !== 2) {
     ElMessage.warning('请选择 Sprint 的起止时间')
     return
