@@ -20,6 +20,7 @@ public class UserLevelController {
 
     private final UserLevelService userLevelService;
     private final UserMapper userMapper;
+    private final com.mimo.service.AccessControlService accessControlService;
 
     @GetMapping("/me")
     public Result<UserLevelVO> myLevel(Authentication auth) {
@@ -63,7 +64,7 @@ public class UserLevelController {
         Long userId = getLongPrincipal(auth);
         User user = userMapper.selectById(userId);
         if (user == null) throw new BusinessException(ResultCode.USER_NOT_FOUND);
-        if (!"ROLE_ADMIN".equals(user.getRole())) {
+        if (!accessControlService.isSystemAdmin(userId)) {
             throw new BusinessException(ResultCode.FORBIDDEN, "仅管理员可操作");
         }
         return userId;

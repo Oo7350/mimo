@@ -40,11 +40,16 @@ class WikiServiceTest {
     @Mock
     private TeamService teamService;
     @Mock
+    private RoleService roleService;
+    @Mock
+    private com.mimo.mapper.TeamMemberMapper teamMemberMapper;
+    @Mock
     private JwtUtil jwtUtil;
 
     private WikiService service() {
         return new WikiService(wikiPageMapper, wikiVersionMapper, wikiAttachmentMapper,
-                projectMapper, userMapper, teamService, jwtUtil);
+                projectMapper, userMapper, teamService,
+                new AccessControlService(roleService, userMapper, teamMemberMapper), jwtUtil);
     }
 
     @Test

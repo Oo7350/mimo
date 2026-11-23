@@ -51,18 +51,23 @@ public class DeepSeekProvider implements AiProvider {
     public static final String MSG_CALL_FAILED = "AI 服务暂时不可用，请稍后重试";
 
     @Override
-    public String chat(String systemMessage, String userMessage) {
+    public String chat(String systemMessage, String userMessage, double temperature, int maxTokens) {
         if (!isConfigured()) {
             throw new AiUnavailableException(MSG_NOT_CONFIGURED);
         }
         try {
-            Map<String, Object> body = buildBody(systemMessage, userMessage, 0.7, 1024);
+            Map<String, Object> body = buildBody(systemMessage, userMessage, temperature, maxTokens);
             ResponseEntity<JsonNode> res = doRequest(body);
             return extractContent(res);
         } catch (Exception e) {
             log.error("DeepSeek API 调用失败", e);
             throw new AiUnavailableException(MSG_CALL_FAILED, e);
         }
+    }
+
+    @Override
+    public String getModel() {
+        return model;
     }
 
     @Override

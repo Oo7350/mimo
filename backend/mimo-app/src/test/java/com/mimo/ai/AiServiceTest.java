@@ -14,7 +14,10 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -56,7 +59,7 @@ class AiServiceTest {
     @Test
     void chatWithQuotaFlagsErrorWhenProviderFailsMidCall() {
         when(aiProvider.isConfigured()).thenReturn(true);
-        when(aiProvider.chat(anyString(), anyString()))
+        when(aiProvider.chat(anyString(), anyString(), anyDouble(), anyInt()))
                 .thenThrow(new AiUnavailableException("AI 服务暂时不可用，请稍后重试"));
 
         AiChatResponse response = aiService.chatWithQuota(4L, req());
@@ -69,7 +72,7 @@ class AiServiceTest {
     @Test
     void chatWithQuotaConsumesQuotaOnlyOnSuccess() {
         when(aiProvider.isConfigured()).thenReturn(true);
-        when(aiProvider.chat(anyString(), anyString())).thenReturn("润色后的描述");
+        when(aiProvider.chat(anyString(), anyString(), anyDouble(), anyInt())).thenReturn("润色后的描述");
 
         AiChatResponse response = aiService.chatWithQuota(2L, req());
 
@@ -80,7 +83,7 @@ class AiServiceTest {
 
     @Test
     void chatJsonThrowsFriendlyErrorAndKeepsRawTextOutOfMessage() {
-        when(aiProvider.chat(anyString(), anyString()))
+        when(aiProvider.chat(anyString(), anyString(), anyDouble(), anyInt()))
                 .thenReturn("AI 服务未配置，请设置环境变量 DEEPSEEK_API_KEY");
 
         assertThatThrownBy(() -> aiService.chatJson(req(), Object.class))
@@ -117,8 +120,68 @@ class AiServiceTest {
         DeepSeekProvider provider = new DeepSeekProvider("", "https://example.invalid", "deepseek-chat");
 
         assertThat(provider.isConfigured()).isFalse();
+        assertThat(provider.getModel()).isEqualTo("deepseek-chat");
         assertThatThrownBy(() -> provider.chat("sys", "hi"))
                 .isInstanceOf(AiUnavailableException.class)
                 .hasMessage(DeepSeekProvider.MSG_NOT_CONFIGURED);
+    }
+
+    // ==================== 采样参数与可追溯信息（计划书 §七：AI 输出不可复现） ====================
+
+    @Test
+    void chatShouldForwardSamplingParametersToProvider() {
+        when(aiProvider.isConfigured()).thenReturn(true);
+        when(aiProvider.getModel()).thenReturn("deepseek-chat");
+        when(aiProvider.chat(anyString(), anyString(), anyDouble(), anyInt())).thenReturn("估算完成");
+
+        AiChatRequest request = AiChatRequest.builder()
+                .systemMessage("sys")
+                .userMessage("hi")
+                .temperature(0.2)
+                .maxTokens(512)
+                .promptRef("STORY_POINTS@v1")
+                .build();
+
+        AiChatResponse response = aiService.chatWithQuota(5L, request);
+
+        // 温度/maxTokens 必须真的下发到 Provider —— 改造前这两个字段被整段丢弃，每次都按 0.7 采样
+        verify(aiProvider).chat("sys", "hi", 0.2, 512);
+        // 响应里带上可追溯信息
+        assertThat(response.getModel()).isEqualTo("deepseek-chat");
+        assertThat(response.getTemperature()).isEqualTo(0.2);
+        assertThat(response.getPromptRef()).isEqualTo("STORY_POINTS@v1");
+        assertThat(response.hasError()).isFalse();
+    }
+
+    @Test
+    void chatShouldFallBackToDefaultsAndMarkInlinePrompt() {
+        when(aiProvider.isConfigured()).thenReturn(true);
+        when(aiProvider.chat(anyString(), anyString(), anyDouble(), anyInt())).thenReturn("ok");
+
+        AiChatResponse response = aiService.chatWithQuota(6L, req());
+
+        // 调用方没指定采样参数 → 用 Provider 接口上的默认值（保持改造前行为）
+        verify(aiProvider).chat("sys", "hi",
+                AiProvider.DEFAULT_TEMPERATURE, AiProvider.DEFAULT_MAX_TOKENS);
+        // 没走 PromptRegistry 的调用标成 INLINE@v0，复盘时能区分开
+        assertThat(response.getPromptRef()).isEqualTo("INLINE@v0");
+        assertThat(response.getTemperature()).isEqualTo(AiProvider.DEFAULT_TEMPERATURE);
+    }
+
+    @Test
+    void chatJsonShouldAlsoCarryPromptProvenance() {
+        when(aiProvider.getModel()).thenReturn("deepseek-chat");
+        when(aiProvider.chat(anyString(), anyString(), anyDouble(), anyInt())).thenReturn("{\"ok\":true}");
+
+        AiChatRequest request = AiChatRequest.builder()
+                .systemMessage("sys").userMessage("hi")
+                .temperature(0.3).maxTokens(2048).promptRef("ISSUE_DRAFT@v1")
+                .build();
+
+        java.util.Map<?, ?> parsed = aiService.chatJson(request, java.util.Map.class);
+
+        assertThat(parsed.get("ok")).isEqualTo(true);
+        // JSON 分支同样下发了 0.3 而不是默认 0.7
+        verify(aiProvider).chat("sys", "hi", 0.3, 2048);
     }
 }

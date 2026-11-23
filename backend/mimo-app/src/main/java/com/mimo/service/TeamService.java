@@ -38,6 +38,7 @@ public class TeamService {
     private final UserLevelMapper userLevelMapper;
     private final ProjectMapper projectMapper;
     private final ProjectService projectService;
+    private final AccessControlService accessControlService;
 
     public TeamVO create(CreateRequest request, Long ownerId) {
         if (teamMapper.exists(new LambdaQueryWrapper<Team>().eq(Team::getName, request.getName()))) {
@@ -199,15 +200,12 @@ public class TeamService {
 
     /**
      * 检查用户是否为团队管理员（包括系统admin）
+     *
+     * <p>统一走 {@link AccessControlService}：旧字段 + RBAC 两套口径的收敛点在那边，
+     * 这里不再自己拼 {@code ROLE_ADMIN} 判断。
      */
     public boolean isTeamAdmin(Long teamId, Long userId) {
-        // 系统admin
-        User user = userMapper.selectById(userId);
-        if (user != null && "ROLE_ADMIN".equals(user.getRole())) return true;
-
-        // 团队admin
-        String role = getUserRoleInTeam(teamId, userId);
-        return "ROLE_ADMIN".equals(role);
+        return accessControlService.isTeamAdmin(userId, teamId);
     }
 
     /**

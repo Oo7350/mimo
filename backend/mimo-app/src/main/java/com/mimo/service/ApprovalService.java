@@ -36,6 +36,7 @@ public class ApprovalService {
     private final ProjectMapper projectMapper;
     private final ApprovalExecutionService approvalExecutionService;
     private final NotificationService notificationService;
+    private final AccessControlService accessControlService;
 
     /**
      * 创建审批请求
@@ -222,18 +223,11 @@ public class ApprovalService {
 
     /**
      * 检查是否为管理员(系统admin 或 团队admin)
+     *
+     * <p>判定口径统一在 {@link AccessControlService}，见计划书 §七「新旧权限判断并存」。
      */
     private boolean isAdmin(Long userId, Long teamId) {
-        // 系统admin
-        User user = userMapper.selectById(userId);
-        if (user != null && "ROLE_ADMIN".equals(user.getRole())) return true;
-
-        // 团队admin
-        TeamMember member = teamMemberMapper.selectOne(new LambdaQueryWrapper<TeamMember>()
-                .eq(TeamMember::getTeamId, teamId)
-                .eq(TeamMember::getUserId, userId)
-                .eq(TeamMember::getRole, "ROLE_ADMIN"));
-        return member != null;
+        return accessControlService.isTeamAdmin(userId, teamId);
     }
 
     /**

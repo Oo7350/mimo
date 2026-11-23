@@ -50,6 +50,7 @@ public class WikiService {
     private final ProjectMapper projectMapper;
     private final UserMapper userMapper;
     private final TeamService teamService;
+    private final AccessControlService accessControlService;
     private final com.mimo.util.JwtUtil jwtUtil;
 
     @Value("${mimo.upload.dir:./uploads}")
@@ -412,8 +413,7 @@ public class WikiService {
         if (project == null) {
             throw new BusinessException(ResultCode.NOT_FOUND, "项目不存在");
         }
-        User user = userMapper.selectById(userId);
-        if (user != null && "ROLE_ADMIN".equals(user.getRole())) return;
+        if (accessControlService.isSystemAdmin(userId)) return;
         if (!teamService.isTeamMember(project.getTeamId(), userId)) {
             throw new BusinessException(ResultCode.FORBIDDEN, "无权访问该项目知识库");
         }
