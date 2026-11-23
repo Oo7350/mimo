@@ -67,6 +67,67 @@
       </div>
     </div>
 
+    <!--
+      接下来做什么 —— 把"平台有什么功能"换成"你现在该做什么"。
+      空库时给三步上手清单（建项目 → 建迭代 → 拉任务），有数据时给优先级最高的三件事。
+      以前这些信息散在下面四五个面板里，用户得自己扫一遍才知道先干哪个。
+    -->
+    <div v-if="!loading" class="dash-next">
+      <div class="dash-next__hd">
+        <span class="dash-next__title">接下来做什么</span>
+        <span class="dash-next__hint">{{ nextUpHint }}</span>
+      </div>
+
+      <!-- 空库：三步上手 -->
+      <ol v-if="!hasProjects" class="dash-next__steps">
+        <li>
+          <span class="dash-next__no">1</span>
+          <div class="dash-next__step-text">
+            <b>建一个项目</b>
+            <span>任务、迭代、报告、Wiki 都挂在项目下面，这是第一步</span>
+          </div>
+          <el-button size="small" type="primary" @click="$router.push('/projects')">去建项目</el-button>
+        </li>
+        <li>
+          <span class="dash-next__no">2</span>
+          <div class="dash-next__step-text">
+            <b>建一个迭代（Sprint）</b>
+            <span>把这一两周要做的事圈起来，才能看速率和燃尽</span>
+          </div>
+          <span class="dash-next__muted">建项目后可用</span>
+        </li>
+        <li>
+          <span class="dash-next__no">3</span>
+          <div class="dash-next__step-text">
+            <b>在待办列建第一个任务</b>
+            <span>可以直接写一句话，也可以让 AI 从草稿里拆任务</span>
+          </div>
+          <span class="dash-next__muted">建迭代后可用</span>
+        </li>
+      </ol>
+
+      <!-- 有数据：三件最该做的事 -->
+      <div v-else class="dash-next__list">
+        <button
+          v-for="item in nextUps"
+          :key="item.key"
+          class="dash-next__item"
+          @click="item.action()"
+        >
+          <el-tag :type="item.tagType" size="small" effect="light">{{ item.tag }}</el-tag>
+          <span class="dash-next__item-title">{{ item.title }}</span>
+          <span class="dash-next__item-meta">{{ item.meta }}</span>
+          <span class="dash-next__item-go">去处理 →</span>
+        </button>
+        <div v-if="!nextUps.length" class="dash-next__empty">
+          没有卡在你这儿的事。
+          <el-button size="small" type="primary" link @click="$router.push('/projects')">
+            去项目里挑一件
+          </el-button>
+        </div>
+      </div>
+    </div>
+
     <!-- 快捷操作 — 纯文字按钮，无边框图标 -->
     <div class="dash-shortcuts">
       <button
@@ -450,6 +511,91 @@ const pendingItems = computed(() =>
   ].sort((left, right) => (right.submittedAt || '').localeCompare(left.submittedAt || '')),
 )
 const pendingCount = computed(() => pendingItems.value.length)
+const hasProjects = computed(() => (dashboard.value?.myProjects?.length || 0) > 0)
+
+/**
+ * 「接下来做什么」的三件事。
+ *
+ * 排序即优先级：被打回（卡着别人的确认）→ 待我验收/审批（别人等着我）→ 已逾期 → 进行中 → 待办。
+ * 每一项都直接跳到对应工作项，不再让用户在四五个面板之间自己找。
+ */
+const nextUps = computed(() => {
+  const items: Array<{
+    key: string
+    tag: string
+    tagType: 'danger' | 'warning' | 'primary' | 'info' | 'success'
+    title: string
+    meta: string
+    action: () => void
+  }> = []
+
+  const rejected = rejectedItems.value[0]
+  if (rejected) {
+    items.push({
+      key: `reject-${rejected.kind}-${rejected.id}`,
+      tag: '被打回',
+      tagType: 'danger',
+      title: `${rejected.issueKey || ''} ${rejected.issueTitle || ''}`.trim(),
+      meta: `${rejected.kind === 'CHANGE' ? '变更' : '验收'}被打回：${rejected.reason || '未填原因'}`,
+      action: () => openRejected(rejected),
+    })
+  }
+
+  const pending = pendingItems.value[0]
+  if (pending) {
+    items.push({
+      key: `pending-${pending.kind}-${pending.id}`,
+      tag: '待我处理',
+      tagType: 'warning',
+      title: `${pending.issueKey || ''} ${pending.issueTitle || ''}`.trim(),
+      meta: pending.kind === 'CHANGE' ? '有变更等你审批' : '有验收等你确认',
+      action: () => openReview(pending),
+    })
+  }
+
+  const overdue = (workbench.value?.overdue || [])[0]
+  if (overdue) {
+    items.push({
+      key: `overdue-${overdue.id}`,
+      tag: '已逾期',
+      tagType: 'danger',
+      title: `${overdue.issueKey || ''} ${overdue.title || ''}`.trim(),
+      meta: overdue.dueDate ? `截止 ${overdue.dueDate}，已经过了` : '已经过了计划截止时间',
+      action: () => openTask(overdue),
+    })
+  }
+
+  const doing = tasks.value.find((task) => task.status === 'IN_PROGRESS')
+  if (doing) {
+    items.push({
+      key: `doing-${doing.id}`,
+      tag: '进行中',
+      tagType: 'primary',
+      title: `${doing.issueKey || ''} ${doing.title || ''}`.trim(),
+      meta: '接着往下做（进行中的任务会自动计时）',
+      action: () => openTask(doing),
+    })
+  }
+
+  const todo = tasks.value.find((task) => task.status === 'TODO')
+  if (todo && items.length < 3) {
+    items.push({
+      key: `todo-${todo.id}`,
+      tag: '待开始',
+      tagType: 'info',
+      title: `${todo.issueKey || ''} ${todo.title || ''}`.trim(),
+      meta: '还没开始，从这一项入手',
+      action: () => openTask(todo),
+    })
+  }
+
+  return items.slice(0, 3)
+})
+
+const nextUpHint = computed(() => {
+  if (!hasProjects.value) return '第一次用：三步就能跑起来'
+  return nextUps.value.length ? '按"卡住别人 → 卡住自己 → 快到期"排的序' : '当前没有卡在你这儿的事'
+})
 const taskTabs = computed(() => [
   { label: '全部', value: 'all' as const, count: tasks.value.length },
   { label: '今日到期', value: 'today' as const, count: workbench.value?.dueToday?.length || 0 },
@@ -637,6 +783,143 @@ onMounted(() => {
     font-weight: 550;
     margin-top: 4px;
   }
+}
+
+/* --- 接下来做什么 --- */
+.dash-next {
+  margin-bottom: 16px;
+  padding: 16px 18px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--bg-card);
+}
+
+.dash-next__hd {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.dash-next__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.dash-next__hint {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.dash-next__steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+
+  li {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+}
+
+.dash-next__no {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+}
+
+.dash-next__step-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+
+  b {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  span {
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+}
+
+.dash-next__muted {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.dash-next__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dash-next__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  transition: background 0.15s ease, border-color 0.15s ease;
+
+  &:hover {
+    background: var(--bg-hover, rgba(0, 0, 0, 0.03));
+    border-color: var(--border-color);
+  }
+}
+
+.dash-next__item-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dash-next__item-meta {
+  flex-shrink: 0;
+  max-width: 42%;
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dash-next__item-go {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--color-accent, var(--el-color-primary));
+}
+
+.dash-next__empty {
+  font-size: 13px;
+  color: var(--text-secondary);
 }
 
 /* --- 快捷操作 --- 纯文字，无背景色块 */

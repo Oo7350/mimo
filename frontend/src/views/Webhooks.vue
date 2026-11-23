@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="webhooks-page">
     <el-card>
       <template #header>
@@ -19,6 +19,8 @@
           </div>
         </div>
       </template>
+
+      <PageHint>工作项新建 / 更新 / 删除时，Mimo 会 POST 一条 JSON 到你填的地址，用于对接 CI、IM 机器人等外部系统。当前只覆盖这三种事件。</PageHint>
 
       <el-empty v-if="list.length === 0 && !loading" description="暂无 Webhook 配置，点击右上角创建" />
       <el-table :data="list" v-loading="loading" stripe>
@@ -173,6 +175,7 @@
 </template>
 
 <script setup lang="ts">
+import PageHint from "@/components/common/PageHint.vue"
 import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'

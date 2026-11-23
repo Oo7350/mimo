@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="ann-page">
     <div class="ann-header">
       <h2>系统公告</h2>
@@ -11,6 +11,8 @@
         </el-button>
       </div>
     </div>
+
+    <PageHint>面向全体成员的公告栏：版本发布、维护通知、制度变更放这里。管理员可以发布，其他人只看。</PageHint>
 
     <div v-loading="loading" class="ann-list">
       <el-empty v-if="!loading && list.length === 0" description="暂无公告" />
@@ -82,6 +84,7 @@
 </template>
 
 <script setup lang="ts">
+import PageHint from "@/components/common/PageHint.vue"
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh } from '@element-plus/icons-vue'

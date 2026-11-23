@@ -189,9 +189,13 @@ router.beforeEach(async (to, _from, next) => {
   if (to.meta.requiresPermission) {
     const { usePermissionStore } = await import("@/store/permission");
     const permStore = usePermissionStore();
-    if (!permStore.loaded) await permStore.fetch();
+    // await 在途请求本身（fetch 现在返回同一个 promise），否则并发拉取时会拿到空结果
+    await permStore.fetch();
     const code = to.meta.requiresPermission as string;
-    if (!permStore.has(code)) {
+    // 与后端 AccessControlService.isSystemAdmin 的口径保持一致：RBAC 权限码 ∪ 旧字段管理员。
+    // 只判 RBAC 会出现"设置菜单里有、点进去被弹回工作台"——菜单按并集显示，守卫也必须按并集放行。
+    const isLegacyAdmin = userStore.userInfo?.role === "ROLE_ADMIN";
+    if (!permStore.has(code) && !isLegacyAdmin) {
       ElMessage.error("无访问权限：" + code);
       next({ name: "Dashboard" });
       return;

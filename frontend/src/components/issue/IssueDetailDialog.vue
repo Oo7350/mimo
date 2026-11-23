@@ -7,6 +7,48 @@
     destroy-on-close
     class="issue-dialog"
   >
+    <!--
+      「下一步」条：这个工作项现在处在链路哪一段、下一步该点哪里。
+      以前这条链路全靠人记住 —— 验收在 Tab 6、状态在 Tab 1 的下拉框、报告在项目菜单里，
+      做完一件事之后界面上没有任何地方告诉你"然后呢"。这里把四段串起来并给出唯一的主动作。
+    -->
+    <div
+      v-if="isEdit && form.id"
+      class="next-step"
+      :class="'next-step--' + nextStep.tone"
+    >
+      <div class="next-step__rail">
+        <span
+          v-for="(node, index) in chain"
+          :key="node.key"
+          class="next-step__node"
+          :class="{ 'is-done': node.done, 'is-active': node.active }"
+        >
+          {{ node.label }}
+          <span v-if="index < chain.length - 1" class="next-step__arrow">→</span>
+        </span>
+      </div>
+      <div class="next-step__body">
+        <div class="next-step__title">{{ nextStep.title }}</div>
+        <div class="next-step__desc">{{ nextStep.desc }}</div>
+      </div>
+      <div class="next-step__actions">
+        <el-button
+          v-if="nextStep.primary"
+          type="primary"
+          size="small"
+          :loading="loading"
+          @click="nextStep.primary.action()"
+        >{{ nextStep.primary.label }}</el-button>
+        <el-button
+          v-if="nextStep.secondary"
+          size="small"
+          plain
+          @click="nextStep.secondary.action()"
+        >{{ nextStep.secondary.label }}</el-button>
+      </div>
+    </div>
+
     <el-tabs v-model="activeTab" class="issue-dialog__tabs">
       <!-- Tab 1: Type-specific form -->
       <el-tab-pane :label="tab1Label" name="basic">
@@ -220,7 +262,12 @@
 
       <!-- Tab 6: Task review loop -->
       <el-tab-pane v-if="isEdit && issueId" label="验收" name="reviews">
-        <IssueReviewPanel :issue-id="issueId" @updated="handleGovernanceUpdated" />
+        <IssueReviewPanel
+          ref="reviewPanelRef"
+          :issue-id="issueId"
+          @updated="handleGovernanceUpdated"
+          @loaded="onReviewsLoaded"
+        />
       </el-tab-pane>
     </el-tabs>
 
@@ -248,7 +295,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch, computed } from "vue"
+import { ref, reactive, watch, computed, nextTick } from "vue"
+import { useRouter } from "vue-router"
 import { createIssue, getIssueById, updateIssue, deleteIssue, addAcceptanceCriteria, updateAcceptanceCriteria, deleteAcceptanceCriteria } from "@/api/issue"
 import { getIssueAttachments, uploadAttachment, downloadAttachment, deleteAttachment } from "@/api/attachment"
 import { getCommentsByIssue } from "@/api/comment"
@@ -289,6 +337,11 @@ const stories = ref<IssueCard[]>([])
 const bugFormRef = ref<any>(null)
 const showAiSplitter = ref(false)
 
+// 「下一步」条用到的验收记录：由验收面板加载后回传，详情页不再重复请求一次
+const reviewPanelRef = ref<any>(null)
+const reviews = ref<any[]>([])
+const router = useRouter()
+
 // 当前用户（用于工时删除权限）
 const userStore = useUserStore()
 const currentUserId = computed(() => Number(userStore.userInfo?.id) || 0)
@@ -301,6 +354,133 @@ const isEdit = computed(() => props.mode === "edit")
 const changeGoverned = computed(() =>
   isEdit.value && Boolean(form.sprintId) && form.status !== "DONE"
 )
+
+// ---- 「下一步」：把 待办 → 进行中 → 待验收 → 已完成 这条链显式化 ----
+const latestReview = computed(() => {
+  const list = [...reviews.value].sort((a, b) => (b.roundNo || 0) - (a.roundNo || 0))
+  return list[0] || null
+})
+
+function onReviewsLoaded(list: any[]) {
+  reviews.value = list || []
+}
+
+/** 四段链路节点：done=已经走过，active=现在就停在这一段 */
+const chain = computed(() => {
+  const status = form.status
+  const reviewStatus = latestReview.value?.status ?? null
+  const finished = status === "DONE"
+  const reviewPassed = reviewStatus === "APPROVED" || finished
+  const reviewPending = reviewStatus === "PENDING"
+  return [
+    { key: "todo", label: "待办", done: status !== "TODO", active: status === "TODO" },
+    {
+      key: "doing",
+      label: "进行中",
+      done: finished || reviewPassed || reviewPending,
+      active: status === "IN_PROGRESS" && !reviewPassed && !reviewPending,
+    },
+    { key: "review", label: "待验收", done: reviewPassed, active: reviewPending },
+    { key: "done", label: "已完成", done: false, active: finished },
+  ]
+})
+
+/**
+ * 当前唯一该做的事 + 出口。
+ * 顺序很重要：先看验收状态（它比 status 更能说明"卡在哪"），再看 status。
+ */
+const nextStep = computed<{
+  tone: string
+  title: string
+  desc: string
+  primary?: { label: string; action: () => void }
+  secondary?: { label: string; action: () => void }
+}>(() => {
+  const review = latestReview.value
+  const status = form.status
+
+  if (status === "DONE") {
+    return {
+      tone: "done",
+      title: "已完成",
+      desc: "这条链路走完了。想确认它对交付节奏的影响，去项目报告看这一轮的速率与累积流。",
+      primary: { label: "查看项目报告", action: goReports },
+      secondary: { label: "回到看板", action: () => emit("update:visible", false) },
+    }
+  }
+  if (review?.status === "PENDING") {
+    return {
+      tone: "wait",
+      title: "等待验收",
+      desc: `第 ${review.roundNo} 轮验收已提交，等报告人或项目管理员处理；通过后就可以标记完成。`,
+      primary: { label: "去验收处理", action: () => { activeTab.value = "reviews" } },
+    }
+  }
+  if (review?.status === "REJECTED") {
+    return {
+      tone: "warn",
+      title: "被打回，需要返工",
+      desc: review.reviewNote ? `打回原因：${review.reviewNote}` : "验收未通过，按意见修改后重新提交。",
+      primary: { label: "重新提交验收", action: submitReviewFromNext },
+    }
+  }
+  if (review?.status === "APPROVED") {
+    return {
+      tone: "ok",
+      title: "验收已通过",
+      desc: "验收过了，最后一步：把状态改成已完成，这条链路就闭合了。",
+      primary: { label: "标记完成", action: () => advanceTo("DONE") },
+    }
+  }
+  if (status === "IN_PROGRESS") {
+    return {
+      tone: "doing",
+      title: "进行中",
+      desc: "做完并自测后提交验收，由报告人或项目管理员确认。不想走验收也可以直接标记完成。",
+      primary: { label: "提交验收", action: submitReviewFromNext },
+      secondary: { label: "直接标记完成", action: () => advanceTo("DONE") },
+    }
+  }
+  return {
+    tone: "todo",
+    title: "还没开始",
+    desc: "点「开始处理」把状态移到进行中，计时也从这一刻开始。",
+    primary: { label: "开始处理", action: () => advanceTo("IN_PROGRESS") },
+  }
+})
+
+/** 推进状态：走和"保存"同一条接口，这样计时（IssueTimerUtil）和看板列同步都不会漏 */
+async function advanceTo(status: string) {
+  if (!form.id) return
+  const previous = form.status
+  form.status = status
+  onStatusChange(status)
+  loading.value = true
+  try {
+    await updateIssue(buildPayload())
+    ElMessage.success(status === "DONE" ? "已标记完成" : "已开始处理")
+    emit("updated")
+    await loadIssue()
+  } catch (error: any) {
+    form.status = previous // 失败回滚，界面不能骗人
+    onStatusChange(previous)
+    ElMessage.error(error?.response?.data?.message || error?.message || "状态更新失败")
+  } finally {
+    loading.value = false
+  }
+}
+
+/** 从「下一步」直接拉起提交验收弹窗，省得让用户自己去 Tab 6 找按钮 */
+async function submitReviewFromNext() {
+  activeTab.value = "reviews"
+  await nextTick()
+  reviewPanelRef.value?.openSubmitDialog()
+}
+
+function goReports() {
+  emit("update:visible", false)
+  router.push(`/projects/${props.projectId}/reports`)
+}
 
 const dialogTitle = computed(() => {
   if (isEdit.value) {
@@ -504,6 +684,7 @@ watch(() => props.visible, async (v) => {
     activeTab.value = "basic"
     polishedText.value = ""
     aiPriority.value = null
+    reviews.value = [] // 换工作项时先清空，别让上一条的验收状态影响「下一步」
     fetchMembers()
     if (!isEdit.value) fetchStories()
     Object.assign(form, {
@@ -596,46 +777,55 @@ async function onAcRemove(criteriaId: string) {
 }
 
 // ---- Save ----
+/**
+ * 组装提交载荷。抽出来是因为「保存」和「下一步」里的状态推进必须走**同一份**数据，
+ * 否则两条路会在看板列、bugStatus、依赖字段上慢慢分叉。
+ */
+function buildPayload() {
+  const colId = !isEdit.value ? statusToColumn("TODO") : form.columnId
+
+  // Build environment from BugDialog if BUG type
+  let env = form.environment
+  if (form.type === 'BUG' && bugFormRef.value?.envString) {
+    env = bugFormRef.value.envString
+  }
+
+  const data: any = {
+    ...form,
+    projectId: props.projectId,
+    columnId: colId,
+    environment: env,
+  }
+
+  // 甘特图 — v2.9.3: dependencies 转 JSON 数组
+  if (data.dependencies && typeof data.dependencies === 'string') {
+    const ids = data.dependencies.split(',').map((s: string) => Number(s.trim())).filter((n: number) => !!n)
+    data.dependencies = JSON.stringify(ids)
+  } else {
+    data.dependencies = null
+  }
+
+  // BUG 类型：确保 status 和 bugStatus 同步
+  if (form.type === 'BUG' && isEdit.value) {
+    if (form.status === 'DONE') data.bugStatus = form.bugStatus || 'CLOSED'
+    else if (form.status === 'IN_PROGRESS') data.bugStatus = form.bugStatus || 'IN_PROGRESS'
+    else data.bugStatus = form.bugStatus || 'NEW'
+  }
+
+  // For create mode, strip edit-only fields
+  if (!isEdit.value) {
+    delete data.id
+    delete data.status
+    delete data.bugStatus
+  }
+  return data
+}
+
 async function handleSave() {
   if (!form.title) { ElMessage.warning("请输入标题"); return }
   loading.value = true
   try {
-    const colId = !isEdit.value ? statusToColumn("TODO") : form.columnId
-
-    // Build environment from BugDialog if BUG type
-    let env = form.environment
-    if (form.type === 'BUG' && bugFormRef.value?.envString) {
-      env = bugFormRef.value.envString
-    }
-
-    const data: any = {
-      ...form,
-      projectId: props.projectId,
-      columnId: colId,
-      environment: env,
-    }
-
-    // 甘特图 — v2.9.3: dependencies 转 JSON 数组
-    if (data.dependencies && typeof data.dependencies === 'string') {
-      const ids = data.dependencies.split(',').map((s: string) => Number(s.trim())).filter((n: number) => !!n)
-      data.dependencies = JSON.stringify(ids)
-    } else {
-      data.dependencies = null
-    }
-
-    // BUG 类型：确保 status 和 bugStatus 同步
-    if (form.type === 'BUG' && isEdit.value) {
-      if (form.status === 'DONE') data.bugStatus = form.bugStatus || 'CLOSED'
-      else if (form.status === 'IN_PROGRESS') data.bugStatus = form.bugStatus || 'IN_PROGRESS'
-      else data.bugStatus = form.bugStatus || 'NEW'
-    }
-
-    // For create mode, strip edit-only fields
-    if (!isEdit.value) {
-      delete data.id
-      delete data.status
-      delete data.bugStatus
-    }
+    const data = buildPayload()
 
     if (isEdit.value) {
       await updateIssue(data)
@@ -685,6 +875,84 @@ async function handleGovernanceUpdated() {
 </script>
 
 <style scoped lang="scss">
+/* 「下一步」条 —— 四段链路 + 当前唯一该做的动作 */
+.next-step {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color-light);
+  border-left: 3px solid var(--el-color-primary);
+  background: var(--color-primary-lighter, rgba(99, 102, 241, 0.06));
+
+  &--todo { border-left-color: var(--el-color-info); }
+  &--doing { border-left-color: var(--el-color-primary); }
+  &--wait { border-left-color: var(--el-color-warning); }
+  &--warn { border-left-color: var(--el-color-danger); background: rgba(245, 108, 108, 0.06); }
+  &--ok { border-left-color: var(--el-color-success); background: rgba(103, 194, 58, 0.06); }
+  &--done { border-left-color: var(--el-color-success); }
+
+  &__rail {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  &__node {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+
+    &.is-done {
+      color: var(--el-color-success);
+    }
+
+    &.is-active {
+      color: var(--el-color-primary);
+      font-weight: 600;
+      border-color: currentColor;
+      background: rgba(255, 255, 255, 0.6);
+    }
+  }
+
+  &__arrow {
+    color: var(--border-color);
+  }
+
+  &__body {
+    flex: 1 1 260px;
+    min-width: 0;
+  }
+
+  &__title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  &__desc {
+    margin-top: 2px;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+  }
+
+  &__actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+}
+
 .issue-dialog {
   &__tabs { :deep(.el-tabs__header) { margin-bottom: 12px; } }
   &__gantt-fields {

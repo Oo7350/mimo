@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="inbox-page">
     <div class="inbox-header">
       <h2>收件箱</h2>
@@ -29,6 +29,8 @@
         </el-button>
       </div>
     </div>
+
+    <PageHint>绑定邮箱后在这里直接读信，不用切到外部邮箱。想发通知，去「邮箱绑定」配置好 SMTP 即可。</PageHint>
 
     <el-empty v-if="!loading && !currentAccount" description="尚未绑定任何邮箱，请先去「邮箱绑定」页绑定" >
       <el-button type="primary" @click="goBind">前往绑定</el-button>
@@ -78,6 +80,7 @@
 </template>
 
 <script setup lang="ts">
+import PageHint from "@/components/common/PageHint.vue"
 import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'

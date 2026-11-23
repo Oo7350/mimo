@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="email-accts-page">
     <div class="page-header">
       <h2>邮箱绑定</h2>
@@ -6,6 +6,8 @@
         <el-icon><Plus /></el-icon> 绑定新邮箱
       </el-button>
     </div>
+
+    <PageHint>绑定你的工作邮箱（IMAP 收信 / SMTP 发信）。绑好之后，系统才能代你发通知邮件、把收件箱拉进来。</PageHint>
 
     <!-- 已绑定账户列表 -->
     <el-card class="section" shadow="never">
@@ -146,6 +148,7 @@
 </template>
 
 <script setup lang="ts">
+import PageHint from "@/components/common/PageHint.vue"
 import { ref, onMounted, reactive } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Message } from '@element-plus/icons-vue'
