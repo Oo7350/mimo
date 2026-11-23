@@ -4,6 +4,42 @@
 
 ---
 
+## v2.18.1 — Markdown / 邮件正文 XSS 修复（取证驱动）(2026-11-23)
+
+### BUG-092: 「正则黑名单」清洗挡不住 XSS，`<details ontoggle>` 在真实浏览器里直接执行 [High]
+
+- **严重程度**: High（存储型 XSS —— 恶意内容只要落进评论 / Wiki / 公告 / 报告 / AI 气泡 / 邮件正文，
+  点开页面的**其他成员**就会中招；邮件正文那条更糟，发信人可以是团队外任何人）
+- **文件**: `frontend/src/utils/markdown.ts`（`renderMarkdown()` 的调用点 6 个：
+  `CommentSection.vue`、`Wiki.vue`、`Announcements.vue`、`ReportList.vue`、`AiChatPanel.vue`、`IssueDetailDialog` 相关）、
+  `frontend/src/views/EmailInbox.vue`（自己另抄了一份更弱的正则清洗）
+- **现象**: 用户输入经 `marked` 渲染后直接 `v-html`。所谓防护是 `sanitize()` 里的 8 条正则：
+  删 `<script>`/`<iframe>`/`<object>`/`<embed>`、删带引号的 `on\w+="…"`、删 `javascript:` 字符串。
+- **取证方式**: 新增 `e2e/xss-markdown.mjs` —— 不需要后端/前端 dev server，用 Playwright 起真实 Chromium，
+  把仓库里真实的 `markdown.ts` 用 esbuild 转译后**原样执行**（不是抄副本），渲染结果用 `innerHTML` 注入
+  （与 `v-html` 完全一致），再用 `window.__xssFired` 哨兵判断**脚本是否真的执行**，而不是 grep 关键词。
+- **实测（修复前 = git HEAD 的版本，6/10 挡住）**:
+
+  | 载荷 | 结果 |
+  |---|---|
+  | `<details open ontoggle=window.__xssFired=true>` | **脚本已执行** —— 事件处理器不带引号就不匹配正则 |
+  | `[点我](jav&#x61;script:window.__xssFired=true)` | 实体解码后得到 `javascript:` 链接，点一下就执行 |
+  | `<math><mtext><table><mglyph><style><img …>` | mXSS 解析器混淆，`<style>` 留在 DOM 里 |
+  | `<style>div{background:url("javascript:…")}</style>` | `<style>` 标签根本没被处理 |
+
+  邮件正文那份清洗连 `javascript:` 都不删，同一批载荷全过。
+- **根因**: 用正则做 HTML 过滤 —— 正则不懂 HTML 解析，引号可有可无、字符可用实体编码、
+  浏览器还会为修正畸形标签重新分组（mXSS）。黑名单又永远漏项。
+- **修复**: 换成 DOMPurify（按真实 DOM 解析 + 白名单重建），`sanitizeHtml()` 统一出口，
+  Markdown 与邮件正文共用；`dompurify` 从 `jspdf`/`html2pdf.js` 的间接依赖提为直接依赖（`^3.4.8`）。
+- **验证**: `node e2e/xss-markdown.mjs` 当前工作区源码 **10/10 PASS**（含"正常 Markdown 仍能渲染"回归项），
+  同一脚本跑修复前的 `git HEAD` 版本稳定复现 3 条失败 + 1 条真执行，证明用例本身有诊断力；
+  `npm run build`（vue-tsc + vite）通过，新增 DOMPurify 使 markdown 共享块 69.6 kB / gzip 23 kB。
+- **仍未做**: 后端存储前不做 strip（只靠前端白名单，导出/第三方消费方仍需自行转义）；
+  `Profile.vue` 的活动流 `v-html="item.text"` 走的是后端拼的文案，本次未纳入。
+
+---
+
 ## 历史补录 — 2026-11-20 审计
 
 > 用户要求"系统出现过的 bug 都要登记"。审计方式：把仓库里所有 `fix:` 提交拉出来，
@@ -1072,13 +1108,15 @@
 
 ## 已知未修复问题
 
-### KNOWN-001: @PreAuthorize 角色前缀 Bug [Low]
+### KNOWN-001: @PreAuthorize 角色前缀 Bug [Low] — 2026-11-23 复核：已失效
 
 - **文件**: `backend/.../TeamController.java`
 - **现象**: `@PreAuthorize("hasRole('ROLE_ADMIN')")` 实际检查的是 `ROLE_ROLE_ADMIN`，永远不会匹配
 - **原因**: Spring Security 的 `hasRole()` 自动添加 `ROLE_` 前缀
 - **建议修复**: 改用 `hasAuthority('ROLE_ADMIN')`
 - **当前状态**: 未修复（该注解目前未被实际依赖，权限校验在 Service 层手动实现）
+- **复核（2026-11-23）**: 全后端已搜不到任何 `@PreAuthorize`（0 命中），注解被整体移除，
+  前缀陷阱不复存在；权限一律在 Service 层显式判断，本条作废。
 
 ### KNOWN-002: Redis 未实际使用 [Low]
 
@@ -1087,11 +1125,13 @@
 - **影响**: 多实例部署时 WebSocket 消息无法跨实例同步
 - **建议**: 切换到 Redis-backed WebSocket message broker
 
-### KNOWN-003: 上传目录配置缺失 [Low]
+### KNOWN-003: 上传目录配置缺失 [Low] — 2026-11-23 复核：已修复
 
 - **文件**: `backend/.../AttachmentService.java`
 - **现象**: `mimo.upload.dir` 属性未在 `application.yml` 中设置，使用默认值 `./uploads`
 - **影响**: 部署时附件保存路径不可控
+- **复核（2026-11-23）**: `application.yml:54-55` 已显式写成 `dir: ${MIMO_UPLOAD_DIR:./uploads}`，
+  部署时用环境变量覆盖即可，本条关闭。
 
 ### KNOWN-004: Issue Key 生成存在并发冲突风险 [Medium] — 2026-11-23 已修复
 
@@ -1144,11 +1184,13 @@
 - **影响**: 可能出现孤立的 `comments`、`attachments` 等记录
 - **当前状态**: 设计选择，非必须修复
 
-### KNOWN-008: Sprint 快速创建限制前 5 个任务硬编码 [Low]
+### KNOWN-008: Sprint 快速创建限制前 5 个任务硬编码 [Low] — 2026-11-23 复核：已修复
 
 - **文件**: `backend/.../SprintService.java`
 - **现象**: `createQuickSprint()` 中 `if (added >= 5) break` 硬编码了 5 个任务的限制
 - **建议修复**: 改为可配置参数
+- **复核（2026-11-23）**: 已改成配置项 `sprint.quick-create-tasks:5`（`SprintService.java:27-28` 声明，
+  第 157 行 `if (added >= quickCreateTasks) break` 使用），调容量不用改代码。
 
 ### KNOWN-009: 团队/项目/Sprint/评论均无更新端点 [Medium] — 2026-11-23 已修复
 
@@ -1171,48 +1213,65 @@
 - **仍未做**: 前端还没有接入这四个端点的编辑 UI（本轮只补后端能力），
   接口文档 `接口文档.md` 已补，前端改动建议单独一轮做（涉及团队/项目设置页表单）
 
-### KNOWN-010: 默认看板列名硬编码中文 [Low]
+### KNOWN-010: 默认看板列名硬编码中文 [Low] — 2026-11-23 复核：已修复
 
 - **文件**: `backend/.../ProjectService.java`
 - **现象**: 默认列名"待办/进行中/已完成"写死在代码中
 - **影响**: 非中文部署时列名不便
+- **复核（2026-11-23）**: 已改成配置项 `@Value("${board.default-columns:待办|#909399,进行中|#409EFF,已完成|#67C23A}")`
+  （`ProjectService.java:23`），默认值仍是中文，但新建项目时可用配置覆盖。
 
-### KNOWN-011: 聊天/评论使用 v-html 无 XSS 防护 [Medium]
+### KNOWN-011: 聊天/评论使用 v-html 无 XSS 防护 [Medium] — 2026-11-23 已修复（实测后升级为 BUG-092）
 
-- **文件**: `TeamDetail.vue`（@提及渲染）、`IssueDetailDialog.vue`（Markdown 渲染）
+- **文件**: `frontend/src/utils/markdown.ts`、`frontend/src/views/EmailInbox.vue` 及 6 处 `v-html` 调用点
 - **现象**: 用户输入的聊天内容和评论经 `renderMarkdown()`/`renderMention()` 后直接通过 `v-html` 渲染
-- **风险**: 若服务端未做 sanitize，恶意 `<script>` 标签可被执行
-- **建议修复**: 后端存储前 strip 危险 HTML 标签，或前端使用 DOMPurify
+- **本次复核结论（2026-11-23）**:
+  - `renderMention()` 早已先做 HTML 转义再高亮，这一条**不再是问题**（`TeamDetail.vue:780-789`）
+  - 真正的问题在 `renderMarkdown()`：`sanitize()` 是正则黑名单，被 `<details ontoggle>` 直接绕过并执行，
+    另两条（实体编码 `javascript:`、mXSS 留 `<style>`）也能穿；受影响面不止原记录的 2 处，实际 **8 处 `v-html`**
+  - 详细取证（真实浏览器 + 哨兵变量）与修法见 **BUG-092**
+- **已修复（2026-11-23 / v2.18.1）**: `sanitizeHtml()` 改用 DOMPurify 白名单，Markdown 与邮件正文共用；
+  `e2e/xss-markdown.mjs` 10 条载荷全绿（修复前 6/10）
+- **仍未做**: 后端不做 strip，导出件与第三方消费方需自行转义
 
-### KNOWN-012: 离开团队使用 window.location.href 触发全页刷新 [Low]
+### KNOWN-012: 离开团队使用 window.location.href 触发全页刷新 [Low] — 2026-11-23 复核：已修复
 
 - **文件**: `frontend/src/views/TeamDetail.vue`
 - **现象**: 移除成员自己离开团队后，使用 `window.location.href = '/teams'` 而非 Vue Router
 - **影响**: 全页刷新丢失 Vue 状态
+- **复核（2026-11-23）**: 全前端已无 `window.location.href`（0 命中），离开团队改走 router 跳转，本条关闭。
 
 ### KNOWN-013: 在线人数始终显示总成员数 [Low]
 
 - **文件**: `frontend/src/views/TeamDetail.vue`
 - **根因**: `onlineCount = computed(() => members.value.length)` 取的是成员总数
 - **建议修复**: 通过 WebSocket 统计真实在线连接数
+- **复核（2026-11-23）**: 仍在（`TeamDetail.vue:591`），但**文案已改成"N 位成员"**（第 166 行），
+  不再对外宣称是"在线人数"，误导消除；真实在线统计仍未实现，故保持未关闭。
 
 ### KNOWN-014: 工作台快捷操作 5 个按钮 4 个指向同一路由 [Low]
 
 - **文件**: `frontend/src/views/Dashboard.vue`
 - **现象**: "新建任务"/"看板视图"/"Sprint"/"报告" 都跳到 `/projects`
+- **复核（2026-11-23）**: 仍在 —— `Dashboard.vue:404-410` 的 `quickActions` 里
+  「项目管理 / 看板视图 / Sprint / 项目报告」四项 `route` 全是 `'/projects'`（只有团队管理是 `/teams`）。
 - **建议修复**: 分别路由到看板创建弹窗、Sprint 管理、报告页
 
-### KNOWN-015: 审批"拒绝原因"输入框取消时行为不一致 [Low]
+### KNOWN-015: 审批"拒绝原因"输入框取消时行为不一致 [Low] — 2026-11-23 复核：已修复
 
 - **文件**: `frontend/src/views/ApprovalList.vue`
 - **现象**: `ElMessageBox.prompt` 的 cancel 回调中，Element Plus 返回 `'cancel'` 或 `'close'`，但只检查了 `'cancel'`
 - **影响**: 某些情况下用户点 X 关闭后仍会执行 reject 请求
+- **复核（2026-11-23）**: 已修复 —— `ApprovalList.vue:92-93` 现在 `.catch(() => null)` 之后紧跟
+  `if (reason === null) return`，取消与关闭都不会再发 `rejectRequest`。
 
 ### KNOWN-016: 部署脚本 deploy.ps1 无确认步骤 [Low]
 
 - **文件**: `deploy.ps1`
 - **现象**: 执行即覆盖服务器生产环境，无确认提示
 - **建议修复**: 加 `Read-Host "确认部署? (y/n)"` 确认步骤
+- **复核（2026-11-23）**: 仍在 —— `deploy.ps1` 全文件无 `Read-Host` / 无二次确认，
+  0/4～4/4 五步直接连跑（其中第 0 步会 `Stop-Process` 杀掉占用 jar 的 java 进程）。
 
 
 ### KNOWN-017: 核心业务链路缺少端到端验证 [High] — 2026-11-20 部分已解决
@@ -1271,15 +1330,16 @@
 | 严重程度 | 数量 |
 |---------|------|
 | Critical | 6 |
-| High | 36 |
+| High | 37 |
 | Medium | 31 |
 | Low | 18 |
-| **已修复（BUG 条目）** | **91** |
-| **已知未修复（KNOWN 条目）** | **15** |
-| **总计** | **110** |
+| **已修复（BUG 条目）** | **92** |
+| **已知未修复（KNOWN 条目）** | **8** |
+| **总计** | **100** |
 
 | 版本段 | BUG 条数 |
 |--------|---------|
+| v2.18.1 — Markdown/邮件 XSS 修复（取证驱动）(2026-11-23) | 1 |
 | 历史补录 — 2026-11-20 审计 | 8 |
 | v2.17.0 — 新手引导重做 (2026-11-20) | 6 |
 | v2.16.2 — Wiki 目录越权修复 + 请求参数校验 (2026-11-20) | 2 |
@@ -1301,3 +1361,10 @@
 
 > 统计口径：直接按 `### BUG-0NN` / `### KNOWN-0NN` 标题解析，已知未修复 = KNOWN 条目里未标"已解决"的
 > （KNOWN-017 部分解决仍计为未关闭）。数字由 `tools/buglog_stats.py` 生成，改完条目后重跑即可校对，不再手写。
+>
+> **2026-11-23 校对**：`tools/buglog_stats.py` 不在当前工作区，本次按同一口径手工重算，并修掉三处不一致 ——
+> ① 上版 `总计 110` 是 KNOWN 未关闭还有 19 条时的旧值（v2.18.0 已降到 15，总计没跟着改），
+> 现按 `总计 = BUG 条目 + KNOWN 未关闭` 修正为 100；
+> ② 本轮复核把 6 条「其实早就修好、只是没标」的 KNOWN（001 / 003 / 008 / 010 / 012 / 015）标为已修复，
+> 加上 KNOWN-011 收口，未关闭 15 → 8；
+> ③ 严重程度四档合计仍等于 BUG 条目数（6 + 37 + 31 + 18 = 92）。

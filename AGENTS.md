@@ -1,6 +1,6 @@
 # AGENTS.md
 
-> **最新版本**：v2.18.0（2026-11-23）— 清掉一批 KNOWN 遗留：任务编号并发冲突、删团队留孤儿、审批执行无补偿、四类资源缺更新端点。详见末尾"版本变更记录"。
+> **最新版本**：v2.18.1（2026-11-23）— Markdown / 邮件正文 XSS 修复：正则黑名单换成 DOMPurify，并补了一条不用起服务的浏览器级取证用例。详见末尾"版本变更记录"。
 
 This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
@@ -8,8 +8,8 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 Mimo is a lightweight Trello-like project management platform for small teams. It supports team collaboration, kanban task tracking, and progress visualization.
 
-- **Version**: v2.18.0 — KNOWN 遗留收口（编号并发 / 团队孤儿 / 审批补偿 / 更新端点）(2026-11-23)
-- **Previous**: v2.15.6 — Access Control and Change Governance Hardening (2026-11-12)
+- **Version**: v2.18.1 — Markdown/邮件 XSS 修复 + 取证用例 (2026-11-23)
+- **Previous**: v2.18.0 — KNOWN 遗留收口（编号并发 / 团队孤儿 / 审批补偿 / 更新端点）(2026-11-23)
 - **GitHub**: https://github.com/Oo7350/mimo
 - **API docs**: `接口文档.md` (70+ endpoints, Chinese)
 - **User manual**: `操作手册.md` (Chinese)
@@ -80,6 +80,7 @@ node e2e/core-flows.mjs http://localhost:5173
 | `e2e/ai-degrade.mjs` | AI 未配置提示条 / 对话友好说明 / 润色失败不改写正文 | 3/3 PASS |
 | `e2e/authz.mjs` | 外人打 23 个读接口全部 403 / 成员访问正常 / 缺参数 400 | 25/25 PASS |
 | `e2e/tour.mjs` | 引导自动触发 / 跳过清理 / 入口常驻与重播 / 错页面提示 | 9/9 PASS |
+| `e2e/xss-markdown.mjs` | Markdown 与邮件正文的 XSS 载荷 10 条（真实浏览器 + 哨兵变量；**不需要起服务**） | 10/10 PASS |
 
 跑法与三个必踩的坑（driver.js 的 `driver-active` 会锁死全站点击、Element Plus 页签要 `dispatchEvent`、
 vuedraggable 不吃 `locator.dragTo`）见 `e2e/README.md`。
@@ -212,6 +213,30 @@ All v2.15 AI roadmap items are implemented. Future work may replace the lexical 
 - **Board Sync Flow**: Drag → `PUT /api/board/issue/move` → backend updates issue + logs + WebSocket broadcast → all board subscribers receive event → optimistic UI update
 
 ## Version History
+
+### v2.18.1 — Markdown / 邮件正文 XSS 修复 + 浏览器级取证用例 (2026-11-23)
+
+KNOWN-011 一直写着"用 v-html 渲染用户输入、建议上 DOMPurify"，这次补了取证才发现它不只是"没防护"，
+而是**现有的正则黑名单本身能被绕过**。
+
+- **BUG-092 [High] 存储型 XSS**：`utils/markdown.ts` 的 `sanitize()` 是 8 条正则黑名单
+  （删 `<script>`、删带引号的 `on\w+="…"`、删 `javascript:`）。用真实 Chromium 实测：
+  `<details open ontoggle=…>` **直接执行**（事件处理器不带引号就不匹配），
+  `[点我](jav&#x61;script:…)` 实体解码后留下可点的 `javascript:` 链接，
+  mXSS 载荷（`<math><mtext><table><mglyph><style>…`）把 `<style>` 留在 DOM 里。
+  受影响面也比原记录的 2 处大 —— 实际 **8 处 `v-html`**，其中 `EmailInbox.vue` 另抄了一份更弱的正则清洗
+  （连 `javascript:` 都不删），而邮件正文来自团队外发信人。
+- **修复**：`sanitizeHtml()` 改用 DOMPurify（真实 DOM 解析 + 白名单重建），Markdown 与邮件正文共用同一个出口；
+  `dompurify` 由 `jspdf`/`html2pdf.js` 的间接依赖提为直接依赖（`^3.4.8`）。
+- **新增用例 `e2e/xss-markdown.mjs`**：不需要后端/前端服务，Playwright 起空白页 + 真实 Chromium，
+  把仓库里真实的 `markdown.ts` 用 esbuild 转译后原样执行，渲染结果按 `v-html` 的方式注入 `innerHTML`，
+  用 `window.__xssFired` 判断脚本**是否真的执行**（不是 grep 关键词）。
+  用例自带"修复前基线"管线（`git show HEAD:…markdown.ts`），修复前 6/10、现在 10/10，基线不进退出码。
+- **顺手校对过期 KNOWN**：复核发现 6 条早就修好却没标（001 `@PreAuthorize` 已整体移除、
+  003 上传目录已可配、008 快速建 Sprint 已可配、010 默认列名已可配、012 已无 `window.location.href`、
+  015 取消审批已有 `reason === null` 提前返回），未关闭 KNOWN 15 → 8；统计口径与三处数字不一致一并说明。
+- **验证**：`node e2e/xss-markdown.mjs` 10/10 PASS；`npm run build`（vue-tsc + vite）通过，
+  markdown 共享块 69.6 kB / gzip 23 kB。
 
 ### v2.18.0 — KNOWN 遗留四连修：编号冲突 / 团队孤儿 / 审批补偿 / 更新端点 (2026-11-23)
 

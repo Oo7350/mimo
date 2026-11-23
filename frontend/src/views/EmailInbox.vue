@@ -90,6 +90,7 @@ import {
   type MailSummaryVO,
   type MailDetailVO,
 } from '@/api/email'
+import { sanitizeHtml } from '@/utils/markdown'
 
 const route = useRoute()
 const router = useRouter()
@@ -173,17 +174,10 @@ function formatTime(s?: string): string {
     : d.toLocaleDateString('zh-CN') + ' ' + d.toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' })
 }
 
-// 简单 HTML 清理：移除 script/iframe/object/embed，避免 XSS
-const sanitizedHtml = computed(() => {
-  if (!detail.value?.htmlBody) return ''
-  return detail.value.htmlBody
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<iframe[\s\S]*?<\/iframe>/gi, '')
-    .replace(/<object[\s\S]*?<\/object>/gi, '')
-    .replace(/<embed[\s\S]*?(?:\/?>)/gi, '')
-    .replace(/\son\w+="[^"]*"/gi, '')
-    .replace(/\son\w+='[^']*'/gi, '')
-})
+// 邮件正文是**外部来信**写的，必须当不可信 HTML 处理：
+// 和 Markdown 渲染共用同一套 DOMPurify 白名单（见 utils/markdown.ts 的说明），
+// 原来的正则版本连 javascript: 链接都不挡。
+const sanitizedHtml = computed(() => sanitizeHtml(detail.value?.htmlBody || ''))
 
 watch(() => route.query.accountId, async (v) => {
   if (v && typeof v === 'string') {

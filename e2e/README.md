@@ -57,6 +57,34 @@
 | 8 | 错页面启动只给提示 | 在首页点「看板实操」→ 不启动、提示"需要在项目看板页启动" |
 | 9 | 走完记为完成 | 点完最后一步后 `status === 'done'` |
 
+## Markdown / 邮件正文 XSS 用例（`xss-markdown.mjs`）
+
+对应 `bug-log.md` **KNOWN-011**（修复记录见 **BUG-092**）。这条用例**不需要后端、也不需要前端 dev server**，
+只起一个空白页的真实 Chromium，因此在这台没有 MySQL/Redis 的机器上也能跑。
+
+做法是"验行为不验字符串"：
+
+1. 读仓库里真实的 `frontend/src/utils/markdown.ts`，用 esbuild 转成 JS 后**原样执行**（改了源码这里跟着变，不是抄副本）；
+2. 渲染结果用 `innerHTML` 注入 —— 与 Vue 的 `v-html` 完全一致；
+3. 载荷里塞 `window.__xssFired=true`，注入后等 180ms 再读这个**哨兵**，判断脚本是"真的执行了"还是"只是字符串里出现过"；
+4. 同一批载荷跑两个版本：`git show HEAD:…markdown.ts`（修复前基线，**只作对照、不计入退出码**）与当前工作区源码（**这才是断言**）。
+
+| # | 载荷 | 修复前（正则黑名单） | 现在（DOMPurify） |
+|---|---|---|---|
+| 1 | `<img src=x onerror=…>`（不带引号） | 挡住 | 挡住 |
+| 2 | `<img src=x onerror = …>`（等号带空格） | 挡住 | 挡住 |
+| 3 | `<svg/onload=…>` | 挡住 | 挡住 |
+| 4 | `<details open ontoggle=…>` | **真的执行了** | 挡住 |
+| 5 | `![a"onerror="…](x)` | 挡住 | 挡住 |
+| 6 | `<math><mtext><table><mglyph><style>…`（mXSS） | 留 `<style>` | 挡住 |
+| 7 | `[点我](jav&#x61;script:…)` | 留 `javascript:` 链接 | 挡住 |
+| 8 | `<scr<script>ipt>…` | 挡住 | 挡住 |
+| 9 | `<style>…url("javascript:…")</style>` | 留 `<style>` | 挡住 |
+| 10 | 正常 Markdown（粗体/代码/列表/链接） | 格式保留 | 格式保留（回归项） |
+
+结果写 `e2e/xss-report.md`（已 gitignore）：修复前基线 6/10、当前源码 10/10。
+`dompurify` 缺失时先 `cd frontend && npm i`。
+
 ## 怎么跑
 
 前置：MySQL :3306、后端 :8080、前端 :5173 都已启动，且库里有项目 id=1（种子数据或自己造）。
@@ -74,6 +102,7 @@ node e2e/core-flows.mjs http://localhost:5173   # 核心业务链路 6 条（要
 node e2e/ai-degrade.mjs http://localhost:5173  # AI 未配置场景 3 条（要前端 :5173）
 node e2e/authz.mjs http://localhost:8080/api   # 越权拦截 25 条（只要后端 :8080）
 node e2e/tour.mjs http://localhost:5173        # 新手引导 9 条（要前端 :5173）
+node e2e/xss-markdown.mjs                      # Markdown/邮件 XSS 10 条（只要浏览器，不用起服务）
 ```
 
 Playwright 装在仓库外时靠 `PLAYWRIGHT_MODULE` 指过去；直接装在仓库里则不用设，脚本自己会找到。
