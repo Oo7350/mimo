@@ -85,6 +85,33 @@
 结果写 `e2e/xss-report.md`（已 gitignore）：修复前基线 6/10、当前源码 10/10。
 `dompurify` 缺失时先 `cd frontend && npm i`。
 
+## 主线自证用例（`main-chain.mjs`）
+
+不是"每个功能各验一次"，而是**一条链必须首尾相接**：注册一个全新账号，然后只走界面，
+从建团队一路走到看报告。链路中间任何一环断掉都会红 —— v2.19.0 的 BUG-099 / BUG-100
+就是它首跑（5/9）时抓出来的。
+
+| # | 检查点 | 断言 |
+|---|--------|------|
+| 1 | 新账号建第一个团队 | 团队列表里能看到，`GET /api/teams/my` 有它 |
+| 2 | 团队页建项目 | `GET /api/projects/team/{id}` 里有它 |
+| 3 | 项目页建迭代 | `GET /api/sprints/project/{id}` 里有它（要点开日期面板选起止） |
+| 4 | 看板建任务 | 卡片出现在「待办」列 |
+| 5 | 待办 → 进行中 | 接口回读 `status=IN_PROGRESS` |
+| 6 | 提交验收 | 产生 `PENDING` 的 review |
+| 7 | 单人团队的死锁有说明 | 详情页出现 `.next-step-blocked`（"团队里除你之外没有别人"） |
+| 8 | 从界面邀请第二个成员 | 成员数 ≥ 2 |
+| 9 | 管理员从工作台验收通过 | 「待我处理」里有这条 → 点进去通过 → `APPROVED` |
+| 10 | 一键标记完成 | `status=DONE` |
+| 11 | 项目报告页 | 有「生成报告」入口 |
+
+```bash
+node e2e/main-chain.mjs http://localhost:5173   # 11 条，要前端 :5173 + 后端 :8080
+```
+
+用例自己注册 `chain<时间戳>` 账号、自己清理（先用新账号自己的权限删项目/团队，删不掉会打警告）。
+引导遮罩靠预先写入 `localStorage.mimo_tour_state` 关掉（见下面第 4 个坑）。
+
 ## 怎么跑
 
 前置：MySQL :3306、后端 :8080、前端 :5173 都已启动，且库里有项目 id=1（种子数据或自己造）。
@@ -117,6 +144,9 @@ Playwright 装在仓库外时靠 `PLAYWRIGHT_MODULE` 指过去；直接装在仓
 2. **Element Plus 的页签要 `dispatchEvent('click')`**：`getByRole('tab')` / `.click()` 在弹窗里点不生效，
    用 `.el-tabs__item` 文本定位 + `dispatchEvent("click")` 才切换（见 `clickTab()`）。
 3. 拖拽用的是 vuedraggable(SortableJS)，`locator.dragTo()` 不触发，必须手工 `mouse.down/move/up`。
+4. **关引导要写对 key**：真状态是 `localStorage.mimo_tour_state`（按主题存 `{status:'done'|'skipped', v:2}`），
+   写 `sessionStorage` 的假 key 完全无效。引导一旦自动启动，遮罩会把后续点击全吃掉，
+   页面看起来"按钮点不动"。（`main-chain.mjs` 的 `addInitScript` 就是标准写法。）
 
 ## 还没覆盖的（后续补）
 
@@ -124,3 +154,4 @@ Playwright 装在仓库外时靠 `PLAYWRIGHT_MODULE` 指过去；直接装在仓
 - Sprint 启动 / 完成 / 未完成任务迁移
 - 导出 PDF / 导入 Excel
 - 配置了真实 Key 后的 AI 正常返回路径（RAG 引用质量、AI Sprint 规划）
+- 多角色验收矩阵（`main-chain.mjs` 目前只跑"创建者 + 一名管理员"这一种角色组合）
