@@ -1,6 +1,6 @@
 # AGENTS.md
 
-> **最新版本**：v2.19.0（2026-11-23）— 主线自证：用一个全新账号只走界面，把"建团队 → 建项目 → 建迭代 → 建任务 → 开始 → 提交验收 → 验收 → 完成 → 报告"整条链跑通（`e2e/main-chain.mjs`，11/11）。路上修掉两处"做了但两头对不上"：有资格验收的人在工作台看不到那条待验收（`WorkbenchService` 用"我的项目"二次过滤，与 `IssueReviewService` 的权限口径不一致），以及新建 Sprint 弹窗在没选日期时点"创建"完全没反应（静默 return）；并给单人团队补上"没人能验收"的说明与出口。详见末尾"版本变更记录"。
+> **最新版本**：v2.19.1（2026-11-23）— 「工作流不知所云」的用户反馈落地：设计器以前只显示工作流名字 + 编辑/删除，允许什么、禁止什么都没说，得先点「编辑」进拖拽画布才看得见；看板上被挡住时也只说"不允许"，不说还能往哪拖（`/api/workflow/transitions` 前端从未调用）。现在不点编辑就能看到「从 → 到 → 谁可以这么做」的规则表，被拦时直接告诉你去向。详见末尾"版本变更记录"。
 
 This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
@@ -8,8 +8,8 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 Mimo is a lightweight Trello-like project management platform for small teams. It supports team collaboration, kanban task tracking, and progress visualization.
 
-- **Version**: v2.19.0 — 主线自证：新账号走完整条链 (2026-11-23)
-- **Previous**: v2.18.5 — 角色授权不再重复堆积 + 首屏别先下结论 (2026-11-23)
+- **Version**: v2.19.1 — 工作流：配好了要看得懂，挡住了要指条路 (2026-11-23)
+- **Previous**: v2.19.0 — 主线自证：新账号走完整条链 (2026-11-23)
 - **GitHub**: https://github.com/Oo7350/mimo
 - **API docs**: `接口文档.md` (70+ endpoints, Chinese)
 - **User manual**: `操作手册.md` (Chinese)
@@ -213,6 +213,23 @@ All v2.15 AI roadmap items are implemented. Future work may replace the lexical 
 - **Board Sync Flow**: Drag → `PUT /api/board/issue/move` → backend updates issue + logs + WebSocket broadcast → all board subscribers receive event → optimistic UI update
 
 ## Version History
+
+### v2.19.1 — 工作流：配好了要看得懂，挡住了要指条路 (2026-11-23)
+
+用户反馈六个字："工作流不知所云"。查下来是信息只在一个视角里存在。
+
+- **BUG-101（Medium）**：
+  1. `/projects/{id}/workflow` 对已配置的工作流只显示一行名字 + [编辑] [删除]，
+     允许什么/禁止什么都没说；画布里又全是"节点、转换规则、终态、执行条件"这类没解释的词。
+  2. 看板被挡时的提示只有「工作流不允许从「待办」转换到「已完成」」，
+     不说还能往哪拖 —— 后端 `/api/workflow/transitions` 前端从来没调用过。
+- 修复：设计器加只读概览（节点彩色块 + 终态标记 + 「从 → 到 → 谁可以这么做」规则表，
+  条件翻成任何成员/仅管理员/仅指派人/仅报告人）+ `PageHint` 一句话说明"不配置=随便拖、
+  配置后只能走这些路径、按类型分别生效、保存即生效"；保存与套用模板的提示改成有信息量的；
+  看板侧接 `getAvailableTransitions`，被挡时合并成一条「…。当前可以从这里去：进行中」
+  （`request.ts` 拦截器已弹过一条，必须先 `ElMessage.closeAll()` 否则叠两条）。
+- 防线：`e2e/workflow-guard.mjs` 4 条 —— 只读概览可见、越界拖拽被拦且卡片回原位、
+  提示里给出允许方向、允许的移动照常成功。
 
 ### v2.19.0 — 主线自证：新账号走完整条链 (2026-11-23)
 

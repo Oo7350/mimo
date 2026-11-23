@@ -281,6 +281,7 @@ import { useRoute } from "vue-router"
 import { useUserStore } from "@/store/user"
 import { getBoard, moveIssue } from "@/api/board"
 import { getProjectById } from "@/api/project"
+import { getAvailableTransitions } from "@/api/workflow"
 import { updateIssue } from "@/api/issue"
 import { avatarGradient } from "@/utils/color"
 import draggable from "vuedraggable"
@@ -531,8 +532,19 @@ function columnToStatus(colName: string): string {
   return 'IN_PROGRESS'
 }
 
-async function handleDragChange(evt: any, targetColId: number) {
-  // 跨列拖拽：卡片从其他列进入当前列
+/** 被工作流挡住时，查一下这张卡现在还能去哪（返回给用户的一句话） */
+async function whereCanIGo(issue: any): Promise<string> {
+  try {
+    const res = await getAvailableTransitions(projectId, issue.type || "TASK", issue.columnId)
+    const names = (res?.data || []).map((t: any) => t.toColumnName).filter(Boolean)
+    if (names.length === 0) return "没有可去的地方，需要项目管理员调整工作流"
+    return names.join("、")
+  } catch {
+    return ""
+  }
+}
+
+async function handleDragChange(evt: any, targetColId: number) {  // 跨列拖拽：卡片从其他列进入当前列
   if (evt.added) {
     const issue = evt.added.element
     if (!issue?.id) return
@@ -548,7 +560,20 @@ async function handleDragChange(evt: any, targetColId: number) {
       await moveIssue({ issueId: issue.id, targetColumnId: targetColId, sortOrder: evt.added.newIndex ?? 0 })
     } catch (e: any) {
       const msg = e?.response?.data?.message || e?.message || "移动失败"
-      ElMessage.error(msg)
+      // 被工作流挡住时，只说"不允许"等于没说：告诉用户从这里还能去哪。
+      // （/api/workflow/transitions 这个接口后端一直有，前端从没用过。）
+      if (msg.includes("工作流")) {
+        const hint = await whereCanIGo(issue)
+        // 拦截器已经弹过一条"工作流不允许…"，这里合并成一条带方向的，别叠两层
+        ElMessage.closeAll()
+        ElMessage.warning({
+          message: hint ? `${msg}。当前可以从这里去：${hint}` : msg,
+          duration: 6000,
+          showClose: true,
+        })
+      } else {
+        ElMessage.error(msg)
+      }
       await fetchBoard()
     }
   }
