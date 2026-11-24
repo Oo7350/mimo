@@ -20,6 +20,64 @@ Mimo is a lightweight Trello-like project management platform for small teams. I
 - **API docs**: `接口文档.md` (70+ endpoints, Chinese)
 - **User manual**: `操作手册.md` (Chinese)
 
+## 收尾必须写文档（Definition of Done，不可跳过）
+
+> 用户的原话：「**每次任务的最后，一定是写文档**」。
+> 这不是"有空就补"，是**任务完成的判定条件**——代码跑通了但文档没写，这个任务算没做完。
+> 原因很直接：这个项目已经吃过"功能做了但没人知道怎么用、bug 修了但没记根因"的账，
+> 下一轮（或换台机器）就得重新推理一遍。
+
+每轮收尾按下面这张表逐项确认，**表里有适用项就必须落到文件里，不允许只留在对话记录**：
+
+| 发生了什么 | 必须写到哪 | 写到什么程度 |
+|---|---|---|
+| 任何 bug（含自己写出来的） | `bug-log.md` 顶部新增版本段 + `### BUG-NNN: 标题 [High]` | 现象 / 根因 / 修复 / 教训四段；末尾跑 `python tools/buglog_stats.py --check` 对账统计表 |
+| 已知隐患收口或判定 | `bug-log.md` 里那条 `KNOWN-NNN` 标题加「— 已解决（vX.Y.Z）」 | 补一行「收口（vX.Y.Z）」说明用什么验证的；不修也要写清为什么 |
+| 新功能 / 行为变化 | `操作手册.md`（用户视角怎么用）+ `接口文档.md`（接口契约、字段口径） | 手册写"点哪里、看到什么、边界在哪"；接口写清字段含义与限制，别让读者猜 |
+| 修了界面/配色 | `操作手册.md` FAQ 或对应章节 | 说明现在的判据和复查命令（如 `e2e/theme-audit.mjs`） |
+| 架构取舍 | `AGENTS.md` Decision Log（+ `CLAUDE.md` 摘要） | 写"为什么不这么做"，否则下一轮又会被当欠账重做 |
+| 版本推进 | `AGENTS.md` + `CLAUDE.md` 头部版本号与 Version History + `bug-log.md` 版本段表 + `项目功能完善计划.md` 快照 | 版本号三处一致；测试/e2e 条数是实测数字，不许估 |
+| 新增脚本 / 用例 | 对应 README（`e2e/README.md`、`tools/` 注释头） | 怎么跑、判据是什么、当前基线多少 |
+| 踩到环境坑 | `AGENTS.md` Local Environment / Commands | 给现成命令，别只写"记得配环境变量" |
+
+- 「文档」包括**注释**：新写的类/方法如果是"为什么这么写"不显然的地方，Javadoc 里写清边界
+  （例：`PresenceService` 里写"只算本实例""断线最迟一个心跳周期"）。
+- 提交信息里要能看到"文档改了哪些"，方便下一轮只看 `git log` 就知道该翻哪个文件。
+
+## Decision Log（为什么不这么做）
+
+> 这里的每一条都是**已经定过的事**，下一轮不要当欠账重做。要改先改这一节。
+
+| 决定 | 具体做法 | 为什么 | 代价 / 边界 |
+|---|---|---|---|
+| **不建数据库外键** | 只有 `announcements/issues/projects/teams/users/user_email_accounts` 走逻辑删除（`deleted`），其余物理删除；引用关系由应用层保证 | MyBatis-Plus 逻辑删除与外键约束冲突：删项目会撞一串 FK 错误 | 可能出现孤儿行 → 用 `tools/integrity-check.sql` 体检（本轮 BUG-104 就是它扫出来的） |
+| **WebSocket 用内存简单 broker** | `enableSimpleBroker` + STOMP，无 Redis 中继 | 单人开发、单实例部署，省一套中间件 | 多实例时消息与在线状态都不通（KNOWN-002 保持未关闭）；在线人数只代表本实例 |
+| **在线人数按"人"去重** | `PresenceService` 用 `userId` 维度聚合，多标签页只算一人 | 显示"3 人在线"结果其中一人开了三个页签，是骗人 | 不代表"活跃度"，只代表"连着"；断线最迟一个心跳周期（10s）才掉 |
+| **CSS 变量按用途分层** | 见下表 | 暗色模式翻车全部来自"一个变量干两件事"（BUG-106） | 新页面必须按表选变量，选错 `theme_literals.py` 查不出、但 `theme-audit.mjs` 会报到低对比 |
+| **实心色块用 `--color-primary-solid`** | 按钮/选中态/徽标底色 | `--color-primary` 在暗色下会变亮，白字压上去不够 | 深色下实心块比亮色略暗，属刻意 |
+| **部署必须人工确认** | `deploy.ps1` 需输入 `y`，`-Force` 跳过 | 脚本会 scp 覆盖生产并重启服务 | CI 里要显式传 `-Force` |
+| **颜色来自数据时算对比度** | `readableInk(bg)` 决定白字还是深字（日历事件条） | 写死 `color:#fff` 时，浅色数据必然看不清（BUG-108） | 计算在渲染时进行，极端渐变背景仍按主色判 |
+
+### 颜色变量怎么选（照这张表，别自创）
+
+| 要用在哪 | 用哪个变量 | 不要用 |
+|---|---|---|
+| 正文文字 | `--text-primary` / `--text-regular` / `--text-secondary` | ~~把 `--text-*` 当底色~~（BUG-106） |
+| 弱化说明、占位符 | `--text-muted` / `--text-placeholder`（亮色也压到 ≥4.5:1） | `#909399`、`#cbd5e1` 之类字面值 |
+| 页面底 / 卡片底 / 悬停底 | `--bg-body` / `--bg-card` / `--bg-hover` / `--bg-subtle` | `#fff`（暗色下是浅色块） |
+| 实心按钮、选中态、徽标底 | `--color-primary-solid`（+ `-hover` / `-active`） | `--text-primary`、`--color-primary` |
+| 语义色文字（成功/警告/危险） | `--color-success` / `--color-warning` / `--color-danger` | Element 的 `--el-color-*`（暗色下语义会被重算） |
+| 语义色浅底 | `--bg-success-soft` / `--bg-warning-soft` / `--bg-danger-soft` / `--bg-info-soft` | 手写 `rgba(...)` |
+| 边框 / 分隔线 | `--border-color` / `--border-light` | `#e2e8f0` |
+| 颜色来自数据（事件条、头像） | `readableInk(bg)` + `avatarGradient()` | `color:#fff` 硬编码 |
+
+- 覆盖 Element 变量时，`[data-theme="dark"]` 与 `html.dark` **两处都要写**：Element 的
+  `dark/css-vars.css` 在 `html.dark` 下会重置 `--el-color-primary`（BUG-105）。
+- 检查命令：`python tools/theme_literals.py --check`（样式块里的中性色字面值应为 0）、
+  `node e2e/theme-audit.mjs http://localhost:5173`（暗色浅色块 / 低对比应为 0）。
+
+
+
 ## Tech Stack
 
 - **Frontend**: Vue 3 + Vite + Element Plus + Pinia + Vue Router + ECharts + vuedraggable + driver.js + marked + SockJS + STOMP.js + html2pdf.js + DeepSeek API + Inter font

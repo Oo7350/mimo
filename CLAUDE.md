@@ -18,6 +18,36 @@ Mimo is a lightweight Trello-like project management platform for small teams. I
 - **API docs**: `接口文档.md` (70+ endpoints, Chinese)
 - **User manual**: `操作手册.md` (Chinese)
 
+## 收尾必须写文档（Definition of Done）
+
+> 用户要求：「每次任务的最后，一定是写文档」。**代码跑通但文档没写 = 任务没做完。**
+
+收尾逐项确认（细则见 `AGENTS.md` 同名章节）：
+
+| 发生了什么 | 必须写到哪 |
+|---|---|
+| 任何 bug | `bug-log.md` 新版本段 + `### BUG-NNN: 标题 [High]`（现象/根因/修复/教训），并跑 `python tools/buglog_stats.py --check` |
+| KNOWN 收口或不修 | 该条目标题加「— 已解决（vX.Y.Z）」+ 一行「收口（…）」说明验证方式；不修写清原因 |
+| 新功能 / 行为变化 | `操作手册.md`（怎么用、边界）+ `接口文档.md`（字段口径与限制） |
+| 界面 / 配色 | `操作手册.md` FAQ：现在的判据 + 复查命令 |
+| 架构取舍 | `AGENTS.md` Decision Log |
+| 版本推进 | `AGENTS.md` + `CLAUDE.md` 头部与 Version History + `bug-log.md` 版本段表 + `项目功能完善计划.md` 快照（数字要实测） |
+| 新脚本 / 用例 | `e2e/README.md` 或脚本头注释：怎么跑、判据、当前基线 |
+| 环境坑 | `AGENTS.md` Commands：给现成命令 |
+
+## Decision Log（为什么不这么做，摘要）
+
+| 决定 | 为什么 | 边界 |
+|---|---|---|
+| 不建数据库外键，引用由应用层保证 | 逻辑删除与外键约束冲突 | 用 `tools/integrity-check.sql` 体检 |
+| WebSocket 用内存简单 broker | 单实例部署，省中间件 | 多实例时消息与在线状态都不通（KNOWN-002） |
+| 在线人数按 userId 去重 | 多标签页算多人是骗人 | 只代表"连着"，10 秒心跳后才算掉线 |
+| CSS 变量按用途分层（文字色不当底色） | 暗色翻车都来自变量复用 | 实心块用 `--color-primary-solid`；数据色用 `readableInk()` |
+| 覆盖 Element 变量要双写 `[data-theme="dark"]` 与 `html.dark` | Element dark css-vars 会重置 primary | 漏一个品牌色就漂移 |
+| `deploy.ps1` 需人工确认 | 会覆盖生产并重启 | CI 需 `-Force` |
+
+完整表（含"颜色变量怎么选"）见 `AGENTS.md` 同名章节。
+
 ## Tech Stack
 
 - **Frontend**: Vue 3 + Vite + Element Plus + Pinia + Vue Router + ECharts + vuedraggable + driver.js + marked + SockJS + STOMP.js + html2pdf.js + DeepSeek API + Inter font
