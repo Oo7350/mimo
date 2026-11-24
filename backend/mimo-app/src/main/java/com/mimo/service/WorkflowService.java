@@ -207,6 +207,15 @@ public class WorkflowService {
                     "当前用户不满足该状态转换的条件");
         }
 
+        // 节点责任人：这一步谁负责推进。项目管理员永远能推进（否则人一休假流程就卡死）
+        WorkflowNode fromNode = findNode(wf, fromColumnId);
+        if (fromNode != null && fromNode.getOwnerUserId() != null && operatorId != null
+                && !Objects.equals(fromNode.getOwnerUserId(), operatorId)
+                && !isProjectAdmin(projectId, operatorId)) {
+            throw new BusinessException(ResultCode.FORBIDDEN,
+                    "这一步由「" + displayName(fromNode.getOwnerUserId()) + "」负责，只有他或项目管理员能推进");
+        }
+
         return true;
     }
 
@@ -220,8 +229,14 @@ public class WorkflowService {
 
     /**
      * 获取当前状态下可用的转换列表
+     *
+     * <p>v2.19.6 起每条转换都带上「你现在能不能走这一步」和「不能走时卡在谁那里」：
+     * 界面上要么给个能点的按钮，要么直接说清原因，而不是点了再被 403。</p>
+     *
+     * @param operatorId 当前登录用户；null 表示不做"人"的判定（内部调用/兼容旧调用方）
      */
-    public List<AvailableTransitionVO> getAvailableTransitions(Long projectId, String issueType, Long currentColumnId) {
+    public List<AvailableTransitionVO> getAvailableTransitions(Long projectId, String issueType,
+                                                               Long currentColumnId, Long operatorId) {
         WorkflowVO wf = getActiveWorkflow(projectId, issueType);
         if (wf == null) {
             // 无工作流 → 返回所有列作为可转移目标
@@ -235,10 +250,14 @@ public class WorkflowService {
                         vo.setToColumnId(c.getId());
                         vo.setToColumnName(c.getName());
                         vo.setConditions(Collections.emptyList());
+                        vo.setAllowed(Boolean.TRUE);
                         return vo;
                     })
                     .collect(Collectors.toList());
         }
+
+        WorkflowNode fromNode = findNode(wf, currentColumnId);
+        Long ownerId = fromNode != null ? fromNode.getOwnerUserId() : null;
 
         return wf.getConfig().getTransitions().stream()
                 .filter(t -> Objects.equals(t.getFromColumnId(), currentColumnId))
@@ -247,9 +266,44 @@ public class WorkflowService {
                     vo.setToColumnId(t.getToColumnId());
                     vo.setToColumnName(getColumnName(projectId, t.getToColumnId()));
                     vo.setConditions(t.getConditions());
+                    vo.setFromOwnerId(ownerId);
+                    vo.setFromOwnerName(ownerId != null ? displayName(ownerId) : null);
+
+                    String blocked = blockedReason(t.getConditions(), ownerId, projectId, operatorId);
+                    vo.setAllowed(blocked == null);
+                    vo.setReason(blocked);
                     return vo;
                 })
                 .collect(Collectors.toList());
+    }
+
+    /** 不传 operatorId 的旧签名（内部/测试用）：只列规则，不做"人"的判定 */
+    public List<AvailableTransitionVO> getAvailableTransitions(Long projectId, String issueType,
+                                                               Long currentColumnId) {
+        return getAvailableTransitions(projectId, issueType, currentColumnId, null);
+    }
+
+    /**
+     * 这一步为什么推不动？能推（或者说不准）返回 null。
+     *
+     * <p>只下"确定"的结论：责任人不是当前用户、或规则写着"仅管理员"而当前用户不是管理员。
+     * 指派人 / 报告人这类条件需要具体工作项才判得准，这里不猜——真被拦下来时
+     * {@link #validateTransition} 会给准确提示。</p>
+     */
+    private String blockedReason(List<String> conditions, Long ownerId, Long projectId, Long operatorId) {
+        if (operatorId == null) return null;
+        if (ownerId != null && !Objects.equals(ownerId, operatorId) && !isProjectAdmin(projectId, operatorId)) {
+            return "这一步由「" + displayName(ownerId) + "」负责";
+        }
+        if (conditions != null && !conditions.isEmpty()) {
+            boolean adminOnly = conditions.stream()
+                    .filter(Objects::nonNull)
+                    .allMatch(c -> "ROLE_ADMIN".equalsIgnoreCase(c.trim()));
+            if (adminOnly && !isProjectAdmin(projectId, operatorId)) {
+                return "只有项目管理员能执行这一步";
+            }
+        }
+        return null;
     }
 
     // ========== 预设模板 ==========
@@ -350,12 +404,37 @@ public class WorkflowService {
                 throw new BusinessException(ResultCode.BAD_REQUEST, "工作流节点包含不属于该项目的列");
             }
         }
+        // 节点责任人必须是个真实存在的用户：否则配错了没人能推进，还查不出为什么
+        for (WorkflowNode node : config.getNodes()) {
+            if (node.getOwnerUserId() != null && userMapper.selectById(node.getOwnerUserId()) == null) {
+                throw new BusinessException(ResultCode.BAD_REQUEST,
+                        "节点「" + node.getName() + "」的责任人不存在（userId=" + node.getOwnerUserId() + "）");
+            }
+        }
         // 至少一个终态节点
         boolean hasTerminal = config.getNodes().stream()
                 .anyMatch(n -> Boolean.TRUE.equals(n.getIsTerminal()));
         if (!hasTerminal) {
             throw new BusinessException(ResultCode.BAD_REQUEST, "工作流至少需要一个终态节点");
         }
+    }
+
+    /** 按列 id 找节点（节点 = 看板列） */
+    private WorkflowNode findNode(WorkflowVO wf, Long columnId) {
+        if (wf == null || wf.getConfig() == null || wf.getConfig().getNodes() == null || columnId == null) {
+            return null;
+        }
+        return wf.getConfig().getNodes().stream()
+                .filter(n -> Objects.equals(n.getColumnId(), columnId))
+                .findFirst().orElse(null);
+    }
+
+    /** 用户显示名：优先昵称（User 表没有昵称字段，这里退到用户名），最后兜底成"用户#id" */
+    private String displayName(Long userId) {
+        if (userId == null) return "未指定";
+        User user = userMapper.selectById(userId);
+        if (user == null) return "用户#" + userId;
+        return user.getUsername() != null ? user.getUsername() : "用户#" + userId;
     }
 
     private WorkflowVO toVO(Workflow wf) {
@@ -371,6 +450,14 @@ public class WorkflowService {
         } catch (Exception e) {
             log.error("解析工作流配置失败, workflowId={}", wf.getId(), e);
             vo.setConfig(new WorkflowConfig());
+        }
+        // 责任人名字回填：设计器/看板都要显示"这一步谁负责"，别让前端再查一遍用户
+        if (vo.getConfig() != null && vo.getConfig().getNodes() != null) {
+            vo.getConfig().getNodes().forEach(n -> {
+                if (n.getOwnerUserId() != null) {
+                    n.setOwnerName(displayName(n.getOwnerUserId()));
+                }
+            });
         }
         return vo;
     }

@@ -1,6 +1,8 @@
 # AGENTS.md
 
-> **最新版本**：v2.19.5（2026-11-24）— 两处链路闭合：① 工作台「待我处理」现在可以直接通过 / 打回待验收（以前要走五步换一个按钮），打回必须填原因，面板下还写清了"验收通过不会自动完成、负责人回看板标记完成"；② 示例数据能生成也能收回——新增 `DELETE /api/admin/demo-data`，只删生成器自己造的东西（项目/工作项/评论/工时/验收/版本快照/变更申请/附件/标签/通知/看板列/迭代/燃尽快照/报告/动态/工作流/交付快照/Wiki），团队仅在"除示例项目外没别的项目"时才删。过程中修掉 BUG-103（清除后再生成撞 `uk_project_key` 报 500，根因是唯一索引不看逻辑删除标记）。e2e 加到 5 套 39 条（review-matrix 新增工作台就地验收一条），后端测试 154 项。
+> **最新版本**：v2.19.6（2026-11-24）— 工作流节点能指定责任人了：节点上加了 `ownerUserId`（谁负责把工作项从这一步交给下一步），配了之后只有他或项目管理员能推进，界面被挡住时会点名"这一步由「张三」负责"；`GET /workflow/transitions` 每条转换新增 `fromOwnerName/allowed/reason`，前端据此决定给按钮还是给原因。项目管理员永远能推进是**故意留的逃生口**（责任人休假/离职不能卡死流程）。顺手记一笔自测教训：开发库里 admin/zhangsan/lisi 在 team_members 里的 role **全是 ROLE_ADMIN**，拿他们当"普通成员"测权限会测到管理员放行路径，e2e 改成现场注册纯成员账号。核心链路口径：5 套 43 条断言，后端 160 项。
+>
+> **上一版本**：v2.19.5（2026-11-24）— 两处链路闭合：① 工作台「待我处理」现在可以直接通过 / 打回待验收（以前要走五步换一个按钮），打回必须填原因，面板下还写清了"验收通过不会自动完成、负责人回看板标记完成"；② 示例数据能生成也能收回——新增 `DELETE /api/admin/demo-data`，只删生成器自己造的东西（项目/工作项/评论/工时/验收/版本快照/变更申请/附件/标签/通知/看板列/迭代/燃尽快照/报告/动态/工作流/交付快照/Wiki），团队仅在"除示例项目外没别的项目"时才删。过程中修掉 BUG-103（清除后再生成撞 `uk_project_key` 报 500，根因是唯一索引不看逻辑删除标记）。e2e 加到 5 套 39 条（review-matrix 新增工作台就地验收一条），后端测试 154 项。
 >
 > **文档版本号以本文件 + `bug-log.md` 为准**：同一批工作流自动生成改动，另一台机器的提交写 v2.17.1、`CLAUDE.md` 写 v2.18.1，合并后实际是 v2.19.3（`CLAUDE.md` 头部已同步）。
 
@@ -10,8 +12,8 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 Mimo is a lightweight Trello-like project management platform for small teams. It supports team collaboration, kanban task tracking, and progress visualization.
 
-- **Version**: v2.19.5 — 工作台就地验收 + 示例数据一键清除 (2026-11-24)
-- **Previous**: v2.19.4 — 验收按角色分工：界面别撒谎 + 多角色矩阵 e2e (2026-11-24)
+- **Version**: v2.19.6 — 工作流节点责任人 + 交接说明 (2026-11-24)
+- **Previous**: v2.19.5 — 工作台就地验收 + 示例数据一键清除 (2026-11-24)
 - **GitHub**: https://github.com/Oo7350/mimo
 - **API docs**: `接口文档.md` (70+ endpoints, Chinese)
 - **User manual**: `操作手册.md` (Chinese)
@@ -215,6 +217,22 @@ All v2.15 AI roadmap items are implemented. Future work may replace the lexical 
 - **Board Sync Flow**: Drag → `PUT /api/board/issue/move` → backend updates issue + logs + WebSocket broadcast → all board subscribers receive event → optimistic UI update
 
 ## Version History
+
+### v2.19.6 — 工作流节点责任人 + 交接说明 (2026-11-24)
+
+- **节点责任人**：工作流配置的节点新增 `ownerUserId`（谁负责把工作项从这一步交给下一步）。
+  语义是"从这一步往外推要这个人点头"，不是"只能他来干活"；留空 = 不限制。
+  项目管理员（系统管理员 / 项目负责人 / 团队管理员）永远能推进 —— 故意留的逃生口。
+  设计器每节点一个「责任人」下拉（选项来自团队成员，可清空），只读概览多一列「这一步谁负责」。
+- **`GET /workflow/transitions` 变诚实**：每条转换新增 `fromOwnerId` / `fromOwnerName` /
+  `allowed` / `reason`，前端据此决定"给按钮"还是"给原因"。只对两种确定性情形下结论
+  （责任人不是当前用户、规则写着仅管理员），`ASSIGNEE` / `REPORTER` 不猜，真正拦截在
+  `validateTransition`。
+- **保存校验**：责任人必须是真实用户，否则 `400 节点「X」的责任人不存在（userId=…）`。
+- **自测教训**：开发库 admin / zhangsan / lisi 在 `team_members` 里全是 `ROLE_ADMIN`，
+  拿他们当"普通成员"测权限会走到管理员放行路径；e2e 现场注册 `e2e-wfowner*` 纯成员账号来验。
+- **验证**：后端 160 项全绿；e2e `workflow-guard` 8/8（真拖拽）、其余 4 套回归通过，合计 43 条；
+  `vue-tsc` 与 `npm run build` 通过。
 
 ### v2.19.5 — 工作台就地验收 + 示例数据一键清除 (2026-11-24)
 

@@ -14,6 +14,13 @@ public class WorkflowDTO {
         private String name;
         private String color;
         private Boolean isTerminal;
+        /**
+         * 这一节点的责任人（谁负责把工作项从这里交给下一步）。
+         * null / 不填 = 不限制，任何有权限的成员都能推。
+         */
+        private Long ownerUserId;
+        /** 只读回填：责任人显示名（前端不用再查一遍用户表） */
+        private String ownerName;
     }
 
     /** 转换规则 — 定义允许的状态跳转 */
@@ -63,5 +70,12 @@ public class WorkflowDTO {
         private Long toColumnId;
         private String toColumnName;
         private List<String> conditions;
+        /** 出发节点的责任人（= 这一步该谁负责推进）；null 表示不限制 */
+        private Long fromOwnerId;
+        private String fromOwnerName;
+        /** 当前用户能不能执行这一步（前端据此决定按钮是亮着还是给出原因） */
+        private Boolean allowed;
+        /** allowed=false 时的一句话原因，例如「这一步由「张三」负责」 */
+        private String reason;
     }
 }

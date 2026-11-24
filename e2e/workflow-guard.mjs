@@ -49,7 +49,7 @@ async function login(creds) {
   return json.data.token;
 }
 
-async function newPage(browser) {
+async function newPage(browser, creds = ADMIN) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   // 关掉新手引导：真 key 是 localStorage.mimo_tour_state，遮罩会吃掉所有点击
   await context.addInitScript(() => {
@@ -66,8 +66,8 @@ async function newPage(browser) {
   const page = await context.newPage();
   page.setDefaultTimeout(20000);
   await page.goto(`${BASE}/login`, { waitUntil: "domcontentloaded" });
-  await page.getByPlaceholder("请输入用户名").fill(ADMIN.username);
-  await page.getByPlaceholder("请输入密码").fill(ADMIN.password);
+  await page.getByPlaceholder("请输入用户名").fill(creds.username);
+  await page.getByPlaceholder("请输入密码").fill(creds.password);
   await page.getByRole("button", { name: /登\s*录/ }).click();
   await page.waitForURL((u) => !u.pathname.startsWith("/login"), { timeout: 20000 });
   return { context, page };
@@ -181,6 +181,141 @@ async function main() {
         await context.close();
       }
     }
+    // ---------- 4. 节点责任人：这一步归谁管，别人推不动（v2.19.6） ----------
+    {
+      const TITLE2 = `${TITLE}责任`;
+      const created2 = await api(
+        "POST",
+        "/issues",
+        { projectId: 1, type: "STORY", title: TITLE2, status: "TODO", columnId: 1, priority: "MEDIUM" },
+        token
+      );
+      const issueId2 = created2?.data?.id;
+      const wfBefore = await api("GET", "/workflow/project/1/type/STORY", null, token);
+      const originalConfig = wfBefore?.data?.config;
+      const adminId = (await api("GET", "/user/profile", null, token))?.data?.id;
+
+      try {
+        if (!issueId2) throw new Error("第二张卡创建失败: " + JSON.stringify(created2).slice(0, 160));
+
+        // 需要一个「团队里有、但没有任何管理权限」的账号来验证拦截。
+        // 坑：开发库里 zhangsan / lisi 在 team_members 里都是 ROLE_ADMIN，
+        // 而"管理员永远能推进"是设计内的逃生口，用他们根本测不出拦截。
+        const outsider = `e2e-wfowner${STAMP}`;
+        await api("POST", "/auth/register", {
+          username: outsider,
+          password: "123456",
+          email: `${outsider}@example.com`,
+        });
+        const found = await api("GET", `/user/search?keyword=${encodeURIComponent(outsider)}`, null, token);
+        const outsiderId = (found?.data || []).find((u) => u.username === outsider)?.id;
+        if (outsiderId) {
+          await api("POST", "/teams/invite", { teamId: 1, userId: outsiderId, role: "ROLE_MEMBER" }, token);
+        }
+
+        // 把「待办」这一节点的责任人设成 admin
+        const cfg = JSON.parse(JSON.stringify(originalConfig));
+        cfg.nodes.forEach((n) => {
+          if (n.columnId === 1) n.ownerUserId = adminId;
+        });
+        const saved = await api(
+          "POST",
+          "/workflow",
+          { projectId: 1, issueType: "STORY", name: wfBefore.data.name, config: cfg },
+          token
+        );
+        if (saved?.code !== 200) throw new Error("保存带责任人的工作流失败: " + JSON.stringify(saved).slice(0, 160));
+
+        // 4a. 非责任人（纯成员）拖不动这一步
+        {
+          const { context, page } = await newPage(browser, { username: outsider, password: "123456" });
+          try {
+            await page.goto(`${BASE}/projects/1/board`, { waitUntil: "domcontentloaded" });
+            await page.locator(".board__column").first().waitFor({ state: "visible", timeout: 20000 });
+            await page.waitForTimeout(1000);
+            await dragCard(page, TITLE2, page.locator(".board__column-body").nth(1));
+            const text = (await page.locator(".el-message").allInnerTexts()).join(" | ");
+            const after = await api("GET", `/issues/${issueId2}`, null, token);
+            record(
+              "节点指定了责任人之后，纯成员推不动这一步（卡片留在原列）",
+              /负责/.test(text) && after?.data?.columnId === 1,
+              `提示=「${text.slice(0, 70)}」, columnId=${after?.data?.columnId}` +
+                (outsiderId ? "" : "（临时账号未建成功）")
+            );
+            record(
+              "被责任人挡住时，提示里点了名（说出这一步归谁）",
+              /这一步由「admin」负责/.test(text),
+              /这一步由「admin」负责/.test(text) ? "提示里带了责任人名字" : `没点名：${text.slice(0, 60)}`
+            );
+          } catch (e) {
+            record("责任人拦住非责任人", false, e.message);
+          } finally {
+            await context.close();
+          }
+        }
+
+        // 4b. 责任人本人（这里用 admin 兜底验证管理员的放行口）能推
+        {
+          const { context, page } = await newPage(browser);
+          try {
+            await page.goto(`${BASE}/projects/1/board`, { waitUntil: "domcontentloaded" });
+            await page.locator(".board__column").first().waitFor({ state: "visible", timeout: 20000 });
+            await page.waitForTimeout(1000);
+            await dragCard(page, TITLE2, page.locator(".board__column-body").nth(1));
+            const after = await api("GET", `/issues/${issueId2}`, null, token);
+            record(
+              "责任人（或项目管理员）照常能推进到下一步",
+              after?.data?.columnId === 2,
+              `columnId=${after?.data?.columnId}`
+            );
+          } catch (e) {
+            record("责任人能推进", false, e.message);
+          } finally {
+            await context.close();
+          }
+        }
+        // 4c. 设计器里能给每个节点指定责任人（配了才有上面那套拦截）
+        {
+          const { context, page } = await newPage(browser);
+          try {
+            await page.goto(`${BASE}/projects/1/workflow`, { waitUntil: "domcontentloaded" });
+            await page.locator(".workflow-designer__overview").waitFor({ state: "visible", timeout: 20000 });
+            await page.locator(".workflow-designer__alert button", { hasText: "编辑" }).first().click();
+            await page.locator(".workflow-designer__drop-zone").waitFor({ state: "visible", timeout: 10000 });
+            // Element Plus 2.x 的单选 placeholder 渲染成 span.el-select__placeholder，不是 input 属性
+            const ownerSelects = await page
+              .locator(".workflow-designer__drop-zone .workflow-designer__node .el-select")
+              .count();
+            const placeholders = await page
+              .locator(".workflow-designer__drop-zone .workflow-designer__node .el-select__placeholder")
+              .allInnerTexts();
+            const nodeCount = await page
+              .locator(".workflow-designer__drop-zone .workflow-designer__node")
+              .count();
+            record(
+              "设计器里每个节点都能指定责任人",
+              nodeCount > 0 && ownerSelects === nodeCount && placeholders.some((p) => p.includes("责任人")),
+              `节点 ${nodeCount} 个，责任人下拉 ${ownerSelects} 个，占位文案=「${placeholders.join("/").slice(0, 40)}」`
+            );
+          } catch (e) {
+            record("设计器责任人下拉", false, e.message);
+          } finally {
+            await context.close();
+          }
+        }
+
+      } finally {
+        // 把工作流改回去，别把 demo 项目的规则留成"只有 admin 能推进"
+        if (originalConfig) {
+          await api(
+            "POST",
+            "/workflow",
+            { projectId: 1, issueType: "STORY", name: wfBefore.data.name, config: originalConfig },
+            token
+          );
+        }
+        if (issueId2) await api("DELETE", `/issues/${issueId2}`, null, token);
+      }    }
   } finally {
     const del = await api("DELETE", `/issues/${issueId}`, null, token);
     if (del?.code !== 200) console.warn(`⚠ 清理未成功 issue=${issueId}`);

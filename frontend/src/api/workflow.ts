@@ -5,6 +5,10 @@ export interface WorkflowNode {
   name: string
   color: string
   isTerminal: boolean
+  /** 这一节点的责任人（谁负责把它交给下一步）；不填 = 不限制 */
+  ownerUserId?: number | null
+  /** 后端回填的责任人显示名 */
+  ownerName?: string | null
 }
 
 export interface WorkflowTransition {
@@ -39,6 +43,13 @@ export interface AvailableTransition {
   toColumnId: number
   toColumnName: string
   conditions: string[]
+  /** 出发节点的责任人；null = 不限制 */
+  fromOwnerId?: number | null
+  fromOwnerName?: string | null
+  /** 当前用户能不能走这一步 */
+  allowed?: boolean
+  /** allowed=false 时的原因，例如「这一步由「张三」负责」 */
+  reason?: string | null
 }
 
 export function listWorkflows(projectId: number) {

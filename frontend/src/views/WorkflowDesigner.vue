@@ -29,6 +29,9 @@
       <b>删掉配置 = 随便拖</b>，配置之后只能走下面列出的路径，
       其它拖法会被看板拦下，并告诉你还能往哪去。规则按「工作项类型」分别生效（现在看的是
       <b>{{ typeLabel }}</b> 这一套），保存后立即生效，不用重启也不用刷新。
+      <br />
+      每个节点还可以指定<b>责任人</b>：指定之后，只有这个人（或项目管理员）能把工作项从这一步交出去，
+      适合「开发 → 测试 → 验收」这种一步一交接的流程；不指定就是不限制。
     </PageHint>
 
     <!-- 现有工作流信息 -->
@@ -60,16 +63,28 @@
         >
           <span class="workflow-designer__node-name">{{ node.name }}</span>
           <el-tag v-if="node.isTerminal" size="small" type="success" effect="plain">终态</el-tag>
+          <el-tooltip
+            v-if="node.ownerName"
+            :content="`这一步由 ${node.ownerName} 负责推进`"
+          >
+            <el-tag size="small" type="warning" effect="plain">{{ node.ownerName }}</el-tag>
+          </el-tooltip>
         </div>
       </div>
 
       <el-table v-if="ruleRows.length" :data="ruleRows" size="small" class="workflow-designer__rules">
-        <el-table-column prop="from" label="从" width="140" />
-        <el-table-column width="50" align="center">
+        <el-table-column prop="from" label="从" width="120" />
+        <el-table-column width="40" align="center">
           <template #default>→</template>
         </el-table-column>
-        <el-table-column prop="to" label="到" width="140" />
+        <el-table-column prop="to" label="到" width="120" />
         <el-table-column prop="who" label="谁可以这么做" />
+        <el-table-column prop="owner" label="这一步谁负责" width="140">
+          <template #default="{ row }">
+            <el-tag v-if="row.owner" size="small" type="warning" effect="plain">{{ row.owner }}</el-tag>
+            <span v-else class="workflow-designer__muted">不限</span>
+          </template>
+        </el-table-column>
       </el-table>
       <p v-else class="workflow-designer__hintline">
         这套工作流一条转换规则都没有 —— 等于所有移动都会被拦。要么加规则，要么直接删除它。
@@ -174,6 +189,21 @@
             :style="{ borderColor: node.color, background: node.color + '15' }"
           >
             <span class="workflow-designer__node-name">{{ node.name }}</span>
+            <el-select
+              v-model="node.ownerUserId"
+              size="small"
+              clearable
+              placeholder="责任人（空=不限）"
+              style="width: 150px"
+              @change="onOwnerChange(node)"
+            >
+              <el-option
+                v-for="m in members"
+                :key="m.userId"
+                :label="m.username"
+                :value="m.userId"
+              />
+            </el-select>
             <el-checkbox v-model="node.isTerminal" size="small" @change="markTerminal(idx)">终态</el-checkbox>
             <el-button text type="danger" size="small" @click="removeNode(idx)">
               <el-icon><Close /></el-icon>
@@ -213,6 +243,8 @@ import {
   type WorkflowVO,
 } from '@/api/workflow'
 import { getBoard } from '@/api/board'
+import { getProjectById } from '@/api/project'
+import { getMembers } from '@/api/team'
 
 const route = useRoute()
 const router = useRouter()
@@ -225,6 +257,8 @@ const saving = ref(false)
 const currentWorkflow = ref<WorkflowVO | null>(null)
 const boardColumns = ref<{ id: number; name: string; color: string }[]>([])
 const config = ref<WorkflowConfig>({ nodes: [], transitions: [] })
+/** 团队/项目成员：给节点责任人下拉用（责任人只能从成员里挑） */
+const members = ref<{ userId: number; username: string }[]>([])
 
 const TYPE_LABEL: Record<string, string> = { STORY: '需求（Story）', TASK: '任务（Task）', BUG: '缺陷（Bug）' }
 const typeLabel = computed(() => TYPE_LABEL[selectedIssueType.value] || selectedIssueType.value)
@@ -245,15 +279,48 @@ const ruleRows = computed(() => {
     from: nameOf(t.fromColumnId),
     to: nameOf(t.toColumnId),
     who: whoText(t.conditions),
+    // 出发节点的责任人 = 谁负责把工作项从这一步交出去
+    owner: ownerOf(t.fromColumnId),
   }))
 })
+
+/** 某列节点的责任人显示名（没有就返回空串） */
+function ownerOf(columnId: number): string {
+  const wf = currentWorkflow.value
+  const node = wf?.config?.nodes?.find((n) => n.columnId === columnId)
+  if (!node?.ownerUserId) return ''
+  if (node.ownerName) return node.ownerName
+  return members.value.find((m) => m.userId === node.ownerUserId)?.username || `用户#${node.ownerUserId}`
+}
 
 watch(selectedIssueType, () => loadWorkflow())
 
 onMounted(async () => {
-  await loadBoardColumns()
+  await Promise.all([loadBoardColumns(), loadMembers()])
   await loadWorkflow()
 })
+
+/** 拉项目成员（责任人下拉的来源）。失败不阻塞工作流编辑，只是选不了人 */
+async function loadMembers() {
+  try {
+    const res = await getProjectById(projectId)
+    const teamId = res.data?.teamId
+    if (!teamId) return
+    const list = await getMembers(teamId)
+    members.value = (list.data || []).map((m: any) => ({
+      userId: m.userId,
+      username: m.username,
+    }))
+  } catch {
+    members.value = []
+  }
+}
+
+/** 选完责任人后把显示名一起放进去，保存前界面就能看到名字 */
+function onOwnerChange(node: WorkflowNode) {
+  const hit = members.value.find((m) => m.userId === node.ownerUserId)
+  node.ownerName = hit ? hit.username : null
+}
 
 async function loadBoardColumns() {
   const res = await getBoard(projectId)
@@ -429,6 +496,11 @@ async function onDelete() {
     font-size: 12px;
     line-height: 1.7;
     color: var(--el-text-color-secondary);
+  }
+
+  &__muted {
+    font-size: 12px;
+    color: var(--el-text-color-placeholder);
   }
 
   &__canvas {

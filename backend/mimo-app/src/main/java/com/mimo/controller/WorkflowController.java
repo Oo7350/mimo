@@ -70,7 +70,7 @@ public class WorkflowController {
         return Result.success(workflowService.applyTemplate(projectId, issueType, templateName, userId));
     }
 
-    /** 获取当前状态下的可用转换 */
+    /** 获取当前状态下的可用转换（带上"你现在能不能走这一步 / 卡在谁那里"） */
     @GetMapping("/transitions")
     public Result<List<AvailableTransitionVO>> getAvailableTransitions(
             @RequestParam Long projectId,
@@ -78,7 +78,8 @@ public class WorkflowController {
             @RequestParam Long columnId,
             Authentication auth) {
         assertTeamMember(projectId, auth);
-        return Result.success(workflowService.getAvailableTransitions(projectId, issueType, columnId));
+        return Result.success(workflowService.getAvailableTransitions(
+                projectId, issueType, columnId, getLongPrincipal(auth)));
     }
 
     // ---- helpers ----

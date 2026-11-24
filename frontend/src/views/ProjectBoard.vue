@@ -532,15 +532,24 @@ function columnToStatus(colName: string): string {
   return 'IN_PROGRESS'
 }
 
-/** 被工作流挡住时，查一下这张卡现在还能去哪（返回给用户的一句话） */
-async function whereCanIGo(issue: any): Promise<string> {
+/**
+ * 被工作流挡住时，查一下这张卡现在还能去哪。
+ * ok=true → text 是"还能去的列名"；ok=false → text 是"为什么走不了"（比如这一步归谁负责）
+ */
+async function whereCanIGo(issue: any): Promise<{ ok: boolean; text: string }> {
   try {
     const res = await getAvailableTransitions(projectId, issue.type || "TASK", issue.columnId)
-    const names = (res?.data || []).map((t: any) => t.toColumnName).filter(Boolean)
-    if (names.length === 0) return "没有可去的地方，需要项目管理员调整工作流"
-    return names.join("、")
+    const list = res?.data || []
+    if (list.length === 0) return { ok: false, text: "没有可去的地方，需要项目管理员调整工作流" }
+    // v2.19.6：后端会告诉我们"这一步由谁负责"，被责任人挡住时说清是谁，别让用户反复试
+    const allowed = list.filter((t: any) => t.allowed !== false).map((t: any) => t.toColumnName)
+    if (allowed.length === 0) {
+      const reason = list.find((t: any) => t.reason)?.reason
+      return { ok: false, text: reason ? `${reason}，你推不动这一步` : "这些路你现在都走不了" }
+    }
+    return { ok: true, text: allowed.filter(Boolean).join("、") }
   } catch {
-    return ""
+    return { ok: false, text: "" }
   }
 }
 
@@ -562,12 +571,19 @@ async function handleDragChange(evt: any, targetColId: number) {  // 跨列拖�
       const msg = e?.response?.data?.message || e?.message || "移动失败"
       // 被工作流挡住时，只说"不允许"等于没说：告诉用户从这里还能去哪。
       // （/api/workflow/transitions 这个接口后端一直有，前端从没用过。）
-      if (msg.includes("工作流")) {
+      if (msg.includes("工作流") || msg.includes("负责") || msg.includes("条件")) {
         const hint = await whereCanIGo(issue)
-        // 拦截器已经弹过一条"工作流不允许…"，这里合并成一条带方向的，别叠两层
+        // 拦截器已经弹过后端那句原文，这里只在能补充信息时合并，避免同一句话叠两遍
+        const message = !hint.text
+          ? msg
+          : hint.ok
+            ? `${msg}。当前可以从这里去：${hint.text}`
+            : msg.includes("负责") || msg.includes("条件")
+              ? msg
+              : `${msg}。${hint.text}`
         ElMessage.closeAll()
         ElMessage.warning({
-          message: hint ? `${msg}。当前可以从这里去：${hint}` : msg,
+          message,
           duration: 6000,
           showClose: true,
         })
