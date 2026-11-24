@@ -38,6 +38,14 @@
         <RippleButton variant="default" @click="$router.push('/teams')">
           创建团队
         </RippleButton>
+        <!--
+          管理员的第二个入口（v2.19.8 补）：只把切换放在面板标题里太难找了 ——
+          用户实测"没看到这个功能"，所以这里再给一个说得清的按钮，点了滚到面板并切到全员。
+        -->
+        <button v-if="canSeeTeamFlow" class="dash-hero__admin-entry" @click="openTeamFlow">
+          <el-icon><UserFilled /></el-icon>
+          全员任务流
+        </button>
       </div>
     </div>
 
@@ -630,6 +638,14 @@ async function loadTeamWorkbench() {
 function switchToTeamFlow() {
   adminScope.value = 'team'
   if (!teamWorkbench.value) loadTeamWorkbench()
+}
+
+/** Hero 上的入口：切视角并滚到任务面板，避免"点了没反应" */
+function openTeamFlow() {
+  switchToTeamFlow()
+  requestAnimationFrame(() => {
+    document.querySelector('.dash-panel--tasks')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  })
 }
 
 function openTeamTask(
@@ -1251,6 +1267,28 @@ onMounted(() => {
 }
 
 /* --- 面板网格 --- */
+/* Hero 上的管理员入口：金色描边，和普通按钮区分开 */
+.dash-hero__admin-entry {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 16px;
+  font-size: 13.5px;
+  font-weight: 700;
+  border-radius: 10px;
+  border: 1px solid rgba(180, 83, 9, 0.4);
+  background: var(--bg-warning-soft);
+  color: var(--color-warning);
+  cursor: pointer;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+
+  &:hover {
+    transform: translateY(-1px);
+    border-color: #b45309;
+    box-shadow: 0 6px 16px rgba(180, 83, 9, 0.18);
+  }
+}
+
 .dash-hero__badge {
   margin-right: 8px;
   vertical-align: 1px;

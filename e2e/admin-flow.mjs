@@ -73,6 +73,12 @@ await adminPage.waitForTimeout(2000);
 const scopeSwitch = adminPage.locator(".admin-scope");
 check("工作台有「我的 / 全员」切换", (await scopeSwitch.count()) > 0);
 
+// Hero 上的第二个入口：第一版只把切换放在面板标题里，用户实测"没看到这个功能"，
+// 所以这里专门验"不用往下翻也能找到入口"，并且点它真的会切视角。
+const heroEntry = adminPage.locator(".dash-hero__admin-entry");
+const heroEntryVisible = (await heroEntry.count()) > 0 && (await heroEntry.first().isVisible());
+check("Hero 上有「全员任务流」按钮（不用翻面板就能找到）", heroEntryVisible);
+
 // 接口真值，用来和界面比
 const token = await adminPage.evaluate(() => localStorage.getItem("token"));
 const apiData = await adminPage.evaluate(async (t) => {
@@ -81,7 +87,8 @@ const apiData = await adminPage.evaluate(async (t) => {
   return json.data;
 }, token);
 
-await adminPage.locator(".admin-scope__option", { hasText: "全员" }).click();
+// 用 Hero 按钮进入（而不是面板里的切换），顺带验证这条入口真的能用
+await heroEntry.first().click();
 await adminPage.waitForSelector(".member-stream", { timeout: 20000 });
 await adminPage.waitForTimeout(900);
 
