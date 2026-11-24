@@ -313,7 +313,7 @@ onMounted(refreshAll)
 .velocity-table__row--head {
   color: var(--text-muted);
   font-weight: 600;
-  background: var(--surface-secondary);
+  background: var(--bg-subtle);
 }
 .velocity-table__row > span:first-child {
   display: flex;
@@ -332,7 +332,7 @@ onMounted(refreshAll)
   margin-top: 10px;
   padding: 10px 12px;
   border-radius: 8px;
-  background: var(--surface-secondary);
+  background: var(--bg-subtle);
   color: var(--text-muted);
   font-size: 11px;
   line-height: 1.55;

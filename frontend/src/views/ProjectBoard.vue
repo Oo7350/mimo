@@ -831,7 +831,9 @@ onMounted(async () => {
 
     &:hover { border-color: var(--text-muted); color: var(--text-primary); }
     &.is-active {
+      /* 「全部」这类没有类型色的按钮原来只改字色、底色还是页面色 —— 白字压在浅底上等于隐形 */
       color: #fff !important; font-weight: 700;
+      background: var(--color-primary-solid); border-color: var(--color-primary-solid);
     }
     &--story.is-active { background: var(--type-story); border-color: var(--type-story); }
     &--task.is-active { background: var(--type-task); border-color: var(--type-task); }
@@ -878,7 +880,7 @@ onMounted(async () => {
 
   &__column-empty {
     display: flex; flex-direction: column; align-items: center; gap: 8px;
-    padding: 30px 16px; color: var(--text-placeholder); font-size: 12.5px;
+    padding: 30px 16px; color: var(--text-secondary); font-size: 12.5px;
     .el-icon { opacity: 0.4; }
   }
 
@@ -904,7 +906,7 @@ onMounted(async () => {
     cursor: pointer; transition: all 0.15s;
 
     &:hover { background: var(--bg-hover); color: var(--text-primary); }
-    &.is-active { background: var(--text-primary); color: #fff; border-color: var(--text-primary); font-weight: 700; }
+    &.is-active { background: var(--color-primary-solid); color: #fff; border-color: var(--color-primary-solid); font-weight: 700; }
     &--bug.is-active { background: var(--color-danger); border-color: var(--color-danger); }
   }
 
@@ -942,7 +944,7 @@ onMounted(async () => {
   &__overview-num {
     font-size: 24px; font-weight: 800; color: var(--text-primary);
     line-height: 1; letter-spacing: -0.8px; transition: color 0.15s;
-    &--todo { color: #94a3b8; }
+    &--todo { color: var(--text-muted); }
     &--progress { color: #d97706; }
     &--done { color: #059669; }
     &--bug { color: #dc2626; }

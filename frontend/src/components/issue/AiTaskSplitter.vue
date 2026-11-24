@@ -234,7 +234,7 @@ async function handleCreate() {
 }
 .ai-splitter__item-index {
   font-size: 11px;
-  color: var(--text-tertiary, #c0c4cc);
+  color: var(--text-muted);
   min-width: 18px;
   text-align: center;
 }
@@ -255,7 +255,7 @@ async function handleCreate() {
 .ai-splitter__item-dep {
   margin-top: 4px;
   font-size: 11px;
-  color: #909399;
+  color: var(--text-secondary);
   display: flex;
   align-items: center;
   gap: 3px;

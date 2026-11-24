@@ -1,6 +1,8 @@
 # AGENTS.md
 
-> **最新版本**：v2.19.6（2026-11-24）— 工作流节点能指定责任人了：节点上加了 `ownerUserId`（谁负责把工作项从这一步交给下一步），配了之后只有他或项目管理员能推进，界面被挡住时会点名"这一步由「张三」负责"；`GET /workflow/transitions` 每条转换新增 `fromOwnerName/allowed/reason`，前端据此决定给按钮还是给原因。项目管理员永远能推进是**故意留的逃生口**（责任人休假/离职不能卡死流程）。顺手记一笔自测教训：开发库里 admin/zhangsan/lisi 在 team_members 里的 role **全是 ROLE_ADMIN**，拿他们当"普通成员"测权限会测到管理员放行路径，e2e 改成现场注册纯成员账号。核心链路口径：5 套 43 条断言，后端 160 项。
+> **最新版本**：v2.19.7（2026-11-24）— 暗色模式的颜色逻辑修好了、界面不再编数字：① 暗色主题下 Element 的 `html.dark` 会把 `--el-color-primary` 重置成默认蓝 `#409EFF`，品牌靛蓝被顶掉；同时多处把 `--text-primary`（暗色下近白）当实心块底色、页面标题写死 `#0f172a`，实测白字压白块只有 1.05:1、标题 1.09:1 直接看不见。现在统一走 `--color-primary-solid` / `--bg-subtle` / `--text-*` 语义变量，暗色实测 `浅色块 0 / 低对比 0`。② 团队页的"在线人数"原来取成员总数，现在 `PresenceService` 按 WebSocket 会话算真实在线，新接口 `GET /api/teams/{id}/presence`，并给简单 broker 加了 10 秒心跳（否则关页面后在线数会虚高）。③ 收口 5 条 Low（在线人数 / 部署脚本确认 / 硬编码颜色 / 无外键改体检工具 / e2e 残留），新增两把尺子：`e2e/theme-audit.mjs` 量配色、`tools/integrity-check.sql` 量孤儿数据（它顺手扫出 BUG-104）。后端 167 项测试、e2e 5 套 47 条断言、`vue-tsc` 与 `npm run build` 全绿。
+>
+> **上一版本**：v2.19.6（2026-11-24）— 工作流节点能指定责任人了：节点上加了 `ownerUserId`（谁负责把工作项从这一步交给下一步），配了之后只有他或项目管理员能推进，界面被挡住时会点名"这一步由「张三」负责"；`GET /workflow/transitions` 每条转换新增 `fromOwnerName/allowed/reason`，前端据此决定给按钮还是给原因。项目管理员永远能推进是**故意留的逃生口**（责任人休假/离职不能卡死流程）。顺手记一笔自测教训：开发库里 admin/zhangsan/lisi 在 team_members 里的 role **全是 ROLE_ADMIN**，拿他们当"普通成员"测权限会测到管理员放行路径，e2e 改成现场注册纯成员账号。核心链路口径：5 套 43 条断言，后端 160 项。
 >
 > **上一版本**：v2.19.5（2026-11-24）— 两处链路闭合：① 工作台「待我处理」现在可以直接通过 / 打回待验收（以前要走五步换一个按钮），打回必须填原因，面板下还写清了"验收通过不会自动完成、负责人回看板标记完成"；② 示例数据能生成也能收回——新增 `DELETE /api/admin/demo-data`，只删生成器自己造的东西（项目/工作项/评论/工时/验收/版本快照/变更申请/附件/标签/通知/看板列/迭代/燃尽快照/报告/动态/工作流/交付快照/Wiki），团队仅在"除示例项目外没别的项目"时才删。过程中修掉 BUG-103（清除后再生成撞 `uk_project_key` 报 500，根因是唯一索引不看逻辑删除标记）。e2e 加到 5 套 39 条（review-matrix 新增工作台就地验收一条），后端测试 154 项。
 >
@@ -12,8 +14,8 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 Mimo is a lightweight Trello-like project management platform for small teams. It supports team collaboration, kanban task tracking, and progress visualization.
 
-- **Version**: v2.19.6 — 工作流节点责任人 + 交接说明 (2026-11-24)
-- **Previous**: v2.19.5 — 工作台就地验收 + 示例数据一键清除 (2026-11-24)
+- **Version**: v2.19.7 — 暗色配色系统性修正 + 在线人数落实 + Low 收口 (2026-11-24)
+- **Previous**: v2.19.6 — 工作流节点责任人 + 交接说明 (2026-11-24)
 - **GitHub**: https://github.com/Oo7350/mimo
 - **API docs**: `接口文档.md` (70+ endpoints, Chinese)
 - **User manual**: `操作手册.md` (Chinese)
@@ -57,6 +59,19 @@ mvn spring-boot:run
 # Run (jar)
 java -jar target/mimo-backend-1.0.0-SNAPSHOT.jar
 ```
+
+**启动前必须给三个环境变量**（`application.yml` 里没有硬编码兜底，缺一个就起不来）：
+
+| 变量 | 缺了会怎样 |
+|------|------------|
+| `JWT_SECRET` | `JwtUtil` 构造抛 `WeakKeyException`，整个上下文起不来 |
+| `MIMO_DB_PASSWORD` | `Access denied for user 'mimo'@'localhost' (using password: NO)` |
+| `JAVA_HOME` | `mvn` 找不到 JDK |
+
+本机有一份现成的（不进仓库）：`. C:\mimo-env\dev-env.ps1`，里面就这几个值。
+这套坑是 v2.19.7 重启后端时踩到的：jar 明明打好了，却报 `WeakKeyException` / `Access denied`，
+看起来像"构建坏了"，其实只是环境变量没带。
+
 
 ### Frontend (from `frontend/`)
 
@@ -217,6 +232,29 @@ All v2.15 AI roadmap items are implemented. Future work may replace the lexical 
 - **Board Sync Flow**: Drag → `PUT /api/board/issue/move` → backend updates issue + logs + WebSocket broadcast → all board subscribers receive event → optimistic UI update
 
 ## Version History
+
+### v2.19.7 — 暗色配色系统性修正 + 在线人数落实 + Low 收口 (2026-11-24)
+
+- **配色：四类系统性问题**（详见 bug-log BUG-105~109）
+  - Element dark css-vars 的 `html.dark` 重置 `--el-color-primary` → 品牌色在暗色下漂移；
+    现在 `[data-theme="dark"]` 与 `html.dark` 双写 primary 全家桶，`light-7/8/9` 换成低透明度。
+  - 把 `--text-primary` 当实心块底色（登录按钮、看板标签页选中态、分段控件）→ 暗色下白字压白块
+    1.05–1.18:1。新增 `--color-primary-solid`（两主题都深靛蓝，白字 4.6:1），约定 `--text-*` 只当文字色。
+  - `ShinyText` 标题写死 `#0f172a` → 暗色下标题隐形（1.09:1）。改传 `var(--text-primary)`。
+  - 头像三色系 `#f7b955/#00b96b` 白字 1.75/2.58:1 → 压深到 `#b45309/#047857/#2563eb`，
+    另加 `readableInk()` 处理"颜色来自数据"（日历事件条）。
+- **工具**：`tools/theme_literals.py`（中性色字面值 → 语义变量，`--check` 归零才算合格，
+  本轮替换 82 处/10 文件）、`e2e/theme-audit.mjs`（真浏览器量实际底色与对比度，
+  暗色 `浅色块 0 / 低对比 0`）、`tools/integrity-check.sql`（16 类引用关系体检）。
+- **在线人数（KNOWN-013）**：`PresenceService` 按 STOMP 会话登记/注销，
+  `WebSocketPresenceListener` 兜住无 DISCONNECT 帧的断线；`GET /api/teams/{id}/presence` 返回
+  `onlineCount / totalMembers / onlineUserIds`；团队页「N 人在线 · M 位成员」+ 头像绿点。
+  简单 broker 补 `setHeartbeatValue(10s)` + 调度器，否则关页面后在线数会长时间虚高。
+- **其它 Low 收口**：`deploy.ps1` 加确认（`-Force` 跳过，给 CI）；无外键明确为设计选择 +
+  体检工具；e2e 残留补 §8 通用孤儿清理。
+- **BUG-104**：`integrity-check.sql` 扫出 6 行 `project_members` 挂在逻辑删除的项目上，
+  已清理并把通用兜底写进 `cleanup-residue.sql`。
+- **验证**：`mvn test` 167 项；e2e 5 套 43 条 + `presence.mjs` 4 条；`vue-tsc`、`npm run build` 通过。
 
 ### v2.19.6 — 工作流节点责任人 + 交接说明 (2026-11-24)
 

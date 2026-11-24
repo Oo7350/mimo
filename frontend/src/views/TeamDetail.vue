@@ -66,6 +66,11 @@
             <div v-for="m in members" :key="m.userId" class="td-member">
               <div class="td-member__avatar" :style="{ background: avatarGradient(m.username, 'user') }">
                 {{ m.username.charAt(0).toUpperCase() }}
+                <span
+                  v-if="onlineUserIds.has(m.userId)"
+                  class="td-member__online-dot"
+                  title="当前在线"
+                />
               </div>
               <div class="td-member__info">
                 <span class="td-member__name">{{ m.username }}</span>
@@ -163,7 +168,7 @@
           </div>
           <div>
             <h3>团队群聊</h3>
-            <span class="td-chat-header__online">{{ onlineCount }} 位成员</span>
+            <span class="td-chat-header__online">{{ onlineCount }} 人在线 · {{ members.length }} 位成员</span>
           </div>
         </div>
 
@@ -388,7 +393,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, nextTick, onMounted, onUnmounted } from "vue"
 import { useRoute, useRouter } from "vue-router"
-import { getTeamById, getMembers, inviteMember, removeMember, getTeamRole, leaveTeam, transferOwner, setMemberAdmin, unsetMemberAdmin } from "@/api/team"
+import { getTeamById, getMembers, getTeamPresence, inviteMember, removeMember, getTeamRole, leaveTeam, transferOwner, setMemberAdmin, unsetMemberAdmin } from "@/api/team"
 import { getProjectsByTeam, createProject, deleteProject } from "@/api/project"
 import { searchUsers } from "@/api/user"
 import { sendChatMessage as apiSendChat, getChatHistory, recallMessage } from "@/api/chat"
@@ -588,7 +593,25 @@ const chatInput = ref("")
 const sendingChat = ref(false)
 const loadingChat = ref(true)
 const unreadCount = ref(0)
-const onlineCount = computed(() => members.value.length)
+// 在线人数 = 真连着 WebSocket 的人（后端 /teams/{id}/presence）——
+// 以前这里写的是 members.value.length，等于把"成员总数"当"在线人数"显示。
+const presence = ref<{ onlineCount: number; totalMembers: number; onlineUserIds: number[] }>({
+  onlineCount: 0,
+  totalMembers: 0,
+  onlineUserIds: [],
+})
+const onlineCount = computed(() => presence.value.onlineCount)
+const onlineUserIds = computed(() => new Set(presence.value.onlineUserIds || []))
+let presenceTimer: number | undefined
+
+async function refreshPresence() {
+  try {
+    const res = await getTeamPresence(teamId)
+    presence.value = res.data || { onlineCount: 0, totalMembers: 0, onlineUserIds: [] }
+  } catch {
+    // 在线人数是锦上添花，取不到就不显示绿点，别打断团队页
+  }
+}
 const chatPanelRef = ref<HTMLElement>()
 const chatMsgListRef = ref<HTMLElement>()
 const chatInputRef = ref<any>()
@@ -920,6 +943,16 @@ onMounted(() => {
   fetchData()
   loadChatHistory()
   fetchPendingApprovals()
+  // 在线人数：首次很可能在 WebSocket 连上之前就查完了（会显示 0 人在线），
+  // 所以补两次短延时刷新，之后每 30 秒一次——在线状态本来允许几十秒滞后。
+  refreshPresence()
+  window.setTimeout(refreshPresence, 2500)
+  window.setTimeout(refreshPresence, 7000)
+  presenceTimer = window.setInterval(refreshPresence, 30000)
+})
+
+onUnmounted(() => {
+  if (presenceTimer) window.clearInterval(presenceTimer)
 })
 </script>
 
@@ -1107,6 +1140,19 @@ onMounted(() => {
     font-weight: 700;
     font-size: 13px;
     flex-shrink: 0;
+    position: relative;
+  }
+
+  /* 在线绿点：只有真连着 WebSocket 的人才有（数据来自 /teams/{id}/presence） */
+  &__online-dot {
+    position: absolute;
+    right: -2px;
+    bottom: -2px;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #22c55e;
+    border: 2px solid var(--bg-card);
   }
 
   &__info {

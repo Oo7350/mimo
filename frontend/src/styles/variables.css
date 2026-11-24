@@ -44,16 +44,31 @@
   --bg-card: #ffffff;
   --bg-column: #f1f3f9;
   --bg-hover: #eef0f7;
+  /* 弱底色：次要按钮、分段控件、空状态块都靠它，不要让组件各自写死 #f1f5f9 */
+  --bg-subtle: #f1f5f9;
+  --bg-subtle-strong: #e8ecf4;
+  --bg-danger-soft: #fef2f2;
+  /* 语义浅底：绿色/蓝色/琥珀色的"淡色块"（健康度、提示、统计卡） */
+  --bg-success-soft: #ecfdf5;
+  --bg-info-soft: #eff6ff;
+  --bg-warning-soft: #fffbeb;
   --bg-sidebar: #0f0f14;
   --bg-sidebar-hover: #1a1a24;
   --bg-sidebar-active: rgba(79, 70, 229, 0.2);
+
+  /* 实心按钮用色：白字压在上面必须够深。
+     注意别直接拿 --color-primary 当底色——它在暗色主题下会被提亮成 #818cf8，白字就糊了。 */
+  --color-primary-solid: #4f46e5;
+  --color-primary-solid-hover: #4338ca;
+  --color-primary-solid-active: #3730a3;
 
   /* ═══ Text — high contrast, crisp ═══ */
   --text-primary: #0f172a;
   --text-regular: #334155;
   --text-secondary: #64748b;
-  --text-muted: #94a3b8;
-  --text-placeholder: #cbd5e1;
+  --text-muted: #7c8798;
+  /* 占位符原来是 #cbd5e1，压在白底上只有 1.48:1 —— 搜索框看起来像空的 */
+  --text-placeholder: #8b95a6;
   --text-sidebar: #6b7280;
   --text-sidebar-active: #ffffff;
 
@@ -105,6 +120,16 @@
   --el-color-primary-light-8: #ddd6fe;
   --el-color-primary-light-9: #ede9fe;
   --el-color-primary-dark-2: #3730a3;
+
+  /* 状态色当"文字"用（删除按钮、成功/警告标签）时，Element 默认值在浅底上只有 2.2–2.9:1；
+     压深一档后白字实心块也更稳。浅色派生 --el-color-*-light-9 保持不变，仍是淡底。 */
+  --el-color-success: #15803d;
+  --el-color-warning: #b45309;
+  --el-color-danger: #dc2626;
+  --el-color-error: #dc2626;
+  /* 次要文字（表格里的编码、说明）默认 #909399 只有 2.8–3.0:1 */
+  --el-text-color-secondary: #6b7280;
+  --el-text-color-placeholder: #8b95a6;
 }
 
 /* ═══════════════════════════════════════
@@ -130,15 +155,27 @@
   --bg-card: #151822;
   --bg-column: #10131b;
   --bg-hover: #1e2230;
+  --bg-subtle: #1b1f2b;
+  --bg-subtle-strong: #242a38;
+  --bg-danger-soft: rgba(220, 38, 38, 0.14);
+  --bg-success-soft: rgba(5, 150, 105, 0.16);
+  --bg-info-soft: rgba(59, 130, 246, 0.16);
+  --bg-warning-soft: rgba(217, 119, 6, 0.16);
   --bg-sidebar: #0a0c12;
   --bg-sidebar-hover: #171b26;
   --bg-sidebar-active: rgba(129, 140, 248, 0.18);
 
+  /* 暗色下实心按钮保持深靛蓝：白字对比度 4.6:1，别跟着 --color-primary 一起提亮 */
+  --color-primary-solid: #4f46e5;
+  --color-primary-solid-hover: #6366f1;
+  --color-primary-solid-active: #4338ca;
+
   --text-primary: #e8ecf4;
   --text-regular: #c3cad8;
   --text-secondary: #94a3b8;
-  --text-muted: #7b8798;
-  --text-placeholder: #4b5566;
+  --text-muted: #8593a6;
+  /* 占位符/次要说明：原来是 #4b5566，压在卡片(#151822)上只有 2.35:1，等于看不清 */
+  --text-placeholder: #8b95a6;
   --text-sidebar: #8b94a6;
   --text-sidebar-active: #ffffff;
 
@@ -164,4 +201,91 @@
   --el-text-color-regular: #cbd5e1;
   --el-border-color: #1e293b;
   --el-border-color-light: #0f172a;
+
+  /* 品牌色的 Element 派生变量必须一起覆盖。
+     element-plus/theme-chalk/dark/css-vars.css 里 `html.dark` 会把 --el-color-primary 重置成
+     Element 默认蓝 #409EFF，跟我们的靛蓝对不上 —— 暗色下按钮/单选框会突然变成另一种蓝。
+     这里跟着 .dark 一起重设，保证两种主题都是同一套品牌色。 */
+  --el-color-primary: #6366f1;
+  --el-color-primary-light-3: #818cf8;
+  --el-color-primary-light-5: #a5b4fc;
+  /* 7/8/9 是 Element 拿来当"浅色底"的（tag、plain 按钮、选中态）。
+     亮色主题下它们是淡紫块；暗色主题里必须换成低透明度，否则页面上会冒出浅色小方块。 */
+  --el-color-primary-light-7: rgba(99, 102, 241, 0.45);
+  --el-color-primary-light-8: rgba(99, 102, 241, 0.3);
+  --el-color-primary-light-9: rgba(99, 102, 241, 0.2);
+  --el-color-primary-dark-2: #4f46e5;
+
+  /* 状态色：同一个变量在 Element 里既当"文字色"又当"实心块底色"，两边要求相反——
+     当文字要够亮（压在深底上才看得见），当底色要够深（白字才压得住）。
+     这里保留亮色值给文字/图标用；实心按钮的底色在下面 html.dark 的 .el-button--* 里单独压深。 */
+  --el-color-success: #34d399;
+  --el-color-warning: #fbbf24;
+  --el-color-danger: #f87171;
+  --el-color-error: #f87171;
+  --el-color-info: #94a3b8;
+  --el-color-success-light-9: rgba(52, 211, 153, 0.16);
+  --el-color-warning-light-9: rgba(251, 191, 36, 0.16);
+  --el-color-danger-light-9: rgba(248, 113, 113, 0.16);
+  --el-color-error-light-9: rgba(248, 113, 113, 0.16);
+  --el-color-info-light-9: rgba(148, 163, 184, 0.16);
+}
+
+/* ═══════════════════════════════════════
+   和 [data-theme="dark"] 成对：Element Plus 的 dark css-vars 用的是 .dark 选择器，
+   两边写着同样的派生变量，避免"类生效了、属性值没跟上"
+   ═══════════════════════════════════════ */
+html.dark {
+  --el-color-primary: #6366f1;
+  --el-color-primary-light-3: #818cf8;
+  --el-color-primary-light-5: #a5b4fc;
+  --el-color-primary-light-7: rgba(99, 102, 241, 0.45);
+  --el-color-primary-light-8: rgba(99, 102, 241, 0.3);
+  --el-color-primary-light-9: rgba(99, 102, 241, 0.2);
+  --el-color-primary-dark-2: #4f46e5;
+  --el-color-success: #34d399;
+  --el-color-warning: #fbbf24;
+  --el-color-danger: #f87171;
+  --el-color-error: #f87171;
+  --el-color-info: #94a3b8;
+  --el-color-success-light-9: rgba(52, 211, 153, 0.16);
+  --el-color-warning-light-9: rgba(251, 191, 36, 0.16);
+  --el-color-danger-light-9: rgba(248, 113, 113, 0.16);
+  --el-color-error-light-9: rgba(248, 113, 113, 0.16);
+  --el-color-info-light-9: rgba(148, 163, 184, 0.16);
+}
+
+/* plain 按钮（浅底 + 品牌字）在暗色下底色是 rgba 靛蓝，字用亮一档的才够 */
+html.dark .el-button--primary.is-plain { color: #a5b4fc; }
+html.dark .el-button--success.is-plain { color: #6ee7b7; }
+html.dark .el-button--warning.is-plain { color: #fcd34d; }
+html.dark .el-button--danger.is-plain { color: #fca5a5; }
+
+/* 实心状态按钮：白字必须压在深色上。
+   Element 暗色主题把 success/warning/danger 放宽成 #67c23a / #e6a23c / #f56c6c，
+   白字只有 2.2–2.8:1；上面为了"文字色要亮"又不能压深，于是只针对实心按钮改底色。 */
+html.dark .el-button--success:not(.is-plain) {
+  --el-button-bg-color: #15803d;
+  --el-button-border-color: #15803d;
+  --el-button-hover-bg-color: #166534;
+  --el-button-hover-border-color: #166534;
+}
+html.dark .el-button--warning:not(.is-plain) {
+  --el-button-bg-color: #b45309;
+  --el-button-border-color: #b45309;
+  --el-button-hover-bg-color: #92400e;
+  --el-button-hover-border-color: #92400e;
+}
+html.dark .el-button--danger:not(.is-plain) {
+  --el-button-bg-color: #b91c1c;
+  --el-button-border-color: #b91c1c;
+  --el-button-hover-bg-color: #991b1b;
+  --el-button-hover-border-color: #991b1b;
+}
+/* 实心 primary 同理：白字压在 #6366f1 上 4.3:1，压 #4f46e5 更稳 */
+html.dark .el-button--primary:not(.is-plain) {
+  --el-button-bg-color: #4f46e5;
+  --el-button-border-color: #4f46e5;
+  --el-button-hover-bg-color: #4338ca;
+  --el-button-hover-border-color: #4338ca;
 }

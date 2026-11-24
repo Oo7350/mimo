@@ -698,7 +698,7 @@ watch(() => props.issueId, load, { immediate: true })
   border-bottom: 0;
 }
 .diff-row--head {
-  background: var(--surface-secondary);
+  background: var(--bg-subtle);
   font-weight: 600;
 }
 .diff-before {
@@ -742,7 +742,7 @@ watch(() => props.issueId, load, { immediate: true })
   gap: 4px;
   padding: 12px;
   border-radius: 10px;
-  background: var(--surface-secondary);
+  background: var(--bg-subtle);
 }
 .impact-stat span,
 .impact-field span {
@@ -791,7 +791,7 @@ watch(() => props.issueId, load, { immediate: true })
   padding: 9px 11px;
   border-radius: 8px;
   color: var(--text-regular);
-  background: var(--surface-secondary);
+  background: var(--bg-subtle);
   font-size: 13px;
 }
 .risk-dot {

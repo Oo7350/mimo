@@ -86,25 +86,25 @@ onMounted(async () => {
 .issue-redirect__spinner,
 .issue-redirect__icon {
   font-size: 34px;
-  color: var(--mimo-text-secondary, #94a3b8);
+  color: var(--text-secondary);
 }
 
 .issue-redirect__icon {
-  color: var(--mimo-warning, #f59e0b);
+  color: var(--color-warning);
 }
 
 .issue-redirect__title {
   margin: 0;
   font-size: 16px;
   font-weight: 600;
-  color: var(--mimo-text-primary, #1e293b);
+  color: var(--text-primary);
 }
 
 .issue-redirect__text {
   margin: 0;
   font-size: 13px;
   line-height: 1.7;
-  color: var(--mimo-text-secondary, #64748b);
+  color: var(--text-secondary);
 }
 
 .issue-redirect__actions {

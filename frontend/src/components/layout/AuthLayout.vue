@@ -238,7 +238,7 @@ onMounted(() => {
     justify-content: center;
     padding: 60px;
     overflow: hidden;
-    background: #ffffff;
+    background: var(--bg-card);
   }
 
   .glass-bg {
@@ -330,7 +330,7 @@ onMounted(() => {
     align-items: center;
     justify-content: center;
     padding: 52px;
-    background: #fff;
+    background: var(--bg-card);
     position: relative;
   }
 

@@ -214,7 +214,7 @@ watch(() => props.data, render, { deep: true })
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: #94a3b8;
+  color: var(--text-muted);
   font-size: 13px;
   pointer-events: none;
 }

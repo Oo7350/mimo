@@ -862,23 +862,23 @@ onUnmounted(() => {
   gap: 16px;
   margin-bottom: 24px;
   padding-bottom: 20px;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid var(--border-color-light);
 }
 .sprint-page__back {
   margin-right: 4px;
   font-size: 18px;
-  color: #64748b;
+  color: var(--text-secondary);
 }
 .sprint-page__hero-info { flex: 1; }
 .sprint-page__title {
   font-size: 22px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--text-primary);
   margin: 0 0 4px 0;
 }
 .sprint-page__subtitle {
   font-size: 13px;
-  color: #94a3b8;
+  color: var(--text-muted);
   margin: 0;
 }
 .sprint-page__loading { padding: 40px 0; }
@@ -886,10 +886,10 @@ onUnmounted(() => {
 .sprint-page__empty {
   text-align: center;
   padding: 80px 20px;
-  color: #94a3b8;
+  color: var(--text-muted);
 }
 .sprint-page__empty-icon { font-size: 56px; margin-bottom: 16px; }
-.sprint-page__empty h3 { color: #475569; font-size: 18px; margin: 0 0 8px 0; font-weight: 600; }
+.sprint-page__empty h3 { color: var(--text-regular); font-size: 18px; margin: 0 0 8px 0; font-weight: 600; }
 .sprint-page__empty p { margin: 0 0 20px 0; font-size: 14px; }
 
 .sprint-page__grid {
@@ -911,8 +911,8 @@ onUnmounted(() => {
   padding-right: 4px;
 }
 .sprint-card {
-  background: #fff;
-  border: 1px solid #e2e8f0;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
   border-radius: 10px;
   padding: 16px;
   cursor: pointer;
@@ -923,7 +923,7 @@ onUnmounted(() => {
   box-shadow: 0 2px 8px rgba(79,70,229,0.08);
 }
 .sprint-card--active {
-  border-color: #4f46e5;
+  border-color: var(--color-primary);
   box-shadow: 0 0 0 2px rgba(79,70,229,0.1);
 }
 .sprint-card__header {
@@ -937,26 +937,26 @@ onUnmounted(() => {
   font-weight: 600;
   padding: 2px 8px;
   border-radius: 4px;
-  background: #f1f5f9;
-  color: #64748b;
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
 }
-.sprint-card__status--planning { background: rgba(245,158,11,0.1); color: #f59e0b; }
+.sprint-card__status--planning { background: var(--bg-warning-soft); color: var(--color-warning); }
 .sprint-card__status--active { background: rgba(16,185,129,0.1); color: #10b981; }
 .sprint-card__status--completed { background: rgba(99,102,241,0.1); color: #6366f1; }
 .sprint-card__date {
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--text-muted);
 }
 .sprint-card__name {
   font-size: 15px;
   font-weight: 600;
-  color: #0f172a;
+  color: var(--text-primary);
   margin: 0 0 6px 0;
   line-height: 1.4;
 }
 .sprint-card__goal {
   font-size: 12px;
-  color: #64748b;
+  color: var(--text-secondary);
   margin: 0 0 10px 0;
   line-height: 1.5;
   display: -webkit-box;
@@ -968,7 +968,7 @@ onUnmounted(() => {
   display: flex;
   gap: 14px;
   font-size: 12px;
-  color: #64748b;
+  color: var(--text-secondary);
   margin-bottom: 12px;
 }
 .sprint-card__meta span {
@@ -983,8 +983,8 @@ onUnmounted(() => {
 }
 
 .sprint-detail {
-  background: #fff;
-  border: 1px solid #e2e8f0;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
   border-radius: 10px;
   padding: 24px;
   position: sticky;
@@ -998,7 +998,7 @@ onUnmounted(() => {
   justify-content: center;
   gap: 12px;
   min-height: 380px;
-  color: #94a3b8;
+  color: var(--text-muted);
   font-size: 14px;
 }
 .sprint-detail__header {
@@ -1012,12 +1012,12 @@ onUnmounted(() => {
 .sprint-detail__title {
   font-size: 18px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--text-primary);
   margin: 0 0 4px 0;
 }
 .sprint-detail__goal {
   font-size: 13px;
-  color: #64748b;
+  color: var(--text-secondary);
   margin: 0;
   max-width: 460px;
   line-height: 1.5;
@@ -1033,21 +1033,21 @@ onUnmounted(() => {
 .sprint-detail__stat-value {
   font-size: 18px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--text-primary);
   line-height: 1.2;
 }
 .sprint-detail__stat-value--success { color: #10b981; }
 .sprint-detail__stat-value--danger  { color: #ef4444; }
 .sprint-detail__stat-label {
   font-size: 11px;
-  color: #94a3b8;
+  color: var(--text-muted);
   margin-top: 2px;
 }
 
 .sprint-health {
   margin-bottom: 22px;
   padding: 18px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border-color);
   border-left: 4px solid #10b981;
   border-radius: 12px;
   background: linear-gradient(135deg, #f8fafc 0%, #ffffff 68%);
@@ -1079,22 +1079,22 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   border-radius: 14px;
-  background: #ecfdf5;
-  color: #059669;
+  background: var(--bg-success-soft);
+  color: var(--color-success);
   font-size: 24px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
 }
 .sprint-health--watch .sprint-health__score {
-  background: #fffbeb;
+  background: var(--bg-warning-soft);
   color: #d97706;
 }
 .sprint-health--at_risk .sprint-health__score {
-  background: #fef2f2;
-  color: #dc2626;
+  background: var(--bg-danger-soft);
+  color: var(--color-danger);
 }
 .sprint-health__eyebrow {
-  color: #0f172a;
+  color: var(--text-primary);
   font-size: 14px;
   font-weight: 700;
 }
@@ -1103,7 +1103,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   margin-top: 5px;
-  color: #94a3b8;
+  color: var(--text-muted);
   font-size: 11px;
 }
 .sprint-health__actions {
@@ -1128,11 +1128,11 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  color: #64748b;
+  color: var(--text-secondary);
   font-size: 12px;
 }
 .health-progress__label b {
-  color: #0f172a;
+  color: var(--text-primary);
   font-size: 11px;
   font-weight: 600;
 }
@@ -1154,7 +1154,7 @@ onUnmounted(() => {
   background: linear-gradient(90deg, #6366f1, #8b5cf6);
 }
 .health-progress__value {
-  color: #334155;
+  color: var(--text-regular);
   font-size: 12px;
   font-weight: 700;
   text-align: right;
@@ -1170,21 +1170,21 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 3px;
   padding: 10px 11px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.72);
 }
 .health-metric span {
-  color: #94a3b8;
+  color: var(--text-muted);
   font-size: 10px;
 }
 .health-metric b {
-  color: #0f172a;
+  color: var(--text-primary);
   font-size: 16px;
   font-weight: 750;
 }
 .health-metric__danger {
-  color: #dc2626 !important;
+  color: var(--color-danger) !important;
 }
 .health-collapse {
   margin-top: 14px;
@@ -1195,7 +1195,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  color: #475569;
+  color: var(--text-regular);
   font-size: 12px;
 }
 .health-reasons div {
@@ -1218,17 +1218,17 @@ onUnmounted(() => {
   margin-top: 12px;
   padding: 12px;
   border-radius: 9px;
-  background: #f8fafc;
+  background: var(--bg-subtle);
 }
 .health-suggestions__title {
-  color: #334155;
+  color: var(--text-regular);
   font-size: 12px;
   font-weight: 700;
 }
 .health-suggestions > div:not(.health-suggestions__title) {
   display: flex;
   gap: 8px;
-  color: #64748b;
+  color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -1241,7 +1241,7 @@ onUnmounted(() => {
   justify-content: center;
   border-radius: 50%;
   background: #e0e7ff;
-  color: #4f46e5;
+  color: var(--color-primary);
   font-size: 10px;
   font-weight: 700;
 }
@@ -1263,14 +1263,14 @@ onUnmounted(() => {
   gap: 12px;
   margin-top: 16px;
   padding: 12px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border-color);
   border-radius: 9px;
 }
 .planner__toolbar > div {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #64748b;
+  color: var(--text-secondary);
   font-size: 12px;
 }
 .planner__summary {
@@ -1285,14 +1285,14 @@ onUnmounted(() => {
   gap: 3px;
   padding: 11px;
   border-radius: 8px;
-  background: #f8fafc;
+  background: var(--bg-subtle);
 }
 .planner__summary span {
-  color: #94a3b8;
+  color: var(--text-muted);
   font-size: 10px;
 }
 .planner__summary b {
-  color: #0f172a;
+  color: var(--text-primary);
   font-size: 18px;
 }
 .planner__ai-state {
@@ -1306,12 +1306,12 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   margin: 18px 0 9px;
-  color: #334155;
+  color: var(--text-regular);
   font-size: 13px;
   font-weight: 700;
 }
 .planner__section-title span {
-  color: #94a3b8;
+  color: var(--text-muted);
   font-size: 11px;
   font-weight: 500;
 }
@@ -1320,7 +1320,7 @@ onUnmounted(() => {
   align-items: flex-start;
   gap: 7px;
   margin-bottom: 5px;
-  color: #64748b;
+  color: var(--text-secondary);
   font-size: 12px;
 }
 .planner__risk span {
@@ -1341,7 +1341,7 @@ onUnmounted(() => {
   height: auto;
   margin: 0;
   padding: 11px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border-color);
   border-radius: 9px;
   align-items: flex-start;
 }
@@ -1365,18 +1365,18 @@ onUnmounted(() => {
   flex-wrap: wrap;
 }
 .planner-item__title b {
-  color: #0f172a;
+  color: var(--text-primary);
   font-size: 13px;
 }
 .planner-item__key {
-  color: #64748b;
+  color: var(--text-secondary);
   font-size: 11px;
 }
 .planner-item__meta {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
-  color: #94a3b8;
+  color: var(--text-muted);
   font-size: 11px;
 }
 .planner-item__reason {
@@ -1392,11 +1392,11 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  color: #64748b;
+  color: var(--text-secondary);
   font-size: 12px;
 }
 .planner__danger {
-  color: #dc2626 !important;
+  color: var(--color-danger) !important;
 }
 .sprint-detail__chart-wrap {
   width: 100%;
@@ -1417,20 +1417,20 @@ onUnmounted(() => {
 .sprint-detail__workload-header h4 {
   font-size: 14px;
   font-weight: 600;
-  color: #0f172a;
+  color: var(--text-primary);
   margin: 0;
 }
 .sprint-detail__workload-total {
   font-size: 13px;
-  color: #4f46e5;
+  color: var(--color-primary);
   font-weight: 600;
 }
 .sprint-detail__workload-empty {
   text-align: center;
   padding: 24px 12px;
-  color: #94a3b8;
+  color: var(--text-muted);
   font-size: 13px;
-  background: #f8fafc;
+  background: var(--bg-subtle);
   border-radius: 8px;
 }
 .sprint-detail__workload-list {
@@ -1457,7 +1457,7 @@ onUnmounted(() => {
   font-size: 13px;
 }
 .wl-row__name {
-  color: #0f172a;
+  color: var(--text-primary);
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1465,7 +1465,7 @@ onUnmounted(() => {
 }
 .wl-row__count {
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1473,7 +1473,7 @@ onUnmounted(() => {
 .wl-row__bar-wrap {
   position: relative;
   height: 8px;
-  background: #f1f5f9;
+  background: var(--bg-subtle);
   border-radius: 4px;
   overflow: hidden;
 }
@@ -1486,14 +1486,14 @@ onUnmounted(() => {
 .wl-row__hours {
   font-size: 13px;
   font-weight: 600;
-  color: #4f46e5;
+  color: var(--color-primary);
   text-align: right;
 }
 
 [data-theme='dark'] {
   .sprint-card { background: #1e1e2d; border-color: #2d2d44; }
   .sprint-card__name, .sprint-detail__title, .sprint-detail__stat-value { color: #e2e8f0; }
-  .sprint-card__goal, .sprint-detail__goal, .sprint-page__subtitle, .sprint-card__meta { color: #94a3b8; }
+  .sprint-card__goal, .sprint-detail__goal, .sprint-page__subtitle, .sprint-card__meta { color: var(--text-muted); }
   .sprint-detail { background: #1e1e2d; border-color: #2d2d44; }
   .sprint-page__hero { border-bottom-color: #2d2d44; }
   .sprint-health { border-color: #2d2d44; background: #1e1e2d; }
@@ -1504,7 +1504,7 @@ onUnmounted(() => {
   .health-suggestions { background: #252537; }
   .health-suggestions__title { color: #cbd5e1; }
   .health-suggestions > div:not(.health-suggestions__title),
-  .health-reasons { color: #94a3b8; }
+  .health-reasons { color: var(--text-muted); }
   .planner__toolbar,
   .planner-item { border-color: #2d2d44; }
   .planner__summary > div { background: #252537; }

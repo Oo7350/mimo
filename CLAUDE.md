@@ -1,6 +1,8 @@
 # CLAUDE.md
 
-> **最新版本**：v2.19.6（2026-11-24）— 工作流节点责任人（`ownerUserId`）+ `GET /workflow/transitions` 返回 `allowed/reason`，界面被挡住时点名"这一步由「张三」负责"。**版本号与条目以 `AGENTS.md` 和 `bug-log.md` 为准**（本文件原先按 v2.18.x 自增，与主干对不齐，现已同步）。
+> **最新版本**：v2.19.7（2026-11-24）— 暗色配色系统性修正（Element 品牌色被 `html.dark` 重置、文字色当底色用、标题写死深色、头像对比度）+ 团队在线人数落实（`/teams/{id}/presence` + WS 心跳）+ 5 条 Low 收口，并新增 `e2e/theme-audit.mjs` 与 `tools/integrity-check.sql` 两把尺子。
+>
+> **上一版本**：v2.19.6（2026-11-24）— 工作流节点责任人（`ownerUserId`）+ `GET /workflow/transitions` 返回 `allowed/reason`，界面被挡住时点名"这一步由「张三」负责"。**版本号与条目以 `AGENTS.md` 和 `bug-log.md` 为准**（本文件原先按 v2.18.x 自增，与主干对不齐，现已同步）。
 >
 > 历史：v2.18.1（2026-11-23）— 工作流按看板列自动生成 + 认领/审批自动推进（并入 v2.18.0 的 KNOWN 收口）。详见末尾"版本变更记录"。
 
@@ -10,8 +12,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Mimo is a lightweight Trello-like project management platform for small teams. It supports team collaboration, kanban task tracking, and progress visualization.
 
-- **Version**: v2.19.6 — 工作流节点责任人 + 交接说明 (2026-11-24)
-- **Previous**: v2.19.5 — 工作台就地验收 + 示例数据一键清除 (2026-11-24)
+- **Version**: v2.19.7 — 暗色配色系统性修正 + 在线人数落实 + Low 收口 (2026-11-24)
+- **Previous**: v2.19.6 — 工作流节点责任人 + 交接说明 (2026-11-24)
 - **GitHub**: https://github.com/Oo7350/mimo
 - **API docs**: `接口文档.md` (70+ endpoints, Chinese)
 - **User manual**: `操作手册.md` (Chinese)
@@ -61,6 +63,9 @@ mvn spring-boot:run
 # Run (jar)
 java -jar target/mimo-backend-1.0.0-SNAPSHOT.jar
 ```
+
+**启动前必须有** `JWT_SECRET`（缺了 `WeakKeyException`）和 `MIMO_DB_PASSWORD`（缺了 Access denied），
+`application.yml` 没有硬编码兜底。本机现成一份：`. C:\mimo-env\dev-env.ps1`。
 
 ### Frontend (from `frontend/`)
 

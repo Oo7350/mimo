@@ -150,10 +150,10 @@ onMounted(fetchData)
 
 /* 通知带来的那条请求：用左侧色条 + 淡背景标出来，不刺眼但能一眼找到 */
 :deep(.approval-row--highlight) > td {
-  background: var(--mimo-highlight-bg, rgba(99, 102, 241, 0.08)) !important;
+  background: var(--color-primary-lighter) !important;
 }
 
 :deep(.approval-row--highlight) > td:first-child {
-  box-shadow: inset 3px 0 0 var(--mimo-primary, #6366f1);
+  box-shadow: inset 3px 0 0 var(--color-primary);
 }
 </style>

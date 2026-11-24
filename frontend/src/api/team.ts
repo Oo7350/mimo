@@ -47,3 +47,7 @@ export function setMemberAdmin(teamId: number, userId: number) {
 export function unsetMemberAdmin(teamId: number, userId: number) {
   return request.put(`/teams/${teamId}/members/${userId}/unset-admin`)
 }
+/** 团队在线情况：真实 WebSocket 在线人数 + 成员总数（KNOWN-013） */
+export function getTeamPresence(teamId: number) {
+  return request.get(`/teams/${teamId}/presence`);
+}

@@ -129,3 +129,15 @@ SELECT (SELECT COUNT(*) FROM users)    AS users,
           AND related_id NOT IN (SELECT id FROM issues)) AS orphan_notifications,
        (SELECT COUNT(*) FROM burndown_snapshots
           WHERE sprint_id NOT IN (SELECT id FROM sprints)) AS orphan_burndown;
+-- ═══════════════════════════════════════════════════════════════════
+-- §8 通用孤儿清理（v2.19.7）
+-- 起因：跑完 e2e 后用 tools/integrity-check.sql 体检，发现 6 行 project_members
+-- 挂在不存在的项目上——早期删除路径（演示数据清除 / 手工 SQL）只逻辑删了项目本体，
+-- 成员行留在原地。这里补一遍兜底，让"跑完 e2e 的库"和"干净的库"是一个状态。
+-- ═══════════════════════════════════════════════════════════════════
+DELETE pm FROM project_members pm
+WHERE NOT EXISTS (SELECT 1 FROM projects p WHERE p.id = pm.project_id AND p.deleted = 0);
+
+DELETE tm FROM team_members tm
+WHERE NOT EXISTS (SELECT 1 FROM users u WHERE u.id = tm.user_id AND u.deleted = 0)
+   OR NOT EXISTS (SELECT 1 FROM teams t WHERE t.id = tm.team_id AND t.deleted = 0);

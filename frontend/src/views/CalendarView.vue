@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="calendar-page">
     <PageHint>把工作项的截止日期、Sprint 起止和你自己的会议/提醒铺在同一张日历上，用来看排期冲突和到期分布。</PageHint>
 
@@ -8,7 +8,7 @@
         <h2 class="cal-title">
           <ShinyText
             text="日历"
-            color="#0f172a"
+            color="var(--text-primary)"
             shine-color="#06b6d4"
             :speed="3.5"
           />
@@ -117,7 +117,7 @@
                 <span class="month-cell__num">{{ cell.day }}</span>
                 <div class="month-cell__events">
                   <div v-for="evt in getVisibleCellEvents(cell.events)" :key="evt.id" class="month-event-bar"
-                    :style="{ backgroundColor: evt.color }" @click.stop="openDetail(evt)">
+                    :style="{ backgroundColor: evt.color, color: readableInk(evt.color) }" @click.stop="openDetail(evt)">
                     {{ evt.title }}
                   </div>
                   <span v-if="cell.events.length > 3" class="month-more" @click.stop="openDayPanel(cell.date)">+{{ cell.events.length - 3 }}</span>
@@ -262,6 +262,7 @@ import PageHint from "@/components/common/PageHint.vue"
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { ArrowLeft, ArrowRight, Plus, Clock, Document, Location, CollectionTag, User, Close, Sunny, Calendar, EditPen, Bell } from '@element-plus/icons-vue'
 import { getCalendarEvents, deleteCalendarEvent, type CalendarEvent } from '@/api/calendar'
+import { readableInk } from '@/utils/color'
 import { getMyProjects, getProjectsByTeam } from '@/api/project'
 import { getMyTeams } from '@/api/team'
 import { getNotifications, markAllRead as apiMarkAllRead, createNotification, markRead } from '@/api/notification'
@@ -414,8 +415,9 @@ onUnmounted(()=>{if(notifTimer)clearInterval(notifTimer)})
 </script>
 
 <style scoped lang="scss">
-/* 颜色走 CSS 变量，暗色模式才能跟着切换；$primary 保留字面值（有 rgba($primary, .x) 运算） */
-$primary:#409eff;$border:var(--border-color);$text:var(--text-primary);$text2:var(--text-secondary);$text3:var(--text-placeholder);$bg:var(--bg-hover);$card:var(--bg-card);$r:10px;$sh:0 1px 4px rgba(0,0,0,.06);
+/* 颜色走 CSS 变量，暗色模式才能跟着切换；$primary 保留字面值（有 rgba($primary, .x) 运算）。
+   原来是 Element 默认蓝 #409eff，白字压上去只有 2.78:1，且和品牌靛蓝不是一套色。 */
+$primary:#4f46e5;$border:var(--border-color);$text:var(--text-primary);$text2:var(--text-secondary);$text3:var(--text-placeholder);$bg:var(--bg-hover);$card:var(--bg-card);$r:10px;$sh:0 1px 4px rgba(0,0,0,.06);
 
 .calendar-page{display:flex;flex-direction:column;height:100%;padding:16px 20px;overflow:hidden;background:$bg;box-sizing:border-box}
 
@@ -504,5 +506,5 @@ $primary:#409eff;$border:var(--border-color);$text:var(--text-primary);$text2:va
 .notif-dropdown{&__header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #f0f0f0;strong{font-size:13px}}}
 .notif-empty{display:flex;flex-direction:column;align-items:center;gap:6px;padding:20px 0;color:$text3;.el-icon{font-size:28px}span{font-size:12px}}
 .notif-list{display:flex;flex-direction:column;gap:2px;max-height:300px;overflow-y:auto}
-.notif-item{display:flex;gap:8px;padding:8px 10px;border-radius:6px;cursor:pointer;transition:background .12s;&:hover{background:#f5f7fa}&.unread{background:#ecf5ff33}.notif-dot{width:6px;height:6px;border-radius:50%;margin-top:5px;flex-shrink:0;background:#e4e7ed;&.active{background:$primary}}.notif-body{flex:1;min-width:0;strong{font-size:12px;display:block}p{font-size:11px;color:$text2;margin:2px 0 0;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.notif-time{font-size:10px;color:$text3}}}
+.notif-item{display:flex;gap:8px;padding:8px 10px;border-radius:6px;cursor:pointer;transition:background .12s;&:hover{background: var(--bg-subtle)}&.unread{background:#ecf5ff33}.notif-dot{width:6px;height:6px;border-radius:50%;margin-top:5px;flex-shrink:0;background:#e4e7ed;&.active{background:$primary}}.notif-body{flex:1;min-width:0;strong{font-size:12px;display:block}p{font-size:11px;color:$text2;margin:2px 0 0;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.notif-time{font-size:10px;color:$text3}}}
 </style>

@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mimo.common.BusinessException;
 import com.mimo.common.ResultCode;
 import com.mimo.dto.TeamDTO.*;
+import com.mimo.dto.TeamPresenceVO;
 import com.mimo.entity.Project;
 import com.mimo.entity.Team;
 import com.mimo.entity.TeamMember;
@@ -22,9 +23,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Service
@@ -39,6 +42,7 @@ public class TeamService {
     private final ProjectMapper projectMapper;
     private final ProjectService projectService;
     private final AccessControlService accessControlService;
+    private final PresenceService presenceService;
 
     public TeamVO create(CreateRequest request, Long ownerId) {
         if (teamMapper.exists(new LambdaQueryWrapper<Team>().eq(Team::getName, request.getName()))) {
@@ -95,6 +99,27 @@ public class TeamService {
                 .stream().map(TeamMember::getTeamId).collect(Collectors.toList());
         if (teamIds.isEmpty()) return List.of();
         return teamMapper.selectBatchIds(teamIds).stream().map(this::toVO).collect(Collectors.toList());
+    }
+
+    /**
+     * 团队在线情况：真实 WebSocket 在线人数 + 成员总数。
+     *
+     * 计数口径见 PresenceService：只算本实例、按 userId 去重。
+     * 别把 onlineCount 当"活跃用户数"用——它只表示"现在开着页面的人"。
+     */
+    public TeamPresenceVO getPresence(Long teamId) {
+        List<TeamMember> members = teamMemberMapper.selectList(
+                new LambdaQueryWrapper<TeamMember>().eq(TeamMember::getTeamId, teamId));
+        List<Long> userIds = members.stream()
+                .map(TeamMember::getUserId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+        TeamPresenceVO vo = new TeamPresenceVO();
+        vo.setTeamId(teamId);
+        vo.setTotalMembers(userIds.size());
+        vo.setOnlineUserIds(new ArrayList<>(presenceService.filterOnline(userIds)));
+        vo.setOnlineCount(vo.getOnlineUserIds().size());
+        return vo;
     }
 
     @Transactional

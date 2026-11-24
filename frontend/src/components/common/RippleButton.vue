@@ -72,17 +72,18 @@ function onClick(e: MouseEvent) {
 
   /* ===== 变体 ===== */
   &--primary {
-    background: #4f46e5;
+    // 实心按钮用"深品牌色"变量：暗色下 --color-primary 会被提亮，白字压不住
+    background: var(--color-primary-solid);
     color: #fff;
-    &:hover { background: #4338ca; }
-    &:active { background: #3730a3; transform: scale(0.98); }
+    &:hover { background: var(--color-primary-solid-hover); }
+    &:active { background: var(--color-primary-solid-active); transform: scale(0.98); }
     ::v-deep(.ripple-effect) { background: rgba(255,255,255,0.25); }
   }
   &--default {
-    background: #f1f5f9;
-    color: #334155;
-    &:hover { background: #e2e8f0; }
-    &:active { background: #cbd5e1; transform: scale(0.98); }
+    background: var(--bg-subtle);
+    color: var(--text-regular);
+    &:hover { background: var(--bg-hover); }
+    &:active { background: var(--bg-subtle-strong); transform: scale(0.98); }
     ::v-deep(.ripple-effect) { background: rgba(0,0,0,0.08); }
   }
   &--success {

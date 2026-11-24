@@ -146,7 +146,8 @@ async function handleLogin() {
     font-size: 16px;
     font-weight: 700;
     border-radius: var(--border-radius-md);
-    background: var(--text-primary);
+    /* 原来用 --text-primary 当底色：暗色下它是近白色，白字压上去等于按钮消失 */
+    background: var(--color-primary-solid);
     border: none;
     letter-spacing: 2px;
     color: #fff;

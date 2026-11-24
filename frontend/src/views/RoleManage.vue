@@ -670,12 +670,12 @@ onMounted(async () => {
 }
 .role-cell__code {
   font-size: 12px;
-  color: #909399;
+  color: var(--text-secondary);
   font-family: monospace;
 }
 .role-readonly {
   font-size: 12px;
-  color: #909399;
+  color: var(--text-secondary);
 }
 .perm-groups {
   display: flex;
@@ -700,7 +700,7 @@ onMounted(async () => {
 }
 .perm-group__count {
   font-size: 12px;
-  color: #909399;
+  color: var(--text-secondary);
 }
 .perm-group__grid {
   display: grid;
@@ -734,7 +734,7 @@ onMounted(async () => {
 .perm-card__desc {
   margin: 0;
   font-size: 12px;
-  color: #909399;
+  color: var(--text-secondary);
 }
 .perm-selector {
   max-height: 360px;
@@ -754,7 +754,7 @@ onMounted(async () => {
 }
 .perm-checkbox__name {
   margin-left: 6px;
-  color: #909399;
+  color: var(--text-secondary);
   font-size: 12px;
 }
 .drawer-perms {
@@ -798,12 +798,12 @@ onMounted(async () => {
 }
 .assign-block__count {
   font-size: 12px;
-  color: #909399;
+  color: var(--text-secondary);
 }
 .assign-code {
   margin-left: 8px;
   font-size: 12px;
-  color: #909399;
+  color: var(--text-secondary);
   font-family: monospace;
 }
 .assign-scopeid {
@@ -817,6 +817,6 @@ onMounted(async () => {
 .assign-form__tip {
   margin-left: 12px;
   font-size: 12px;
-  color: #909399;
+  color: var(--text-secondary);
 }
 </style>

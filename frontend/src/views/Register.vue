@@ -213,7 +213,8 @@ async function handleRegister() {
     font-size: 16px;
     font-weight: 700;
     border-radius: var(--border-radius-md);
-    background: var(--text-primary);
+    /* 同 Login：--text-primary 在暗色下是近白色，不能当按钮底色 */
+    background: var(--color-primary-solid);
     border: none;
     letter-spacing: 2px;
     color: #fff;

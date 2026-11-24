@@ -2,6 +2,7 @@ package com.mimo.service;
 
 import com.mimo.common.BusinessException;
 import com.mimo.entity.Project;
+import com.mimo.dto.TeamPresenceVO;
 import com.mimo.entity.Team;
 import com.mimo.entity.TeamMember;
 import com.mimo.entity.User;
@@ -11,6 +12,7 @@ import com.mimo.mapper.TeamMapper;
 import com.mimo.mapper.TeamMemberMapper;
 import com.mimo.mapper.UserLevelMapper;
 import com.mimo.mapper.UserMapper;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -18,6 +20,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -42,10 +45,13 @@ class TeamServiceTest {
     @Mock private ProjectService projectService;
     @Mock private RoleService roleService;
 
+    private final PresenceService presenceService = new PresenceService();
+
     private TeamService service() {
         return new TeamService(teamMapper, teamMemberMapper, userMapper, activityLogMapper,
                 userLevelMapper, projectMapper, projectService,
-                new AccessControlService(roleService, userMapper, teamMemberMapper));
+                new AccessControlService(roleService, userMapper, teamMemberMapper),
+                presenceService);
     }
 
     private Team teamOwnedBy(long ownerId) {
@@ -114,5 +120,24 @@ class TeamServiceTest {
 
         assertThatThrownBy(() -> service().deleteTeam(404L, 1L))
                 .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    @DisplayName("在线人数只算真连着的，不会拿成员总数冒充")
+    void presenceCountsOnlyConnectedMembers() {
+        TeamMember m1 = new TeamMember();
+        m1.setTeamId(7L);
+        m1.setUserId(100L);
+        TeamMember m2 = new TeamMember();
+        m2.setTeamId(7L);
+        m2.setUserId(200L);
+        when(teamMemberMapper.selectList(any())).thenReturn(List.of(m1, m2));
+
+        presenceService.connect("s-100", 100L);
+
+        TeamPresenceVO vo = service().getPresence(7L);
+        assertThat(vo.getTotalMembers()).isEqualTo(2);
+        assertThat(vo.getOnlineCount()).isEqualTo(1);
+        assertThat(vo.getOnlineUserIds()).containsExactly(100L);
     }
 }

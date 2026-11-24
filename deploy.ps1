@@ -1,4 +1,33 @@
+﻿param(
+    # 加 -Force 跳过确认（CI / 无人值守时用），正常手跑必须敲 y
+    [switch]$Force
+)
+
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+#region 部署确认（KNOWN-016）
+# 以前这个脚本一执行就直接杀本地 java、编译、scp 覆盖生产、重启服务，
+# 没有任何确认步骤 —— 手滑一次就是一次线上发布。现在先把"要动哪里"讲清楚再问。
+$targetHost = "root@8.137.189.117"
+Write-Host ""
+Write-Host "即将部署到 $targetHost" -ForegroundColor Yellow
+Write-Host "  1. 杀掉本机占用 backend jar 的 java 进程（如果有）" -ForegroundColor Gray
+Write-Host "  2. mvn clean package -DskipTests" -ForegroundColor Gray
+Write-Host "  3. npm run build" -ForegroundColor Gray
+Write-Host "  4. scp 覆盖 $($targetHost):/root/Mimo/{backend/target,frontend/dist}" -ForegroundColor Gray
+Write-Host "  5. ssh 重启 systemctl 服务 mimo-backend" -ForegroundColor Gray
+Write-Host ""
+
+if (-not $Force) {
+    $answer = Read-Host "确认部署到生产环境? 输入 y 继续，其它任意键取消"
+    if ($answer -ne "y" -and $answer -ne "Y") {
+        Write-Host "已取消，什么都没改。" -ForegroundColor Green
+        exit 1
+    }
+} else {
+    Write-Host "-Force: 跳过确认" -ForegroundColor DarkYellow
+}
+#endregion 部署确认（KNOWN-016）
 
 #region debug-point deploy-jar-file-locked
 # 部署前清理：杀掉占用 backend target jar 的本地 java 进程，避免 mvn clean 失败
@@ -44,10 +73,13 @@ npm run build
 if ($LASTEXITCODE -ne 0) { throw "Frontend build failed" }
 
 Write-Host "=== 3/4 Upload to Server ===" -ForegroundColor Cyan
-scp "$root\backend\target\mimo-backend-1.0.0-SNAPSHOT.jar" root@8.137.189.117:/root/Mimo/backend/target/
-scp -r "$root\frontend\dist\*" root@8.137.189.117:/root/Mimo/frontend/dist/
+scp "$root\backend\target\mimo-backend-1.0.0-SNAPSHOT.jar" "$($targetHost):/root/Mimo/backend/target/"
+if ($LASTEXITCODE -ne 0) { throw "scp backend jar failed" }
+scp -r "$root\frontend\dist\*" "$($targetHost):/root/Mimo/frontend/dist/"
+if ($LASTEXITCODE -ne 0) { throw "scp frontend dist failed" }
 
 Write-Host "=== 4/4 Restart Server ===" -ForegroundColor Cyan
-ssh root@8.137.189.117 "chmod -R 755 /root/Mimo/frontend/dist && chmod 755 /root /root/Mimo /root/Mimo/frontend && systemctl restart mimo-backend && echo 'OK'"
+ssh $targetHost "chmod -R 755 /root/Mimo/frontend/dist && chmod 755 /root /root/Mimo /root/Mimo/frontend && systemctl restart mimo-backend && echo 'OK'"
+if ($LASTEXITCODE -ne 0) { throw "远端重启失败，请登服务器看 systemctl status mimo-backend" }
 
 Write-Host "=== Done ===`nhttp://8.137.189.117" -ForegroundColor Green

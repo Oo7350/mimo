@@ -309,7 +309,7 @@ onMounted(fetchData)
   }
 
   &__code {
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
     color: var(--text-muted);
     letter-spacing: 0.5px;
@@ -349,7 +349,7 @@ onMounted(fetchData)
   }
 
   &__perm-tag {
-    font-size: 10px;
+    font-size: 11.5px;
     font-weight: 700;
     padding: 1px 6px;
     border-radius: 5px;
@@ -430,7 +430,7 @@ onMounted(fetchData)
 }
 
 .perm-chip {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   padding: 2px 8px;
   border-radius: 6px;

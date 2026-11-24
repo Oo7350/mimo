@@ -81,12 +81,12 @@ onMounted(load)
 .gantt-page__hero { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
 .gantt-page__back { font-size: 18px; }
 .gantt-page__hero-info { flex: 1; }
-.gantt-page__title { font-size: 20px; font-weight: 600; margin: 0; color: #0f172a; }
-.gantt-page__subtitle { font-size: 13px; color: #94a3b8; margin: 2px 0 0; }
+.gantt-page__title { font-size: 20px; font-weight: 600; margin: 0; color: var(--text-primary); }
+.gantt-page__subtitle { font-size: 13px; color: var(--text-muted); margin: 2px 0 0; }
 .gantt-page__hero-extra { display: flex; align-items: center; gap: 8px; }
 .gantt-page__loading { padding: 8px 0; }
 .gantt-page__card {
-  background: #fff;
+  background: var(--bg-card);
   border-radius: 12px;
   padding: 18px 20px 22px;
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
@@ -96,12 +96,12 @@ onMounted(load)
   align-items: center;
   gap: 14px;
   font-size: 12px;
-  color: #64748b;
+  color: var(--text-secondary);
   margin-bottom: 8px;
   flex-wrap: wrap;
 }
 .lg-item { display: flex; align-items: center; gap: 5px; }
 .lg-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 .gantt-page__legend-spacer { flex: 1; }
-.gantt-page__legend-tip { color: #94a3b8; font-size: 12px; }
+.gantt-page__legend-tip { color: var(--text-muted); font-size: 12px; }
 </style>

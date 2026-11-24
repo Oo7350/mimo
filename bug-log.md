@@ -4,6 +4,135 @@
 
 ---
 
+## v2.19.7 — 暗色模式的颜色逻辑 + 界面在编的数字 + 5 条 Low 收口 (2026-11-24)
+
+> 这一轮不加功能，只收拾"已经做出来但做得不诚实、不好看"的地方：
+> 暗色模式下浅色块与隐形标题、团队页拿"成员总数"当"在线人数"、部署脚本一敲就上生产。
+> 同时补了两把尺子，让"配色对不对""数据有没有孤儿"不再靠肉眼：
+> `e2e/theme-audit.mjs`（开浏览器量实际底色与对比度）、`tools/integrity-check.sql`（16 类引用关系）。
+
+### BUG-105: 暗色主题下 Element 品牌色被重置成默认蓝 [High]
+
+- **文件**: `frontend/src/styles/variables.css`
+- **现象**: 切到深色后，主按钮/单选框/日历选中态从品牌靛蓝变成另一种蓝（`#409EFF`），
+  与亮色主题不是一套色，看起来像"两个产品"。
+- **根因**: `element-plus/theme-chalk/dark/css-vars.css` 在 `html.dark` 里把
+  `--el-color-primary` 重新赋成 Element 默认蓝；我们的品牌色只写在 `:root`，
+  同级选择器下被它盖掉。`--el-color-primary-light-7/8/9`（Element 当"浅色底"用的）
+  也没跟着换，暗色下会冒出浅紫色小块（`el-tag--primary`、plain 按钮）。
+- **修复**: `[data-theme="dark"]` 与 `html.dark` 双写 primary 全家桶；`light-7/8/9`
+  改成低透明度 rgba；`el-button--*:not(.is-plain)` 单独压深底色（白字要压得住），
+  `is-plain` 则用亮一档的字色。
+- **教训**: 覆盖设计系统时，**派生变量要跟着一起覆盖**；只改主色，浅色派生会露馅。
+
+### BUG-106: 把文字色当底色用，暗色下按钮与选中态直接消失 [High]
+
+- **文件**: `views/Login.vue`、`views/Register.vue`、`views/ProjectBoard.vue`、`styles/global.css`
+- **现象**: 暗色下登录按钮看不见；看板「全部/故事/任务/缺陷」选中项、分段控件选中项
+  变成"白字压白块"，对比度实测 1.05–1.18:1。
+- **根因**: 用 `--text-primary` 当实心块底色（亮色下它是深墨色，看着像黑按钮；
+  暗色下它是近白色，于是白字压白底）。分段控件的选中态更直接——写死了 `background:#fff`。
+- **修复**: 新增语义变量 `--color-primary-solid`（两种主题都是深靛蓝，白字 4.6:1）给实心色块；
+  分段控件选中态改用 `var(--bg-card)`。约定：`--text-*` 只当文字色，永不当底色。
+- **教训**: 变量名带语义（"文字色"）就别拿来当另一件事用；跨主题的坑几乎都出在这。
+
+### BUG-107: 页面标题写死深色，暗色下整行看不见 [High]
+
+- **文件**: `views/ProjectList.vue`、`views/CalendarView.vue`
+- **现象**: 暗色模式下"项目列表""日历"两个页面标题几乎不可见（对比度 1.09–1.13:1）。
+- **根因**: 标题用 `ShinyText`（渐变 + `background-clip:text`），调用处传 `color="#0f172a"`
+  写死深色。工作台早就传的是 `var(--text-primary)`，属于没统一。
+- **修复**: 两处改成 `color="var(--text-primary)"`。
+- **教训**: 渐变文字读不到"当前主题"，颜色必须由调用方给变量。
+
+### BUG-108: 头像白字压在浅色底上看不清 [Medium]
+
+- **文件**: `frontend/src/utils/color.ts`
+- **现象**: 人员头像（琥珀 `#f7b955`）上的首字母白字对比度 1.75:1，团队绿 `#00b96b` 2.58:1。
+- **根因**: 三色系取的是"好看"的亮色，但头像上压的是白字，没算对比度。
+- **修复**: 压深到 `#2563eb / #047857 / #b45309`（白字 5.0–5.5:1）；另加 `readableInk()`，
+  给"颜色来自数据"的地方（日历事件条）按底色自动选白字或深字。
+- **教训**: 颜色是**数据带出来**的地方，写死 `color:#fff` 就一定有一批数据翻车。
+
+### BUG-109: 引用了不存在的 CSS 变量，面板没有底色 [Medium]
+
+- **文件**: `components/issue/governance/IssueVersionPanel.vue`、`views/DeliveryAnalytics.vue`、
+  `components/common/{VelocityChart,BurndownChart,CfdChart,AiChatPanel,EmptyGuide}.vue` 等
+- **现象**: 版本面板与交付分析里有几块区域没有背景色（透出页面底），暗色下尤其糊；
+  图表空状态的文字颜色也没跟上主题。
+- **根因**: 写了 `var(--surface-secondary)`（无 fallback）、`var(--text-tertiary)`、
+  `var(--mimo-text-primary)` 等**从未定义**的变量——早期设计系统的残留名。
+- **修复**: 全部换成真实变量（`--bg-subtle` / `--text-muted` / `--text-secondary` 等）。
+- **教训**: 无 fallback 的 `var()` 失效时是"静默降级"，屏幕上看不出是 bug，只会觉得"丑"。
+
+### BUG-104: 逻辑删除的项目留下了 project_members 孤儿 [Medium]
+
+- **文件**: `tools/integrity-check.sql`（新）、`e2e/cleanup-residue.sql`
+- **现象**: 新写的体检脚本一扫就报 `项目成员指向不存在的项目 = 6`，
+  6 行都挂在 `deleted=1` 的项目 10 / 23 上。
+- **根因**: 项目是**逻辑删除**、`project_members` 是**物理删除**，两者不会自动同步；
+  现行代码（`ProjectService.deleteProject` / `DemoDataService.clear`）都是"先删成员再删项目"，
+  但这 6 行来自更早的删除路径（手工 SQL / 旧脚本），于是留下孤儿。
+- **修复**: 清掉现存 6 行；`cleanup-residue.sql` 加 §8 通用孤儿清理（跑完 e2e 兜一遍）；
+  新增 `tools/integrity-check.sql` 覆盖 16 类引用关系，一分钟内可查完。
+- **教训**: 没有外键就别指望"数据一定对"，得有个随时能跑完的体检表。
+
+**KNOWN-013 收口：团队页的"在线人数"不再是成员总数**
+
+- 以前 `onlineCount = computed(() => members.value.length)`，文案改「N 位成员」只是消了误导，
+  页面上仍然没有真实在线数据。
+- 现在：`PresenceService` 维护 `sessionId → userId`；`WebSocketAuthInterceptor` 在 CONNECT 登记、
+  DISCONNECT 注销，`WebSocketPresenceListener` 用 `SessionDisconnectEvent` 兜住
+  "网络闪断 / 进程被杀"（没有 DISCONNECT 帧）。接口 `GET /api/teams/{id}/presence`
+  返回 `onlineCount / totalMembers / onlineUserIds`；团队页显示「N 人在线 · M 位成员」，
+  在线成员头像挂绿点，首屏补两次短延时刷新 + 30 秒轮询。
+- **顺手发现的真问题**：简单 broker 默认不发心跳，关掉页面后服务端要等 Tomcat 会话超时
+  才认为人走了——在线人数会长时间虚高。给 `enableSimpleBroker` 配
+  `setHeartbeatValue(10s)` + 调度器后，e2e 的"关页面 → 20 秒内回落到 0"才成立。
+- 已知边界（写在 `PresenceService` 类注释里）：只算本实例（与 KNOWN-002 同源）、
+  多标签页按 userId 去重、断线最迟一个心跳周期才掉。
+
+**KNOWN-016 收口：deploy.ps1 加确认步骤**
+
+- 原脚本"执行即发布"：直接 `Stop-Process` 杀本地 java、`mvn clean package`、scp 覆盖生产、
+  `systemctl restart`，五步连跑无停顿。
+- 现在先打印要动的目标与 5 个动作，再 `Read-Host` 要求敲 `y`；`-Force` 才跳过（CI 用）。
+  `scp` / `ssh` 失败也补了显式判断，不会失败后继续打印 "Done"。
+- 自测：`"n" | powershell -File deploy.ps1` → 「已取消，什么都没改。」退出码 1。
+
+**KNOWN-021 收口：硬编码颜色有了尺子**
+
+- 新增 `tools/theme_literals.py`：把样式块里的**中性色字面值**（深字 `#0f172a`、白底 `#fff`、
+  浅底 `#f1f5f9`、边框 `#e2e8f0` 等）映射到语义变量；`--check` 只统计、`--write` 才落盘。
+  本轮 `--write` 一次替换 **82 处 / 10 个文件**（SprintView 独占 58 处），之后 `--check` 归零。
+  它故意不动品牌色/状态色/渐变/图表配色——那些是刻意的。
+- 判据从"肉眼看着还行"变成两个可复现的数字：`theme_literals.py --check ＝ 0`、
+  `e2e/theme-audit.mjs` 暗色 `浅色块 0 / 低对比 0`。
+- 残留的 `rgba(255,255,255,…)` 都在渐变/深色 hero 上，属刻意设计，不在检查范围。
+
+**KNOWN-007 处理口径：不修外键，改给体检工具**
+
+- 结论：**保持无外键**。逻辑删除与外键约束冲突太大（删项目会级联失败），
+  加外键的代价高于收益。
+- 补偿：`tools/integrity-check.sql` 定期体检 + 文件头写清"为什么没有外键"。
+  本轮的 BUG-104 就是这个工具扫出来的。
+
+**KNOWN-023 收口：跑完 e2e 不留垃圾**
+
+- `cleanup-residue.sql` 已能按前缀清账号/团队/项目，本轮补 §8 通用孤儿清理。
+- 跑完整套 e2e 后核对：`leftover_e2e=0`、`orphan_notifications=0`、`orphan_burndown=0`，
+  且 `integrity-check.sql` 16 项全 0。
+
+### 验证
+
+- 后端 `mvn test`：**167 项全绿**（新增 `PresenceServiceTest` 6 项、`TeamServiceTest` 在线人数 1 项）。
+- e2e：`presence.mjs` **4/4**；5 套旧用例回归全绿，合计 **47 条断言**。
+- `e2e/theme-audit.mjs`：暗色 `浅色块 0 / 低对比 0`，亮色 `0 / 0`（14 个页面 × 2 主题）。
+- `tools/integrity-check.sql`：16 类引用关系全 0。
+- `vue-tsc` 通过；`npm run build` 通过。
+
+---
+
 ## v2.19.6 — 工作流节点能指定责任人了：一步一交接，卡在谁那一目了然 (2026-11-24)
 
 > 上一轮之后还剩一个空洞：工作流能规定"从哪到哪"，却规定不了"这一步归谁"。
@@ -1866,12 +1995,15 @@
   - 用例：`ApprovalServiceTest` 6 项（失败留痕 / 成功标记 / 重试成功 / 重试仍失败 / 已成功拒绝重试 / 非管理员拒绝）
 - **仍未做**: 没有接自动重试队列（失败需人工点重试）；执行成功但审批更新提交失败这种极端窗口仍未处理
 
-### KNOWN-007: 数据库无外键约束 [Low]
+### KNOWN-007: 数据库无外键约束 [Low] — 已解决（判定为设计选择 + 补体检工具，v2.19.7）
 
 - **文件**: `init.sql`
 - **现象**: 所有表之间通过应用层代码维护关系，无 DB 级外键
 - **影响**: 可能出现孤立的 `comments`、`attachments` 等记录
 - **当前状态**: 设计选择，非必须修复
+
+- **收口（v2.19.7）**: 明确**不建外键**（逻辑删除与外键冲突），补偿手段是
+  `tools/integrity-check.sql`（16 类引用关系，一分钟跑完）。本轮 BUG-104 就是它扫出来的。
 
 ### KNOWN-008: Sprint 快速创建限制前 5 个任务硬编码 [Low] — 2026-11-23 复核：已修复
 
@@ -1930,13 +2062,17 @@
 - **影响**: 全页刷新丢失 Vue 状态
 - **复核（2026-11-23）**: 全前端已无 `window.location.href`（0 命中），离开团队改走 router 跳转，本条关闭。
 
-### KNOWN-013: 在线人数始终显示总成员数 [Low]
+### KNOWN-013: 在线人数始终显示总成员数 [Low] — 已解决（v2.19.7）
 
 - **文件**: `frontend/src/views/TeamDetail.vue`
 - **根因**: `onlineCount = computed(() => members.value.length)` 取的是成员总数
 - **建议修复**: 通过 WebSocket 统计真实在线连接数
 - **复核（2026-11-23）**: 仍在（`TeamDetail.vue:591`），但**文案已改成"N 位成员"**（第 166 行），
   不再对外宣称是"在线人数"，误导消除；真实在线统计仍未实现，故保持未关闭。
+
+- **收口（v2.19.7）**: 实现 `PresenceService` + `GET /api/teams/{id}/presence`，
+  团队页显示真实「N 人在线 · M 位成员」，并为简单 broker 配了 10 秒心跳；
+  `e2e/presence.mjs` 4/4 覆盖（含"关页面后在线数回落到 0"）。详见 v2.19.7 段。
 
 ### KNOWN-014: 工作台快捷操作 5 个按钮 4 个指向同一路由 [Low] — 2026-11-23 已修复（v2.18.3 / BUG-095）
 
@@ -1957,7 +2093,7 @@
 - **复核（2026-11-23）**: 已修复 —— `ApprovalList.vue:92-93` 现在 `.catch(() => null)` 之后紧跟
   `if (reason === null) return`，取消与关闭都不会再发 `rejectRequest`。
 
-### KNOWN-016: 部署脚本 deploy.ps1 无确认步骤 [Low]
+### KNOWN-016: 部署脚本 deploy.ps1 无确认步骤 [Low] — 已解决（v2.19.7）
 
 - **文件**: `deploy.ps1`
 - **现象**: 执行即覆盖服务器生产环境，无确认提示
@@ -1965,6 +2101,9 @@
 - **复核（2026-11-23）**: 仍在 —— `deploy.ps1` 全文件无 `Read-Host` / 无二次确认，
   0/4～4/4 五步直接连跑（其中第 0 步会 `Stop-Process` 杀掉占用 jar 的 java 进程）。
 
+
+- **收口（v2.19.7）**: 加目标说明 + `Read-Host` 确认（`-Force` 跳过，给 CI 用），
+  `scp`/`ssh` 失败显式抛错。自测 `"n" | powershell -File deploy.ps1` → 退出码 1、什么都没改。
 
 ### KNOWN-017: 核心业务链路缺少端到端验证 [High] — ✅ 已解决（v2.19.4）
 
@@ -2037,11 +2176,15 @@
   一次生成 项目 + 4 列 + 3 迭代 + 15 工作项 + 评论/工时/验收/报告/动态/通知；
   前端入口在工作台空库末尾和项目列表页头。见 v2.19.2 段落（含写死 `DEMO` 导致 500 的自测记录）。
 
-### KNOWN-021: 前端仍有硬编码颜色残留 [Low]
+### KNOWN-021: 前端仍有硬编码颜色残留 [Low] — 已解决（v2.19.7）
 - **文件**: `frontend/src/**/*.vue`、`styles/global.css`
 - **现象**: 全仓仍有约 42 处 `rgba(255,255,255,…)`、10 处 `background: #fff`、若干 `#f8fafc/#f5f7fa/#f1f5f9`；本次只修了已经被截图暴露出来的部分
 - **风险**: 换主题或新增页面时继续出现"某一块是白的"
 - **建议**: 增加 stylelint 规则禁止颜色字面量（或至少警告），逐步替换为 CSS 变量
+
+- **收口（v2.19.7）**: 新增 `tools/theme_literals.py`（`--check` 归零才合格，
+  `--write` 本轮替换 82 处/10 文件）+ `e2e/theme-audit.mjs`（暗色浅色块 0、低对比 0）。
+  建议里的"stylelint 规则"用这个脚本等效实现：它只禁中性色字面值，不动品牌色与渐变。
 
 ### KNOWN-022: `user_roles` 的唯一约束对 GLOBAL 角色失效，同一授权被重复写入 [Medium] — ✅ 已解决（v2.18.5）
 
@@ -2062,7 +2205,7 @@
   - **为什么仍不改 schema**: 给 `scope_id` 加 `NOT NULL DEFAULT 0` 才是根治，但要占一个新迁移编号；
     等你手上未推送的工作流/面板那批推上来、编号确定后再统一排，届时这两道判重仍然兼容 0 值。
 
-### KNOWN-023: e2e 用例不清自己造的账号 / 团队 / 项目，开发库会累积残留 [Low]
+### KNOWN-023: e2e 用例不清自己造的账号 / 团队 / 项目，开发库会累积残留 [Low] — 已解决（v2.19.7）
 
 - **文件**: `e2e/*.mjs`
 - **现象（v2.19.2 清库时实测）**: dev 库里躺着 8 个 `probe-*` / `wiki-probe-*` / `chain*` 账号、
@@ -2083,15 +2226,16 @@
 | 严重程度 | 数量 |
 |---------|------|
 | Critical | 6 |
-| High | 42 |
-| Medium | 37 |
+| High | 45 |
+| Medium | 40 |
 | Low | 18 |
-| **已修复（BUG 条目）** | **103** |
-| **已知未修复（KNOWN 条目）** | **7** |
-| **总计** | **110** |
+| **已修复（BUG 条目）** | **109** |
+| **已知未修复（KNOWN 条目）** | **2** |
+| **总计** | **111** |
 
 | 版本段 | BUG 条数 |
 |--------|---------|
+| v2.19.7 — 暗色配色系统性修正 + 在线人数落实 + Low 收口（BUG-104~109）(2026-11-24) | 6 |
 | v2.19.6 — 工作流节点责任人 + 交接说明（无 BUG，纯功能）(2026-11-24) | 0 |
 | v2.19.5 — 工作台就地验收 + 示例数据一键清除（BUG-103）(2026-11-24) | 1 |
 | v2.19.4 — 验收面板按角色显示按钮（BUG-102）+ 验收权限矩阵用例 (2026-11-24) | 1 |
@@ -2197,3 +2341,5 @@
 > KNOWN 未关闭仍为 7、总计 109 → 110。
 > 同轮的「工作台待我处理就地通过/打回」「示例数据一键清除」是功能补齐，不算 BUG；
 > "首版清除漏掉三类孤儿数据"属本轮新功能自测发现，按既往口径写在该版本段里，不单列编号。
+- **收口（v2.19.7）**: `cleanup-residue.sql` 补 §8 通用孤儿清理；跑完整套 e2e 后
+  `leftover_e2e=0 / orphan_notifications=0 / orphan_burndown=0`，`integrity-check.sql` 16 项全 0。

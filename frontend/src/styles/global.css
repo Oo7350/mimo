@@ -359,7 +359,8 @@ a:hover { color: var(--color-primary-dark); }
 }
 .segmented-control__item:hover { color: var(--text-primary); background: var(--bg-hover); }
 .segmented-control__item.is-active {
-  background: #fff; color: var(--text-primary-dark); font-weight: 700;
+  /* 原来是写死的 #fff：暗色下变成一块亮白块，文字反而糊在一起 */
+  background: var(--bg-card); color: var(--text-primary); font-weight: 700;
   border: 1px solid var(--border-color);
 }
 
@@ -422,3 +423,18 @@ a:hover { color: var(--color-primary-dark); }
 
 /* 空状态插画在纯黑底上过亮 */
 [data-theme="dark"] .el-empty__image { opacity: 0.5; }
+/* ═══ Element Plus 细节修正 ═══
+   el-alert 的标题/描述文案是 Element 自己的灰色（#909399，压在同色浅底上 2.8:1），
+   我们只改这些文字，不动它的类型色。 */
+.el-alert .el-alert__title,
+.el-alert .el-alert__description,
+.el-alert--info.is-light .el-alert__description,
+.el-alert--info.is-light .el-alert__title {
+  color: var(--text-regular);
+}
+.el-alert--success .el-alert__title,
+.el-alert--success .el-alert__description { color: var(--color-success); }
+.el-alert--warning .el-alert__title,
+.el-alert--warning .el-alert__description { color: var(--color-warning-text); }
+.el-alert--error .el-alert__title,
+.el-alert--error .el-alert__description { color: var(--color-danger); }

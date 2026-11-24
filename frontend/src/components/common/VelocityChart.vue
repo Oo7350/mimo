@@ -161,7 +161,7 @@ watch(() => props.data, render, { deep: true })
   align-items: center;
   justify-content: center;
   gap: 7px;
-  color: var(--text-tertiary, #94a3b8);
+  color: var(--text-muted);
   font-size: 14px;
   pointer-events: none;
 }

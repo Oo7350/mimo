@@ -53,7 +53,7 @@ defineEmits<{ action: []; secondary: [] }>()
 
 .empty-guide__icon {
   font-size: 40px;
-  color: var(--text-tertiary, #c0c4cc);
+  color: var(--text-muted);
   margin-bottom: 2px;
 }
 

@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="email-send-logs-page">
     <el-card>
       <template #header>
@@ -238,7 +238,7 @@ onMounted(() => {
 }
 .stat-item {
   flex: 1;
-  background: #f5f7fa;
+  background: var(--bg-subtle);
   padding: 12px 16px;
   border-radius: 6px;
 }
@@ -249,7 +249,7 @@ onMounted(() => {
   background: #fef0f0;
 }
 .stat-label {
-  color: #909399;
+  color: var(--text-secondary);
   font-size: 12px;
   margin-bottom: 4px;
 }

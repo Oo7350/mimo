@@ -5,6 +5,7 @@ import com.mimo.common.Result;
 import com.mimo.common.ResultCode;
 import com.mimo.common.AuditLog;
 import com.mimo.dto.TeamDTO.*;
+import com.mimo.dto.TeamPresenceVO;
 import com.mimo.service.TeamService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
@@ -62,6 +63,18 @@ public class TeamController {
     public Result<List<MemberVO>> listMembers(@PathVariable Long id, Authentication auth) {
         assertCanReadTeam(id, getLongPrincipal(auth));
         return Result.success(teamService.listMembers(id));
+    }
+
+    /**
+     * 团队在线情况（KNOWN-013）。
+     *
+     * 返回真实 WebSocket 在线人数与成员总数两个数，前端如实展示，
+     * 不再拿成员总数冒充"在线人数"。口径限制见 PresenceService 注释。
+     */
+    @GetMapping("/{id}/presence")
+    public Result<TeamPresenceVO> presence(@PathVariable Long id, Authentication auth) {
+        assertCanReadTeam(id, getLongPrincipal(auth));
+        return Result.success(teamService.getPresence(id));
     }
 
     @DeleteMapping("/{teamId}/members/{userId}")

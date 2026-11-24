@@ -4,7 +4,7 @@
       <template #title>
         <ShinyText
           text="项目列表"
-          color="#0f172a"
+          color="var(--text-primary)"
           shine-color="#7c3aed"
           :speed="3.2"
         />

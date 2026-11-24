@@ -432,7 +432,7 @@ onMounted(() => {
   justify-content: flex-end;
 }
 .payload-pre {
-  background: #f5f7fa;
+  background: var(--bg-subtle);
   padding: 8px;
   border-radius: 4px;
   max-height: 200px;

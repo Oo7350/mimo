@@ -202,14 +202,14 @@ onMounted(fetchTeams)
 
   &__btn {
     flex-shrink: 0;
-    background: #fff !important;
+    background: var(--bg-card) !important;
     color: #047857 !important;
     border: none !important;
     font-weight: 700;
     padding: 10px 24px;
 
     &:hover {
-      background: #ecfdf5 !important;
+      background: var(--bg-success-soft) !important;
     }
   }
 }

@@ -168,7 +168,7 @@ watch(() => props.data, () => render(), { deep: true })
   align-items: center;
   justify-content: center;
   gap: 8px;
-  color: var(--text-tertiary, #94a3b8);
+  color: var(--text-muted);
   font-size: 14px;
   pointer-events: none;
 }
@@ -178,6 +178,6 @@ watch(() => props.data, () => render(), { deep: true })
 }
 .burndown__empty-tip {
   font-size: 12px;
-  color: var(--text-tertiary, #c0c4cc);
+  color: var(--text-muted);
 }
 </style>

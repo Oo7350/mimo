@@ -282,13 +282,13 @@ onMounted(() => load())
 }
 .worklog__summary-num span {
   font-size: 13px;
-  color: #94a3b8;
+  color: var(--text-muted);
   font-weight: 400;
   margin-left: 2px;
 }
 .worklog__summary-label {
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--text-muted);
 }
 
 .worklog__timer {
@@ -308,7 +308,7 @@ onMounted(() => load())
 }
 .worklog__timer-icon {
   font-size: 18px;
-  color: #94a3b8;
+  color: var(--text-muted);
   transition: color 0.2s;
 }
 .worklog__timer-icon--running {
@@ -323,12 +323,12 @@ onMounted(() => load())
   font-family: 'Menlo', 'Consolas', monospace;
   font-size: 20px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--text-primary);
   letter-spacing: 0.5px;
 }
 .worklog__timer-since {
   font-size: 11px;
-  color: #94a3b8;
+  color: var(--text-muted);
 }
 .worklog__timer-actions {
   display: flex;
@@ -338,7 +338,7 @@ onMounted(() => load())
 .worklog__empty {
   text-align: center;
   padding: 40px 20px;
-  color: #94a3b8;
+  color: var(--text-muted);
 }
 .worklog__empty-icon { font-size: 40px; margin-bottom: 8px; }
 .worklog__empty-tip { font-size: 12px; color: #c0c4cc; margin-top: 4px; }
@@ -353,7 +353,7 @@ onMounted(() => load())
   align-items: center;
   gap: 12px;
   padding: 10px 12px;
-  background: #fff;
+  background: var(--bg-card);
   border: 1px solid #f1f5f9;
   border-radius: 8px;
   transition: all 0.15s;
@@ -381,7 +381,7 @@ onMounted(() => load())
 .worklog__item-user {
   font-size: 13px;
   font-weight: 600;
-  color: #0f172a;
+  color: var(--text-primary);
 }
 .worklog__item-hours {
   font-size: 14px;
@@ -391,11 +391,11 @@ onMounted(() => load())
 }
 .worklog__item-date {
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--text-muted);
 }
 .worklog__item-desc {
   font-size: 12px;
-  color: #64748b;
+  color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

@@ -787,7 +787,7 @@ function renderMarkdown(text: string): string {
   background: transparent;
   cursor: pointer;
   font-size: 13px;
-  color: var(--text-tertiary, #c0c4cc);
+  color: var(--text-muted);
   padding: 2px;
 }
 .ai-chat-panel__msg-actions button:hover { color: #6366f1; }

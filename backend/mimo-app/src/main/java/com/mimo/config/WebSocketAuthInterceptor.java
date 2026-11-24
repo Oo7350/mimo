@@ -1,5 +1,6 @@
 package com.mimo.config;
 
+import com.mimo.service.PresenceService;
 import com.mimo.util.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,6 +21,7 @@ import java.util.List;
 public class WebSocketAuthInterceptor implements ChannelInterceptor {
 
     private final JwtUtil jwtUtil;
+    private final PresenceService presenceService;
 
     @Override
     public Message<?> preSend(Message<?> message, MessageChannel channel) {
@@ -33,10 +35,14 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
                 String username = jwtUtil.getUsername(token);
                 accessor.getSessionAttributes().put("userId", userId);
                 accessor.getSessionAttributes().put("username", username);
+                // 在线状态：连接即上网，断开即离线（见 PresenceService 的已知边界）
+                presenceService.connect(accessor.getSessionId(), userId);
                 log.debug("WebSocket authenticated: userId={}, username={}", userId, username);
             } else {
                 log.warn("WebSocket auth failed: invalid or missing token");
             }
+        } else if (StompCommand.DISCONNECT.equals(accessor.getCommand())) {
+            presenceService.disconnect(accessor.getSessionId());
         }
         return message;
     }

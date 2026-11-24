@@ -188,6 +188,37 @@ node e2e/review-matrix.mjs http://localhost:5173
 界面检查用 `.review-card__actions button` 计数，不走 `getByRole`——详情页是弹窗，
 a11y 树里这些按钮会被判定为 hidden，`getByRole` 数到 0（踩过）。
 
+## 在线状态用例（`presence.mjs`，v2.19.7）
+
+对应 `bug-log.md` **KNOWN-013**：「在线人数始终显示总成员数」。
+这条用例盯的是"界面别编数字"：
+
+| # | 检查点 | 断言 |
+|---|--------|------|
+| 1 | 浏览器连着 WebSocket 时算在线 | `GET /api/teams/1/presence` 的 `onlineCount >= 1` |
+| 2 | 不会超过成员总数 | `onlineCount <= totalMembers` |
+| 3 | 文案两个数都在 | 页面出现「N 人在线 · M 位成员」 |
+| 4 | 关掉页面会掉线 | 关浏览器后 20 秒内 `onlineCount` 回落到 0 |
+
+第 4 条当初是**红的**：简单 broker 默认不发心跳，服务端要等 Tomcat 会话超时才认为人走了。
+给 `enableSimpleBroker` 配了 10 秒心跳 + 调度器之后才通过——所以这条用例同时是心跳配置的回归保护。
+
+## 配色体检（`theme-audit.mjs`，v2.19.7）
+
+不开断言式用例，而是"量数字"：
+
+```bash
+node e2e/theme-audit.mjs http://localhost:5173         # 亮色 + 暗色
+node e2e/theme-audit.mjs http://localhost:5173 dark    # 只查暗色
+```
+
+- **浅色块残留**（只在暗色判）：元素自己画了近白底、面积 > 800px²、实际底色亮度 > 0.55。
+- **低对比**：文字与"实际底色"（往上找第一个不透明背景）对比度 < 3:1。
+- 渐变背景与 hero/banner 装饰区跳过——那里底色画在同级图层上，逐元素算必然是假警报。
+
+当前基线：暗色 `浅色块 0 / 低对比 0`，亮色 `0 / 0`（14 个页面）。
+退出码：暗色查出浅色块就返回 1，接入 CI 时可以直接当门禁。
+
 ## 怎么跑
 
 前置：MySQL :3306、后端 :8080、前端 :5173 都已启动，且库里有项目 id=1（种子数据或自己造）。
