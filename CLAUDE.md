@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-> **最新版本**：v2.19.3（2026-11-24）— 工作流按看板列自动生成 + 认领/审批自动推进，已与主干的 v2.19.1 / v2.19.2 合并。**版本号与条目以 `AGENTS.md` 和 `bug-log.md` 为准**（本文件原先按 v2.18.x 自增，与主干对不齐，现已同步）。
+> **最新版本**：v2.19.4（2026-11-24）— 验收面板按角色显示按钮（BUG-102）+ 多角色验收矩阵 e2e。**版本号与条目以 `AGENTS.md` 和 `bug-log.md` 为准**（本文件原先按 v2.18.x 自增，与主干对不齐，现已同步）。
 >
 > 历史：v2.18.1（2026-11-23）— 工作流按看板列自动生成 + 认领/审批自动推进（并入 v2.18.0 的 KNOWN 收口）。详见末尾"版本变更记录"。
 
@@ -10,8 +10,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Mimo is a lightweight Trello-like project management platform for small teams. It supports team collaboration, kanban task tracking, and progress visualization.
 
-- **Version**: v2.19.3 — 合并另一台机器的工作流自动生成，两边改动对上号 (2026-11-24)
-- **Previous**: v2.19.2 — 空状态引导 + 演示数据入口 (2026-11-23)
+- **Version**: v2.19.4 — 验收按角色分工：界面别撒谎 + 多角色矩阵 e2e (2026-11-24)
+- **Previous**: v2.19.3 — 合并另一台机器的工作流自动生成 (2026-11-24)
 - **GitHub**: https://github.com/Oo7350/mimo
 - **API docs**: `接口文档.md` (70+ endpoints, Chinese)
 - **User manual**: `操作手册.md` (Chinese)

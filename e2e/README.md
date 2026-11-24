@@ -143,6 +143,34 @@ node e2e/workflow-guard.mjs http://localhost:5173
 前置：项目 id=1 上配了 STORY 工作流（demo 库是 scrum 模板：待办↔进行中↔已完成）。
 用例自己建一张卡、自己删，不碰 demo 数据。
 
+## 验收权限矩阵（`review-matrix.mjs`）
+
+验收这件事的规则是**按角色分**的，主线用例只证明了"一个人能走完一遍"，所以单独有一份矩阵。
+用例自己建团队/项目/任务（名字带 `e2e团队…/e2e项目…` 前缀），跑完用 `cleanup-residue.sql` 收掉。
+
+| # | 检查点 | 断言 |
+|---|--------|------|
+| A | 非负责人不能提交 | `POST /issues/{id}/reviews` = 403「只有任务负责人可以提交验收」 |
+| B | 负责人提交 | = 200，`status=PENDING`，`submitterId` = 负责人 |
+| C | 提交人不能验收自己 | `PUT /issue-reviews/{id}/approve` = 403「不能验收自己提交的结果」 |
+| D | 普通成员不能验收 | = 403「只有项目管理员或报告人可以验收」 |
+| I | 界面上提交人看不到按钮 | 「通过」按钮数 = 0，且有"这是你自己提交的…"说明 |
+| J | 界面上报告人看得到按钮 | 「通过」「打回」各 ≥1 |
+| E1 | 跳步被工作流挡 | 待办 → 已完成 = 400「工作流不允许从「待办」转换到「已完成」」 |
+| E2 | 没通过不能收工 | 待验收 → 已完成 = 409「最新验收轮次尚未通过…」 |
+| E3 | 通过后能收工 | 验收 = APPROVED，再移动 = 200，`status=DONE` |
+| F | 已处理记录不能再动 | 再 approve = 400「该验收记录已处理」 |
+| G | 打回必须填原因 | 空原因 = 400；打回后 work item 回 `IN_PROGRESS`，并进提交人「被驳回」 |
+| H | 团队管理员能验收 | 授 `PROJECT_MANAGER`（含 `team.manage`）在 TEAM 作用域后，普通成员身份的验收 = 200 |
+
+```bash
+node e2e/review-matrix.mjs http://localhost:5173
+```
+
+前置：`admin` / `zhangsan` / `lisi` 三个账号存在（种子数据自带，密码都是 `123456`）。
+界面检查用 `.review-card__actions button` 计数，不走 `getByRole`——详情页是弹窗，
+a11y 树里这些按钮会被判定为 hidden，`getByRole` 数到 0（踩过）。
+
 ## 怎么跑
 
 前置：MySQL :3306、后端 :8080、前端 :5173 都已启动，且库里有项目 id=1（种子数据或自己造）。

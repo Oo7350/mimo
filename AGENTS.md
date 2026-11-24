@@ -1,6 +1,6 @@
 # AGENTS.md
 
-> **最新版本**：v2.19.3（2026-11-24）— 合并另一台机器推上来的 4 个提交（工作流按看板列自动生成 + 认领审批自动推进、审批通知重复弹与个人动态存储型 XSS 修复）。两边是快进合并、无冲突：他们的自动生成接上了我这边"设计器不点编辑就能看懂规则"的只读概览（实测示例项目首次访问生成 STORY/TASK/BUG 三套、每套 4 节点 6 规则，幂等），我删掉了合并后重复的一段说明。合并后重跑：后端 **149 项**测试全绿、e2e 26 项全绿、`vue-tsc` 与 `npm run build` 通过。详见末尾"版本变更记录"。
+> **最新版本**：v2.19.4（2026-11-24）— 验收按角色分工。补上多角色验收矩阵 e2e（`e2e/review-matrix.mjs`，12 条），写着写着抓到一个真问题：验收面板的「通过 / 打回」以前对**所有人**显示，提交人自己、完全无关的普通成员都看得到，点了才被后端 403 拒——已按后端同一口径改成"该看到的看到、不该看到的被告知在等谁"（BUG-102）。KNOWN-017（核心链路缺 e2e）随之关闭，另登记 KNOWN-024（e2e 未接 CI）。核心链路口径：5 套 38 条断言。
 >
 > **文档版本号以本文件 + `bug-log.md` 为准**：同一批工作流自动生成改动，另一台机器的提交写 v2.17.1、`CLAUDE.md` 写 v2.18.1，合并后实际是 v2.19.3（`CLAUDE.md` 头部已同步）。
 
@@ -10,8 +10,8 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 Mimo is a lightweight Trello-like project management platform for small teams. It supports team collaboration, kanban task tracking, and progress visualization.
 
-- **Version**: v2.19.3 — 合并另一台机器的工作流自动生成，两边改动对上号 (2026-11-24)
-- **Previous**: v2.19.2 — 空状态引导 + 演示数据入口 (2026-11-23)
+- **Version**: v2.19.4 — 验收按角色分工：界面别撒谎 + 多角色矩阵 e2e (2026-11-24)
+- **Previous**: v2.19.3 — 合并另一台机器的工作流自动生成 (2026-11-24)
 - **GitHub**: https://github.com/Oo7350/mimo
 - **API docs**: `接口文档.md` (70+ endpoints, Chinese)
 - **User manual**: `操作手册.md` (Chinese)
@@ -215,6 +215,31 @@ All v2.15 AI roadmap items are implemented. Future work may replace the lexical 
 - **Board Sync Flow**: Drag → `PUT /api/board/issue/move` → backend updates issue + logs + WebSocket broadcast → all board subscribers receive event → optimistic UI update
 
 ## Version History
+
+### v2.19.4 — 验收按角色分工：界面别撒谎 + 多角色矩阵 e2e (2026-11-24)
+
+目标是把 KNOWN-017 剩下的"多角色"那半补上，结果撞出一个真缺陷。
+
+- **BUG-102（Medium）**：`IssueReviewPanel.vue` 只判了 `status === 'PENDING'`，没判"我是谁"，
+  于是提交人自己、无关的普通成员都能看到「通过 / 打回」，「提交验收」对非负责人也显示，
+  点了才被后端拒（`不能验收自己提交的结果` / `只有项目管理员或报告人可以验收` /
+  `只有任务负责人可以提交验收`）。现在面板按后端同一口径（`canSubmit` / `canReview`）决定显示，
+  没有按钮的人改为看到一句"在等谁"的说明；上下文（报告人、项目负责人）由面板自己取，
+  拿不到就宁可不显示按钮。
+- **不是 bug 的确认**：验收通过不会自动把卡搬进「已完成」。看板侧有 review gate：
+  最新一轮未通过时拖进完成列会被 409 拦住；通过后由负责人拖/点「标记完成」收工，
+  详情页「下一步」里就有这个按钮。用例把两头都钉住了。
+- **新用例** `e2e/review-matrix.mjs`（12 条）：非负责人不能提交、负责人提交、提交人不能验自己、
+  普通成员不能验、界面显示（提交人看不到 / 报告人看得到）、跳步被工作流挡、
+  review gate 挡住未通过的完成、通过后可完成、已处理记录不能再操作、打回必须填原因且回退+进「被驳回」、
+  团队管理员（RBAC `team.manage`）能验收。
+- **账目**：关闭 KNOWN-017、新登记 KNOWN-024（e2e 未接 CI），并更正上一版把"017 部分已解决"
+  当已关闭导致少算 1 的统计（现为 BUG 102 / KNOWN 未关闭 7 / 总计 109）。
+  同时补上一直被引用却不存在的 `tools/buglog_stats.py`：`python tools/buglog_stats.py --check`
+  会拿 `bug-log.md` 里那张统计表对账，不一致退出码 1（已用"故意改错总计"反向验证能报红）。
+- **验证**：后端 149 项全绿（本轮无后端改动）；e2e 5 套 **38 条**全绿
+  （review-matrix 12 / main-chain 11 / next-step 6 / chain-links 5 / workflow-guard 4）；
+  `vue-tsc` 通过；`npm run build` 通过。
 
 ### v2.19.3 — 合并另一台机器的工作流自动生成，两边改动对上号 (2026-11-24)
 
