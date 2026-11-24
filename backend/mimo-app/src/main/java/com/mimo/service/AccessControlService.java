@@ -9,6 +9,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+
 /**
  * 管理员判定的**唯一入口**。
  *
@@ -51,6 +53,13 @@ public class AccessControlService {
 
     private static final String SCOPE_TEAM = "TEAM";
 
+    /** {@link #resolveAdminScope(Long)} 的取值：全部团队 */
+    public static final String ADMIN_SCOPE_SYSTEM = "SYSTEM";
+    /** 只看自己管理的团队 */
+    public static final String ADMIN_SCOPE_TEAM = "TEAM";
+    /** 不是管理员 */
+    public static final String ADMIN_SCOPE_NONE = "NONE";
+
     private final RoleService roleService;
     private final UserMapper userMapper;
     private final TeamMemberMapper teamMemberMapper;
@@ -73,6 +82,29 @@ public class AccessControlService {
         if (teamId == null) return false;
         if (legacyRoleFallback && hasLegacyTeamAdminRole(userId, teamId)) return true;
         return roleService.hasPermission(userId, PERM_TEAM_ADMIN, SCOPE_TEAM, teamId);
+    }
+
+    /**
+     * 这个账号的管理范围：{@link #ADMIN_SCOPE_SYSTEM}（全部团队）/ {@link #ADMIN_SCOPE_TEAM}
+     * （只管自己所在的团队）/ {@link #ADMIN_SCOPE_NONE}。
+     *
+     * <p>给**前端**决定"显示不显示管理员入口"用，与 {@code /api/workbench/team} 同源。
+     * 为什么不让前端自己算：前端只看得到 RBAC 权限码，看不到旧字段兜底 ——
+     * 开发库里 zhangsan 是 {@code team_members.role = ROLE_ADMIN}、RBAC 里没有角色，
+     * 后端放行（scope=TEAM），前端却算成"不是管理员"，把入口整个藏了（v2.19.8 修复）。
+     * 判定留在后端一处，前端只读结论。
+     *
+     * <p>成本：1 次成员关系查询 + 每个所在团队最多 2 次判定，用户通常只在少数几个团队里。
+     */
+    public String resolveAdminScope(Long userId) {
+        if (userId == null) return ADMIN_SCOPE_NONE;
+        if (isSystemAdmin(userId)) return ADMIN_SCOPE_SYSTEM;
+        List<TeamMember> memberships = teamMemberMapper.selectList(
+                new LambdaQueryWrapper<TeamMember>().eq(TeamMember::getUserId, userId));
+        for (TeamMember membership : memberships) {
+            if (isTeamAdmin(userId, membership.getTeamId())) return ADMIN_SCOPE_TEAM;
+        }
+        return ADMIN_SCOPE_NONE;
     }
 
     /** 是否承认旧字段（供诊断/测试观察当前口径） */

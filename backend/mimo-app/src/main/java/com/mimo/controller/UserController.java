@@ -7,6 +7,7 @@ import com.mimo.common.ResultCode;
 import com.mimo.dto.UserDTO.*;
 import com.mimo.entity.User;
 import com.mimo.mapper.UserMapper;
+import com.mimo.service.AccessControlService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -23,6 +24,11 @@ public class UserController {
 
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
+    /**
+     * 管理范围判定（徽标 / 全员任务流入口的唯一来源）。
+     * 前端看不到旧字段兜底，自己算会算错，所以结论由后端给。
+     */
+    private final AccessControlService accessControlService;
 
     @GetMapping("/profile")
     public Result<ProfileVO> profile(Authentication auth) {
@@ -35,6 +41,7 @@ public class UserController {
         vo.setEmail(user.getEmail());
         vo.setAvatar(user.getAvatar());
         vo.setRole(user.getRole());
+        vo.setAdminScope(accessControlService.resolveAdminScope(userId));
         vo.setCreatedAt(user.getCreatedAt() != null ? user.getCreatedAt().toString() : "");
         return Result.success(vo);
     }

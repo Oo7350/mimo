@@ -160,4 +160,43 @@ class AccessControlServiceTest {
         // 团队判定必须落在 TEAM 作用域上，不能用全局权限冒充
         verify(roleService).hasPermission(eq(USER), eq(AccessControlService.PERM_TEAM_ADMIN), eq("TEAM"), eq(TEAM));
     }
+
+    // ==================== 管理范围（前端入口的唯一来源，BUG-113） ====================
+
+    /**
+     * 这是 BUG-113 的回归：前端曾自己用权限码算"是不是管理员"，
+     * 漏掉了 `team_members.role = ROLE_ADMIN` 这条旧字段兜底，
+     * 导致后端放行（scope=TEAM）而界面把入口藏了。
+     * 现在结论由后端给，前端只读 —— 这里锁住三个取值。
+     */
+    @Test
+    void adminScopeShouldBeSystemForSystemAdmin() {
+        when(userMapper.selectById(USER)).thenReturn(user("ROLE_ADMIN"));
+
+        assertThat(service.resolveAdminScope(USER)).isEqualTo(AccessControlService.ADMIN_SCOPE_SYSTEM);
+        // 系统管理员不必再查他属于哪些团队
+        verify(teamMemberMapper, never()).selectList(any());
+    }
+
+    @Test
+    void adminScopeShouldBeTeamForLegacyTeamAdmin() {
+        when(userMapper.selectById(USER)).thenReturn(user("ROLE_MEMBER"));
+        when(roleService.hasPermission(USER, AccessControlService.PERM_SYSTEM_ADMIN)).thenReturn(false);
+        TeamMember membership = new TeamMember();
+        membership.setTeamId(TEAM);
+        membership.setUserId(USER);
+        when(teamMemberMapper.selectList(any())).thenReturn(java.util.List.of(membership));
+        when(teamMemberMapper.selectOne(any())).thenReturn(new TeamMember());
+
+        assertThat(service.resolveAdminScope(USER)).isEqualTo(AccessControlService.ADMIN_SCOPE_TEAM);
+    }
+
+    @Test
+    void adminScopeShouldBeNoneForPlainMember() {
+        when(userMapper.selectById(USER)).thenReturn(user("ROLE_MEMBER"));
+        when(roleService.hasPermission(USER, AccessControlService.PERM_SYSTEM_ADMIN)).thenReturn(false);
+        when(teamMemberMapper.selectList(any())).thenReturn(java.util.List.of());
+        assertThat(service.resolveAdminScope(USER)).isEqualTo(AccessControlService.ADMIN_SCOPE_NONE);
+        assertThat(service.resolveAdminScope(null)).isEqualTo(AccessControlService.ADMIN_SCOPE_NONE);
+    }
 }

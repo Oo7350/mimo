@@ -96,6 +96,26 @@
 
 那条对比度检查当场抓到了 BUG-111；这条用例今后就是这批 UI 的回归网。
 
+### BUG-113: 团队管理员（旧字段）看不到管理员入口——功能"做了但等于没做" [High]
+
+- **文件**: `frontend/src/views/Dashboard.vue`、`components/layout/MainLayout.vue`、`views/ProjectBoard.vue`
+- **现象**: 用户看到成品后直接说"**管理员账号的刚刚给你说的功能你没有给我实现啊**"。
+  实测三个开发账号：`admin` 有徽标有切换、`lisi` 有、**`zhangsan` 什么都没有**，
+  但 `GET /api/workbench/team` 对 zhangsan 返回 `scope=TEAM`（后端放行）。
+- **根因**: 前端自己拼判定：`userStore.isAdmin || has('role.manage') || has('team.manage')`。
+  zhangsan 是 `users.role = ROLE_MEMBER`、RBAC 里没有角色，但
+  `team_members.role = ROLE_ADMIN`（v2.7 之前的旧字段）—— `AccessControlService` 认这条旧路径，
+  前端看不到它，于是把入口整个藏了。**判定在两处各写一遍，必然对不上。**
+- **修复**: 判定收敛到后端一处 —— `AccessControlService#resolveAdminScope(userId)` 返回
+  `SYSTEM / TEAM / NONE`，写进 `/api/user/profile` 与登录响应的 `adminScope` 字段；
+  前端 `store/user.ts` 只读这个结论（`isManager` / `managerLabel`），
+  工作台、顶栏、看板三处入口全部改读它，前端不再自己拼权限码。
+- **教训**: ① 这类"前端判断能力、后端判断权限"的地方，前端**必须只读后端结论**，
+  否则后端每加一条兜底路径（旧字段、白名单、迁移开关），前端就会多一处说谎；
+  ② 自测账号要覆盖"权限来源不同的账号"：admin（旧字段）、lisi（RBAC）、zhangsan（旧字段团队级），
+  只测 admin 会漏掉 zhangsan 这种。
+- **回归**: `e2e/admin-flow.mjs` 新增 2 条（旧字段团队管理员有徽标与入口、切全员能看到成员列且
+  `scope=TEAM`），共 17 条；三个账号的实测结论写进用例注释。
 ### 工具补丁：`theme-audit.mjs` 对"两层叠放"控件的测量盲区（非 BUG）
 
 新加的「我的 / 全员」滑动开关，选中项的白字压在**兄弟节点**（滑动指示块）的靛蓝底色上。
@@ -2349,16 +2369,16 @@
 | 严重程度 | 数量 |
 |---------|------|
 | Critical | 6 |
-| High | 45 |
+| High | 46 |
 | Medium | 40 |
 | Low | 21 |
-| **已修复（BUG 条目）** | **112** |
+| **已修复（BUG 条目）** | **113** |
 | **已知未修复（KNOWN 条目）** | **3** |
-| **总计** | **115** |
+| **总计** | **116** |
 
 | 版本段 | BUG 条数 |
 |--------|---------|
-| v2.19.8 — 管理员视角：身份徽标 + 全员任务流 + 任务详情抽屉（BUG-110~112）(2026-11-24) | 3 |
+| v2.19.8 — 管理员视角：身份徽标 + 全员任务流 + 任务详情抽屉（BUG-110~113）(2026-11-24) | 4 |
 | v2.19.7 — 暗色配色系统性修正 + 在线人数落实 + Low 收口（BUG-104~109）(2026-11-24) | 6 |
 | v2.19.6 — 工作流节点责任人 + 交接说明（无 BUG，纯功能）(2026-11-24) | 0 |
 | v2.19.5 — 工作台就地验收 + 示例数据一键清除（BUG-103）(2026-11-24) | 1 |

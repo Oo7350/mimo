@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-> **最新版本**：v2.19.8（2026-11-24）— 管理员视角：身份徽标（`AdminBadge`：顶栏 / Hero / 成员列，头像金色描边）+ `GET /api/workbench/team` 全员任务流（系统管理员看全部团队、团队管理员只看自己管理的，每人一条 `MemberStreamVO` 带负载等级与依据，含未指派栏）+ 工作台「我的 / 全员」滑动切换 + 任务详情抽屉（`TaskDetailDrawer`，Esc 关闭不跳页）+ 看板「全员泳道」开关。修 BUG-110/111/112，登记 KNOWN-025。后端 171 项、e2e 7 套 62 条。
+> **最新版本**：v2.19.8（2026-11-24）— 管理员视角：身份徽标（`AdminBadge`：顶栏 / Hero / 成员列，头像金色描边）+ `GET /api/workbench/team` 全员任务流（系统管理员看全部团队、团队管理员只看自己管理的，每人一条 `MemberStreamVO` 带负载等级与依据，含未指派栏）+ 工作台「我的 / 全员」滑动切换 + 任务详情抽屉（`TaskDetailDrawer`，Esc 关闭不跳页）+ 看板「全员泳道」开关。修 BUG-110/111/112，并修掉用户当场抓到的 BUG-113（前端自己算管理员，漏掉旧字段兜底的团队管理员 → 判定收敛到后端 `adminScope`），登记 KNOWN-025。后端 174 项、e2e 7 套 64 条。
 > **上一版本**：v2.19.7（2026-11-24）— 暗色配色系统性修正（Element 品牌色被 `html.dark` 重置、文字色当底色用、标题写死深色、头像对比度）+ 团队在线人数落实（`/teams/{id}/presence` + WS 心跳）+ 5 条 Low 收口，并新增 `e2e/theme-audit.mjs` 与 `tools/integrity-check.sql` 两把尺子。
 >
 > **上一版本**：v2.19.6（2026-11-24）— 工作流节点责任人（`ownerUserId`）+ `GET /workflow/transitions` 返回 `allowed/reason`，界面被挡住时点名"这一步由「张三」负责"。**版本号与条目以 `AGENTS.md` 和 `bug-log.md` 为准**（本文件原先按 v2.18.x 自增，与主干对不齐，现已同步）。
@@ -46,6 +46,7 @@ Mimo is a lightweight Trello-like project management platform for small teams. I
 | CSS 变量按用途分层（文字色不当底色） | 暗色翻车都来自变量复用 | 实心块用 `--color-primary-solid`；数据色用 `readableInk()` |
 | 覆盖 Element 变量要双写 `[data-theme="dark"]` 与 `html.dark` | Element dark css-vars 会重置 primary | 漏一个品牌色就漂移 |
 | `deploy.ps1` 需人工确认 | 会覆盖生产并重启 | CI 需 `-Force` |
+| 前端只读后端给的 `adminScope` | 前端看不到旧字段兜底，自己算必然对不上后端（BUG-113） | 新增权限来源时只改 `resolveAdminScope` 一处 |
 | 管理员视角是"范围"不是"特权" | 系统管理员看全部团队、团队管理员看自己管理的，这是工作要求 | 团队管理员看不到别的团队；口径须与 `AccessControlService` 一致 |
 | 非管理员拿 403 而不是空列表 | 空列表会被读成"大家都没任务"，界面先撒谎 | 本项目业务错误 = 响应体 `code` + HTTP 200，e2e 判 `body.code` |
 | 负载标签必须带 `loadReason` | 只给红黄绿灯等于让人猜 | 阈值是经验值，团队规模变了要重看 |
@@ -295,13 +296,19 @@ All v2.15 AI roadmap items are implemented; see `项目功能完善计划.md` §
 - `views/ProjectBoard.vue`：管理员「全员泳道」开关（`swimlaneMode='assignee'` 的显式入口）。
 
 **缺陷**
+- BUG-113（High，用户当场发现）：前端自己用 `role === 'ROLE_ADMIN' || has('role.manage') || has('team.manage')`
+  判管理员，漏掉 `team_members.role = ROLE_ADMIN` 旧字段兜底 —— 开发库里 zhangsan 后端放行（scope=TEAM）、
+  界面把徽标与入口整个藏了。修复：`AccessControlService#resolveAdminScope` 返回 `SYSTEM / TEAM / NONE`，
+  经 `/api/user/profile` 与登录响应的 `adminScope` 给前端，`store/user.ts` 暴露 `isManager / managerLabel`，
+  三处入口只读结论。
 - BUG-110：Element 抽屉 `close-on-press-escape` 依赖焦点，鼠标点开后 Esc 无效 → `window` 捕获监听。
 - BUG-111：统计卡标签 `--text-muted` 压 `--color-primary-lighter`，亮色 2.95:1 → 改 `--text-secondary`。
 - BUG-112：在线人数一次请求问两遍 `PresenceService`，单测里恒为 0 → 只调一次。
 - KNOWN-025 新登记：无分页、无历史趋势。
 
-**验证**：`mvn test` 171 项、e2e **7 套 62 条**（新增 `e2e/admin-flow.mjs` 15 条，含亮/暗主题下
-新界面的对比度与横向溢出现场测量）、`vue-tsc`、`npm run build`、`probe-layout` 15 页 0 溢出。
+**验证**：`mvn test` 174 项、e2e **7 套 64 条**（新增 `e2e/admin-flow.mjs` 17 条，含旧字段团队管理员、
+普通成员两种身份，以及亮/暗主题下新界面的对比度与横向溢出现场测量）、`vue-tsc`、`npm run build`、
+`probe-layout` 15 页 0 溢出。
 
 ### v2.18.1 — 工作流自动生成 + 认领/审批自动推进 (2026-11-23)
 

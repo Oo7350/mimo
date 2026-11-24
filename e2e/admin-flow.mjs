@@ -136,6 +136,52 @@ await adminPage.waitForTimeout(800);
 const drawerHidden = !(await adminPage.locator(".task-drawer__title").first().isVisible().catch(() => false));
 check("Esc 能关掉抽屉", drawerHidden, drawerHidden ? "已隐藏" : "抽屉仍然可见");
 
+// ==================== 旧字段兜底的团队管理员（v2.19.8 修复的那个坑） ====================
+//
+// 开发库里 zhangsan 的情况是：`users.role = ROLE_MEMBER`、RBAC 里没有角色，
+// 但 `team_members.role = ROLE_ADMIN`（旧字段）——后端 AccessControlService 认这条，
+// 所以 /workbench/team 对他放行（scope=TEAM）。第一版前端自己用权限码算，
+// 算成"不是管理员"，把徽标和入口整个藏了：用户看到的就是"这个功能没做"。
+// 这条用例专门盯这个落差：后端允许 ⇒ 界面必须给入口。
+const TEAM_ADMIN = { username: "zhangsan", password: "123456" };
+const teamAdminContext = await browser.newContext({ viewport: { width: 1440, height: 960 } });
+await teamAdminContext.addInitScript(tourSkip);
+const teamAdminPage = await teamAdminContext.newPage();
+teamAdminPage.setDefaultTimeout(25000);
+await login(teamAdminPage, TEAM_ADMIN);
+await teamAdminPage.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
+await teamAdminPage.waitForTimeout(2200);
+
+const teamAdminBadge = teamAdminPage.locator(".mimo-header__user .admin-badge").first();
+const teamAdminBadgeVisible = await teamAdminBadge
+  .waitFor({ state: "visible", timeout: 10000 })
+  .then(() => true)
+  .catch(() => false);
+const teamAdminScopeSwitch = await teamAdminPage.locator(".admin-scope").count();
+const teamAdminScopeText = teamAdminBadgeVisible ? (await teamAdminBadge.innerText()).trim() : "";
+check(
+  "旧字段兜底的团队管理员也有徽标与入口",
+  teamAdminBadgeVisible && teamAdminScopeSwitch > 0,
+  `徽标 ${teamAdminBadgeVisible ? "有（" + teamAdminScopeText + "）" : "没有"} / 切换 ${teamAdminScopeSwitch}`,
+);
+
+const teamAdminToken = await teamAdminPage.evaluate(() => localStorage.getItem("token"));
+const teamAdminScope = await teamAdminPage.evaluate(async (t) => {
+  const res = await fetch("/api/workbench/team", { headers: { Authorization: `Bearer ${t}` } });
+  const json = await res.json().catch(() => ({}));
+  return { code: json.code, scope: json.data?.scope, teams: json.data?.teamNames };
+}, teamAdminToken);
+
+await teamAdminPage.locator(".admin-scope__option", { hasText: "全员" }).click();
+await teamAdminPage.waitForTimeout(1600);
+const teamAdminStreams = await teamAdminPage.locator(".member-stream").count();
+check(
+  "团队管理员切到全员能看到成员列（范围=自己团队）",
+  teamAdminScope.scope === "TEAM" && teamAdminStreams > 0,
+  `接口 scope=${teamAdminScope.scope} teams=${JSON.stringify(teamAdminScope.teams)} 界面列数=${teamAdminStreams}`,
+);
+await teamAdminContext.close();
+
 // ==================== 普通成员：看不到也调不动 ====================
 const registerRes = await fetch(`${API}/api/auth/register`, {
   method: "POST",

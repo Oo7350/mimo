@@ -258,17 +258,12 @@ const permissionStore = usePermissionStore()
 const isLegacyAdmin = computed(() => userStore.userInfo?.role === 'ROLE_ADMIN')
 
 /**
- * 顶栏身份标记（v2.19.8）。口径与后端一致，但只用来决定**显示什么**：
- * - 系统管理员：旧 role 字段或 RBAC `role.manage`
- * - 团队管理员：RBAC `team.manage`（能看自己团队的全员任务流）
- * 前端不做安全判断，隐藏徽标不等于没权限。
+ * 顶栏身份标记（v2.19.8）。**只读后端给的 `adminScope`**，不再自己拼权限码 ——
+ * 自己拼会漏掉旧字段兜底的团队管理员（`team_members.role = ROLE_ADMIN`），
+ * 表现就是"后端让看、前端藏了入口"。前端只决定显示什么，隐藏徽标不等于没权限。
  */
-const isAdminAccount = computed(
-  () => isLegacyAdmin.value || permissionStore.has('role.manage') || permissionStore.has('team.manage'),
-)
-const adminLabel = computed(() =>
-  isLegacyAdmin.value || permissionStore.has('role.manage') ? '管理员' : '团队管理员',
-)
+const isAdminAccount = computed(() => userStore.isManager)
+const adminLabel = computed(() => userStore.managerLabel)
 
 const adminNavItems = computed(() =>
   adminNavGroup.items.filter(

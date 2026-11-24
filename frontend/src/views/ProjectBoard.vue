@@ -296,7 +296,7 @@
 import { ref, computed, onMounted, watch } from "vue"
 import { useRoute } from "vue-router"
 import { useUserStore } from "@/store/user"
-import { usePermissionStore } from "@/store/permission"
+
 import { getBoard, moveIssue } from "@/api/board"
 import { getProjectById } from "@/api/project"
 import { getAvailableTransitions } from "@/api/workflow"
@@ -315,15 +315,12 @@ import { getReports, generateReport } from "@/api/report"
 
 const route = useRoute()
 const userStore = useUserStore()
-const permissionStore = usePermissionStore()
 
 /**
  * 管理员快捷入口（v2.19.8）：能不能显示「全员泳道」。
- * 前端口径与工作台、后端一致（旧 role / RBAC role.manage / team.manage），只决定显示与否。
+ * 只读后端给的 `adminScope`（`userStore.isManager`），和工作台、顶栏同一口径。
  */
-const canSeeTeamFlow = computed(
-  () => userStore.isAdmin || permissionStore.has('role.manage') || permissionStore.has('team.manage'),
-)
+const canSeeTeamFlow = computed(() => userStore.isManager)
 
 function toggleAdminFlow() {
   swimlaneMode.value = swimlaneMode.value === 'assignee' ? '' : 'assignee'

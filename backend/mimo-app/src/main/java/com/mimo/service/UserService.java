@@ -25,15 +25,18 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final UserLevelMapper userLevelMapper;
+    /** 登录响应里带上管理范围，前端徽标不用等 /user/profile 回来才出现 */
+    private final AccessControlService accessControlService;
     @Autowired(required = false)
     private StringRedisTemplate redisTemplate;
 
     public UserService(UserMapper userMapper, PasswordEncoder passwordEncoder, JwtUtil jwtUtil,
-                       UserLevelMapper userLevelMapper) {
+                       UserLevelMapper userLevelMapper, AccessControlService accessControlService) {
         this.userMapper = userMapper;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
         this.userLevelMapper = userLevelMapper;
+        this.accessControlService = accessControlService;
     }
 
     public LoginResponse login(LoginRequest request) {
@@ -61,6 +64,7 @@ public class UserService {
                 .email(user.getEmail())
                 .avatar(user.getAvatar())
                 .role(user.getRole())
+                .adminScope(accessControlService.resolveAdminScope(user.getId()))
                 .build();
 
         return LoginResponse.builder()

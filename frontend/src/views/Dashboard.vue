@@ -580,15 +580,13 @@ const taskTab = ref<TaskTab>('all')
 // ==================== 管理员视角：全员任务流（v2.19.8） ====================
 
 /**
- * 能不能看全员任务流。
+ * 能不能看全员任务流：**只读后端给的 `adminScope`**（`userStore.isManager`）。
  *
- * 三个条件任一成立即可（与后端口径一致，见 WorkbenchService#getTeamWorkbench）：
- * 系统管理员（旧 role 字段或 RBAC role.manage）、团队管理员（RBAC team.manage）。
- * 前端只用来决定"显示不显示入口"，真正的判定在后端——前端藏起来不等于安全。
+ * 第一版这里写的是 `isAdmin || has('role.manage') || has('team.manage')`，漏掉了旧字段兜底的
+ * 团队管理员（开发库里 zhangsan 就是），于是后端放行、前端把入口藏了——用户看到的就是"没做"。
+ * 前端只用来决定"显示不显示入口"，真正的判定在后端，前端藏起来不等于安全。
  */
-const canSeeTeamFlow = computed(
-  () => userStore.isAdmin || permissionStore.has('role.manage') || permissionStore.has('team.manage'),
-)
+const canSeeTeamFlow = computed(() => userStore.isManager)
 
 /** mine = 我的任务（原有面板）；team = 全员任务流（管理员专属） */
 const adminScope = ref<'mine' | 'team'>('mine')
@@ -602,8 +600,8 @@ const detailIssueId = ref<number | null>(null)
 const detailOwner = ref('')
 const detailProjectName = ref('')
 
-/** 徽标文案跟着真实权限档次走，不统一写"管理员"糊过去 */
-const adminBadgeLabel = computed(() => (userStore.isAdmin || permissionStore.has('role.manage') ? '系统管理员' : '团队管理员'))
+/** 徽标文案跟着后端给的管理范围走（系统管理员 / 团队管理员），不统一写"管理员"糊过去 */
+const adminBadgeLabel = computed(() => (userStore.adminScope === 'SYSTEM' ? '系统管理员' : userStore.managerLabel))
 
 const teamScopeText = computed(() => {  const data = teamWorkbench.value
   if (!data) return '正在统计全员任务…'

@@ -16,6 +16,14 @@ public class UserDTO {
         private String avatar;
         private String role;
         private String createdAt;
+        /**
+         * 管理范围：SYSTEM（全部团队）/ TEAM（只管自己管理的团队）/ NONE。
+         *
+         * <p>由后端 {@code AccessControlService#resolveAdminScope} 判定，前端只读它来决定
+         * 显示不显示管理员身份徽标与「全员任务流」入口 —— 前端拿不到旧字段兜底，
+         * 自己算会算错（v2.19.8 之前的实际故障：zhangsan 后端放行、前端把入口藏了）。
+         */
+        private String adminScope;
     }
 
     @Data
