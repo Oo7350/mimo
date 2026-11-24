@@ -1,6 +1,8 @@
 # AGENTS.md
 
-> **最新版本**：v2.19.2（2026-11-23）— 空状态别只说"暂无"、空库要有数据可看。新增 `EmptyGuide` 组件（空状态必须说清"这里会出现什么 / 为什么是空的 / 下一步点哪里"），替换了公告、邮箱绑定、Webhook、审批两个页签的空态；后端新增 `POST /api/admin/demo-data`（只给系统管理员、幂等、不碰已有数据），一次生成 项目 + 3 迭代 + 15 工作项 + 评论/工时/验收/报告/动态/通知，前端入口在工作台空库末尾和项目列表页头。顺带清掉了 dev 库里早期 e2e 残留（8 条 `E2E任务*` 与一组「链路团队/项目」）。详见末尾"版本变更记录"。
+> **最新版本**：v2.19.3（2026-11-24）— 合并另一台机器推上来的 4 个提交（工作流按看板列自动生成 + 认领审批自动推进、审批通知重复弹与个人动态存储型 XSS 修复）。两边是快进合并、无冲突：他们的自动生成接上了我这边"设计器不点编辑就能看懂规则"的只读概览（实测示例项目首次访问生成 STORY/TASK/BUG 三套、每套 4 节点 6 规则，幂等），我删掉了合并后重复的一段说明。合并后重跑：后端 **149 项**测试全绿、e2e 26 项全绿、`vue-tsc` 与 `npm run build` 通过。详见末尾"版本变更记录"。
+>
+> **文档版本号以本文件 + `bug-log.md` 为准**：同一批工作流自动生成改动，另一台机器的提交写 v2.17.1、`CLAUDE.md` 写 v2.18.1，合并后实际是 v2.19.3（`CLAUDE.md` 头部已同步）。
 
 This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
@@ -8,8 +10,8 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 Mimo is a lightweight Trello-like project management platform for small teams. It supports team collaboration, kanban task tracking, and progress visualization.
 
-- **Version**: v2.19.2 — 空状态引导 + 演示数据入口 (2026-11-23)
-- **Previous**: v2.19.1 — 工作流：配好了要看得懂，挡住了要指条路 (2026-11-23)
+- **Version**: v2.19.3 — 合并另一台机器的工作流自动生成，两边改动对上号 (2026-11-24)
+- **Previous**: v2.19.2 — 空状态引导 + 演示数据入口 (2026-11-23)
 - **GitHub**: https://github.com/Oo7350/mimo
 - **API docs**: `接口文档.md` (70+ endpoints, Chinese)
 - **User manual**: `操作手册.md` (Chinese)
@@ -213,6 +215,24 @@ All v2.15 AI roadmap items are implemented. Future work may replace the lexical 
 - **Board Sync Flow**: Drag → `PUT /api/board/issue/move` → backend updates issue + logs + WebSocket broadcast → all board subscribers receive event → optimistic UI update
 
 ## Version History
+
+### v2.19.3 — 合并另一台机器的工作流自动生成，两边改动对上号 (2026-11-24)
+
+另一台机器推了 4 个提交（`dc94d84` / `7c125ee` / `bc779e3` / `c51955d` 合并），
+我这边的 v2.19.1、v2.19.2 已在远端，所以是**快进合并**（`5f77217 → c51955d`），没有冲突。
+
+- **他们的功能**：`WorkflowService.ensureDefaultWorkflows` 在建项目时按看板列自动生成
+  STORY/TASK/BUG 三套默认工作流（Scrum，前进+回退，`is_default=1`），
+  `GET /api/workflow/project/{id}` 对存量项目懒补齐；`POST /api/issues/{id}/claim` 认领链路
+  （管理员直接认领并进入「进行中」，普通成员走 `ISSUE_CLAIM` 审批，通过后 `IssueClaimService.applyClaim`
+  自动指派推进）；审批通知不再每页重复弹；个人动态改掉存储型 XSS。
+- **两边接口对上了**：他们的自动生成正好落在我 v2.19.1 加的只读概览上——示例项目首次访问生成 3 套、
+  每套 4 节点 6 条规则，页面显示「自动生成」标签 + 「从→到→谁可以这么做」规则表；再查仍是 3 套。
+- **本轮实际改动**：删掉合并后同一页重复的一段"自动生成"说明（`PageHint` 已经说过）；
+  同步 `CLAUDE.md` 头部版本号（原来写 v2.18.1，比实际落后）。
+- **验证（合并后重跑）**：后端 142 → **149 项**全绿（+他们的工作流 3 项、认领 4 项）；
+  e2e `workflow-guard` 4/4、`main-chain` 11/11、`next-step` 6/6、`chain-links` 5/5；
+  `vue-tsc` 通过；`npm run build` 通过。
 
 ### v2.19.2 — 空状态引导 + 演示数据入口 (2026-11-23)
 
