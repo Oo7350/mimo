@@ -3,6 +3,8 @@ package com.mimo.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mimo.common.BusinessException;
+import com.mimo.common.ResultCode;
 import com.mimo.dto.IssueGovernanceDTO.ChangeRequestVO;
 import com.mimo.dto.IssueGovernanceDTO.ReviewVO;
 import com.mimo.dto.ProjectDTO.ProjectVO;
@@ -18,7 +20,13 @@ import com.mimo.mapper.IssueMapper;
 import com.mimo.mapper.IssueReviewMapper;
 import com.mimo.mapper.ProjectMapper;
 import com.mimo.mapper.SprintMapper;
+import com.mimo.mapper.TeamMapper;
+import com.mimo.mapper.TeamMemberMapper;
+import com.mimo.mapper.UserMapper;
 import com.mimo.mapper.WorkLogMapper;
+import com.mimo.entity.Team;
+import com.mimo.entity.TeamMember;
+import com.mimo.entity.User;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -50,6 +58,11 @@ public class WorkbenchService {
     private final IssueChangeRequestService issueChangeRequestService;
     private final IssueReviewService issueReviewService;
     private final ObjectMapper objectMapper;
+    private final TeamMapper teamMapper;
+    private final TeamMemberMapper teamMemberMapper;
+    private final UserMapper userMapper;
+    private final AccessControlService accessControlService;
+    private final PresenceService presenceService;
 
     public WorkbenchVO getMyWorkbench(Long userId) {
         List<Long> projectIds = projectService.listByUser(userId).stream()
@@ -105,6 +118,230 @@ public class WorkbenchService {
         vo.setRejectedItems(rejectedItems);
         vo.setWeeklySummary(weeklySummary);
         return vo;
+    }
+
+    /**
+     * 管理员视角：全员任务流（v2.19.8）。
+     *
+     * <p>口径三条，写在方法上而不是靠前端猜：
+     * <ol>
+     *   <li>**范围**：系统管理员看全部团队；团队管理员只看自己管理的团队（求并集）。</li>
+     *   <li>**成员**：这些团队里的所有成员（含没有任务的人）——空闲的人是信息，不能因为没数据就消失。</li>
+     *   <li>**任务**：这些团队下所有项目里的工作项，按 assignee 分组；未指派的单独列。</li>
+     * </ol>
+     *
+     * <p>性能：工作项、项目、迭代、前置依赖各查一次，不是"每人一次"。人数 × 4 次查询的写法
+     * 在 10 人团队上就是 40 次往返，管理员每刷新一次页面都要付这个代价。
+     */
+    public TeamWorkbenchVO getTeamWorkbench(Long operatorId) {
+        boolean systemAdmin = accessControlService.isSystemAdmin(operatorId);
+
+        // 先确定范围：系统管理员 = 全部团队；团队管理员 = 自己管理的团队
+        List<Team> allTeams = teamMapper.selectList(new LambdaQueryWrapper<Team>()
+                .eq(Team::getDeleted, 0)
+                .orderByAsc(Team::getId));
+        List<Team> visibleTeams = new ArrayList<>();
+        for (Team team : allTeams) {
+            if (systemAdmin || accessControlService.isTeamAdmin(operatorId, team.getId())) {
+                visibleTeams.add(team);
+            }
+        }
+        if (!systemAdmin && visibleTeams.isEmpty()) {
+            throw new BusinessException(ResultCode.FORBIDDEN,
+                    "只有管理员能查看全员任务流（系统管理员看全部团队，团队管理员看自己管理的团队）");
+        }
+
+        List<Long> teamIds = visibleTeams.stream().map(Team::getId).toList();
+        TeamWorkbenchVO vo = new TeamWorkbenchVO();
+        vo.setScope(systemAdmin ? "SYSTEM" : "TEAM");
+        vo.setTeamIds(teamIds);
+        vo.setTeamNames(visibleTeams.stream().map(Team::getName).toList());
+
+        TeamWorkbenchSummaryVO summary = new TeamWorkbenchSummaryVO();
+        vo.setSummary(summary);
+        if (teamIds.isEmpty()) {
+            summary.setMemberCount(0);
+            summary.setBusyMemberCount(0);
+            summary.setOpenTaskCount(0);
+            summary.setOverdueTaskCount(0);
+            summary.setDoneTaskCount(0);
+            summary.setInProgressTaskCount(0);
+            summary.setUnassignedTaskCount(0);
+            summary.setOnlineMemberCount(0);
+            summary.setUnassignedTasks(List.of());
+            vo.setMembers(List.of());
+            return vo;
+        }
+
+        // 成员：团队里去重后的用户
+        List<TeamMember> teamMembers = teamMemberMapper.selectList(new LambdaQueryWrapper<TeamMember>()
+                .in(TeamMember::getTeamId, teamIds));
+        Map<Long, String> memberRoles = new LinkedHashMap<>();
+        Map<Long, List<Long>> memberTeams = new HashMap<>();
+        for (TeamMember member : teamMembers) {
+            memberRoles.putIfAbsent(member.getUserId(), member.getRole());
+            memberTeams.computeIfAbsent(member.getUserId(), key -> new ArrayList<>()).add(member.getTeamId());
+        }
+        Map<Long, User> users = new HashMap<>();
+        if (!memberRoles.isEmpty()) {
+            userMapper.selectBatchIds(memberRoles.keySet()).forEach(u -> users.put(u.getId(), u));
+        }
+        // 在线状态一次算完，别每个成员问一次
+        Set<Long> onlineUserIds = presenceService.filterOnline(memberRoles.keySet());
+
+        // 项目与工作项：团队下全部项目（含我不参与的项目）
+        List<Long> projectIds = projectMapper.selectList(new LambdaQueryWrapper<Project>()
+                        .in(Project::getTeamId, teamIds)
+                        .eq(Project::getDeleted, 0))
+                .stream().map(Project::getId).toList();
+        List<Issue> issues = projectIds.isEmpty() ? List.of()
+                : issueMapper.selectList(new LambdaQueryWrapper<Issue>()
+                        .in(Issue::getProjectId, projectIds));
+
+        Map<Long, Project> projects = loadProjects(projectIds);
+        Map<Long, Sprint> sprints = loadSprints(issues);
+        List<Issue> openIssues = issues.stream().filter(issue -> !isCompleted(issue)).toList();
+        Map<Long, Boolean> blockingDependencies = loadBlockingDependencies(openIssues);
+
+        LocalDate today = LocalDate.now();
+        Map<Long, List<Issue>> byAssignee = new LinkedHashMap<>();
+        List<UnassignedTaskVO> unassigned = new ArrayList<>();
+        int doneCount = 0;
+        for (Issue issue : issues) {
+            if (isCompleted(issue)) {
+                doneCount++;
+                continue;
+            }
+            if (issue.getAssigneeId() == null) {
+                unassigned.add(toUnassigned(issue, projects));
+            } else {
+                byAssignee.computeIfAbsent(issue.getAssigneeId(), key -> new ArrayList<>()).add(issue);
+            }
+        }
+
+        List<MemberStreamVO> streams = new ArrayList<>();
+        for (Map.Entry<Long, String> entry : memberRoles.entrySet()) {
+            Long userId = entry.getKey();
+            User user = users.get(userId);
+            List<Issue> assigned = byAssignee.getOrDefault(userId, List.of());
+            List<WorkbenchTaskVO> tasks = assigned.stream()
+                    .map(issue -> toTask(issue, projects, sprints, blockingDependencies, today))
+                    .sorted(taskComparator())
+                    .toList();
+
+            MemberStreamVO stream = new MemberStreamVO();
+            stream.setUserId(userId);
+            stream.setUsername(user == null ? ("用户#" + userId) : user.getUsername());
+            stream.setEmail(user == null ? null : user.getEmail());
+            stream.setAvatar(user == null ? null : user.getAvatar());
+            stream.setRole(entry.getValue());
+            stream.setOnline(onlineUserIds.contains(userId));
+            stream.setAdmin(isMemberAdmin(userId, entry.getValue(), user, memberTeams.get(userId)));
+            stream.setTasks(tasks);
+            stream.setOpenCount(tasks.size());
+            stream.setInProgressCount((int) tasks.stream()
+                    .filter(task -> "IN_PROGRESS".equals(task.getStatus())).count());
+            stream.setOverdueTaskCount((int) tasks.stream()
+                    .filter(task -> "HIGH".equals(task.getRiskLevel())
+                            && task.getRiskReasons() != null
+                            && task.getRiskReasons().stream().anyMatch(reason -> reason.startsWith("已逾期")))
+                    .count());
+            stream.setDoneCount((int) issues.stream()
+                    .filter(issue -> userId.equals(issue.getAssigneeId()) && isCompleted(issue)).count());
+            applyLoad(stream);
+            streams.add(stream);
+        }
+        streams.sort(Comparator
+                .comparing(MemberStreamVO::getOverdueTaskCount, Comparator.reverseOrder())
+                .thenComparing(MemberStreamVO::getOpenCount, Comparator.reverseOrder())
+                .thenComparing(MemberStreamVO::getUserId));
+
+        unassigned.sort(Comparator
+                .comparing(UnassignedTaskVO::getDueDate, Comparator.nullsLast(LocalDate::compareTo))
+                .thenComparing(task -> PRIORITY_RANK.getOrDefault(task.getPriority(), 9)));
+
+        summary.setMemberCount(streams.size());
+        summary.setBusyMemberCount((int) streams.stream()
+                .filter(stream -> stream.getOpenCount() != null && stream.getOpenCount() > 0).count());
+        summary.setOpenTaskCount(openIssues.size());
+        summary.setInProgressTaskCount((int) openIssues.stream()
+                .filter(issue -> "IN_PROGRESS".equals(issue.getStatus())).count());
+        summary.setOverdueTaskCount((int) openIssues.stream()
+                .filter(issue -> issue.getDueDate() != null && issue.getDueDate().isBefore(today)).count());
+        summary.setDoneTaskCount(doneCount);
+        summary.setUnassignedTaskCount(unassigned.size());
+        summary.setUnassignedTasks(unassigned);
+        summary.setOnlineMemberCount(onlineUserIds.size());
+
+        vo.setMembers(streams);
+        return vo;
+    }
+
+    /** 任务排序：逾期的先上，再按计划完成日，再按优先级 —— 与个人工作台同一口径 */
+    private Comparator<WorkbenchTaskVO> taskComparator() {
+        return Comparator
+                .comparing(WorkbenchTaskVO::getDueDate, Comparator.nullsLast(LocalDate::compareTo))
+                .thenComparingInt(task -> PRIORITY_RANK.getOrDefault(task.getPriority(), 9));
+    }
+
+    private UnassignedTaskVO toUnassigned(Issue issue, Map<Long, Project> projects) {
+        UnassignedTaskVO vo = new UnassignedTaskVO();
+        vo.setId(issue.getId());
+        vo.setIssueKey(issue.getIssueKey());
+        vo.setTitle(issue.getTitle());
+        vo.setType(issue.getType());
+        vo.setPriority(issue.getPriority());
+        vo.setProjectId(issue.getProjectId());
+        Project project = projects.get(issue.getProjectId());
+        vo.setProjectName(project == null ? "" : project.getName());
+        vo.setDueDate(issue.getDueDate());
+        return vo;
+    }
+
+    /**
+     * 负载分级。刻意用**能说清的规则**而不是加权评分：界面上写"为什么标红"，
+     * 管理员才会信这个标签。逾期权重最高——一件事逾期了，数量多少都无所谓了。
+     */
+    private void applyLoad(MemberStreamVO stream) {
+        int open = stream.getOpenCount() == null ? 0 : stream.getOpenCount();
+        int overdue = stream.getOverdueTaskCount() == null ? 0 : stream.getOverdueTaskCount();
+        if (open == 0) {
+            stream.setLoadLevel("IDLE");
+            stream.setLoadReason("手上没有未完成任务");
+        } else if (overdue >= 2 || open >= 8) {
+            stream.setLoadLevel("OVERLOADED");
+            stream.setLoadReason(overdue >= 2
+                    ? "已有 " + overdue + " 项逾期，未完成 " + open + " 项"
+                    : "未完成 " + open + " 项，属于堆活最多的一档");
+        } else if (overdue == 1 || open >= 5) {
+            stream.setLoadLevel("BUSY");
+            stream.setLoadReason(overdue == 1
+                    ? "有 1 项逾期，未完成 " + open + " 项"
+                    : "未完成 " + open + " 项，接近上限");
+        } else {
+            stream.setLoadLevel("NORMAL");
+            stream.setLoadReason("未完成 " + open + " 项，节奏正常");
+        }
+    }
+
+    /**
+     * 这个成员算不算管理员（用来在界面上给皇冠/盾牌）。
+     *
+     * <p>先看旧字段（已经随 `team_members` 一起查出来了，零成本），再按他所在的团队逐个问 RBAC；
+     * 命中即停。团队数是这个人真实的团队数，不是全库团队数，所以最多几次点查。
+     */
+    private boolean isMemberAdmin(Long userId, String legacyTeamRole, User user, List<Long> teamIds) {
+        if (AccessControlService.LEGACY_ROLE_ADMIN.equals(legacyTeamRole)) return true;
+        if (isLegacyAdmin(user)) return true;
+        if (teamIds == null) return false;
+        for (Long teamId : teamIds) {
+            if (accessControlService.isTeamAdmin(userId, teamId)) return true;
+        }
+        return false;
+    }
+
+    private boolean isLegacyAdmin(User user) {
+        return user != null && AccessControlService.LEGACY_ROLE_ADMIN.equals(user.getRole());
     }
 
     private WorkbenchTaskVO toTask(Issue issue, Map<Long, Project> projects,

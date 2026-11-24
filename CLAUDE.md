@@ -1,6 +1,7 @@
 # CLAUDE.md
 
-> **最新版本**：v2.19.7（2026-11-24）— 暗色配色系统性修正（Element 品牌色被 `html.dark` 重置、文字色当底色用、标题写死深色、头像对比度）+ 团队在线人数落实（`/teams/{id}/presence` + WS 心跳）+ 5 条 Low 收口，并新增 `e2e/theme-audit.mjs` 与 `tools/integrity-check.sql` 两把尺子。
+> **最新版本**：v2.19.8（2026-11-24）— 管理员视角：身份徽标（`AdminBadge`：顶栏 / Hero / 成员列，头像金色描边）+ `GET /api/workbench/team` 全员任务流（系统管理员看全部团队、团队管理员只看自己管理的，每人一条 `MemberStreamVO` 带负载等级与依据，含未指派栏）+ 工作台「我的 / 全员」滑动切换 + 任务详情抽屉（`TaskDetailDrawer`，Esc 关闭不跳页）+ 看板「全员泳道」开关。修 BUG-110/111/112，登记 KNOWN-025。后端 171 项、e2e 7 套 62 条。
+> **上一版本**：v2.19.7（2026-11-24）— 暗色配色系统性修正（Element 品牌色被 `html.dark` 重置、文字色当底色用、标题写死深色、头像对比度）+ 团队在线人数落实（`/teams/{id}/presence` + WS 心跳）+ 5 条 Low 收口，并新增 `e2e/theme-audit.mjs` 与 `tools/integrity-check.sql` 两把尺子。
 >
 > **上一版本**：v2.19.6（2026-11-24）— 工作流节点责任人（`ownerUserId`）+ `GET /workflow/transitions` 返回 `allowed/reason`，界面被挡住时点名"这一步由「张三」负责"。**版本号与条目以 `AGENTS.md` 和 `bug-log.md` 为准**（本文件原先按 v2.18.x 自增，与主干对不齐，现已同步）。
 >
@@ -12,7 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Mimo is a lightweight Trello-like project management platform for small teams. It supports team collaboration, kanban task tracking, and progress visualization.
 
-- **Version**: v2.19.7 — 暗色配色系统性修正 + 在线人数落实 + Low 收口 (2026-11-24)
+- **Version**: v2.19.8 — 管理员视角：身份徽标 + 全员任务流 + 任务详情抽屉 (2026-11-24)
 - **Previous**: v2.19.6 — 工作流节点责任人 + 交接说明 (2026-11-24)
 - **GitHub**: https://github.com/Oo7350/mimo
 - **API docs**: `接口文档.md` (70+ endpoints, Chinese)
@@ -45,6 +46,9 @@ Mimo is a lightweight Trello-like project management platform for small teams. I
 | CSS 变量按用途分层（文字色不当底色） | 暗色翻车都来自变量复用 | 实心块用 `--color-primary-solid`；数据色用 `readableInk()` |
 | 覆盖 Element 变量要双写 `[data-theme="dark"]` 与 `html.dark` | Element dark css-vars 会重置 primary | 漏一个品牌色就漂移 |
 | `deploy.ps1` 需人工确认 | 会覆盖生产并重启 | CI 需 `-Force` |
+| 管理员视角是"范围"不是"特权" | 系统管理员看全部团队、团队管理员看自己管理的，这是工作要求 | 团队管理员看不到别的团队；口径须与 `AccessControlService` 一致 |
+| 非管理员拿 403 而不是空列表 | 空列表会被读成"大家都没任务"，界面先撒谎 | 本项目业务错误 = 响应体 `code` + HTTP 200，e2e 判 `body.code` |
+| 负载标签必须带 `loadReason` | 只给红黄绿灯等于让人猜 | 阈值是经验值，团队规模变了要重看 |
 
 完整表（含"颜色变量怎么选"）见 `AGENTS.md` 同名章节。
 
@@ -266,6 +270,38 @@ All v2.15 AI roadmap items are implemented; see `项目功能完善计划.md` §
 - **Board Sync Flow**: Drag → `PUT /api/board/issue/move` → backend updates issue + logs + WebSocket broadcast → all board subscribers receive event → optimistic UI update
 
 ## Version History
+
+### v2.19.8 — 管理员视角：身份徽标 + 全员任务流 + 任务详情抽屉 (2026-11-24)
+
+用户要求："管理员账号要和普通账号突出区别，他的任务列表和看板可以看到所有成员的任务流，
+点击可以看细致的具体任务。"之前管理员和普通账号界面**完全一样**，没人知道自己权限不同。
+
+**后端**
+- `GET /api/workbench/team`（`WorkbenchController`）→ `WorkbenchService#getTeamWorkbench`：
+  系统管理员看全部团队（`scope=SYSTEM`）、团队管理员只看自己管理的团队（`scope=TEAM`）、
+  其他成员抛 `BusinessException(FORBIDDEN, "只有管理员能查看全员任务流（…）")`——**不返回空列表**。
+- DTO 内嵌在 `WorkbenchDTO`：`TeamWorkbenchVO` / `TeamWorkbenchSummaryVO` / `MemberStreamVO` /
+  `UnassignedTaskVO`。`MemberStreamVO` 带 `loadLevel` + 中文 `loadReason`（阈值写在 `applyLoad` 一处）。
+- 批量查询：项目 / 工作项 / 迭代 / 前置依赖 / 在线状态各一次，不按成员逐个查。
+- 单测 `WorkbenchServiceTest` 新增 4 条（分组与逾期标记、保留空闲成员、非管理员被拒、团队管理员范围），
+  合计 **171 项**。
+
+**前端**
+- `components/common/AdminBadge.vue`、`components/workbench/TeamFlowBoard.vue`、
+  `components/issue/TaskDetailDrawer.vue` 三个新组件。
+- `views/Dashboard.vue`：管理员专属「我的 / 全员」滑动切换（`adminScope`），全员视角面板占满整行；
+  详情抽屉 `v-model:visible` + `issue-id`，从任务流点进来不跳页。
+- `components/layout/MainLayout.vue`：用户名旁徽标 + 管理员头像金色描边。
+- `views/ProjectBoard.vue`：管理员「全员泳道」开关（`swimlaneMode='assignee'` 的显式入口）。
+
+**缺陷**
+- BUG-110：Element 抽屉 `close-on-press-escape` 依赖焦点，鼠标点开后 Esc 无效 → `window` 捕获监听。
+- BUG-111：统计卡标签 `--text-muted` 压 `--color-primary-lighter`，亮色 2.95:1 → 改 `--text-secondary`。
+- BUG-112：在线人数一次请求问两遍 `PresenceService`，单测里恒为 0 → 只调一次。
+- KNOWN-025 新登记：无分页、无历史趋势。
+
+**验证**：`mvn test` 171 项、e2e **7 套 62 条**（新增 `e2e/admin-flow.mjs` 15 条，含亮/暗主题下
+新界面的对比度与横向溢出现场测量）、`vue-tsc`、`npm run build`、`probe-layout` 15 页 0 溢出。
 
 ### v2.18.1 — 工作流自动生成 + 认领/审批自动推进 (2026-11-23)
 

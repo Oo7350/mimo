@@ -12,6 +12,8 @@
           />
         </h1>
         <p>
+          <!-- 管理员身份在页面第一屏就要看得出来，否则"我能看全员"这件事没人知道 -->
+          <AdminBadge v-if="canSeeTeamFlow" size="medium" :label="adminBadgeLabel" class="dash-hero__badge" />
           <template v-if="workbench?.overdue?.length">
             你有 <strong class="text-danger">{{ overdueCount }}</strong> 项任务已逾期，
           </template>
@@ -184,14 +186,65 @@
 
     <!-- 个人任务与待办 -->
     <div class="dash-grid">
-      <section class="dash-panel dash-panel--tasks">
+      <section class="dash-panel dash-panel--tasks" :class="{ 'dash-panel--wide': adminScope === 'team' }">
         <header class="dash-panel__hd">
-          <span>我的任务</span>
-          <el-button size="small" type="primary" link @click="$router.push('/projects')">
+          <span class="dash-panel__hd-title">
+            {{ adminScope === 'team' ? '全员任务流' : '我的任务' }}
+            <AdminBadge v-if="canSeeTeamFlow" size="small" icon-only quiet />
+          </span>
+          <div v-if="canSeeTeamFlow" class="admin-scope" role="tablist" aria-label="查看范围">
+            <button
+              :class="['admin-scope__option', { 'is-active': adminScope === 'mine' }]"
+              role="tab"
+              :aria-selected="adminScope === 'mine'"
+              @click="adminScope = 'mine'"
+            >
+              我的
+            </button>
+            <button
+              :class="['admin-scope__option', { 'is-active': adminScope === 'team' }]"
+              role="tab"
+              :aria-selected="adminScope === 'team'"
+              @click="switchToTeamFlow"
+            >
+              全员
+            </button>
+            <span class="admin-scope__indicator" :class="{ 'is-right': adminScope === 'team' }" />
+          </div>
+          <el-button
+            v-else
+            size="small"
+            type="primary"
+            link
+            @click="$router.push('/projects')"
+          >
             跨项目查看
           </el-button>
         </header>
-        <div class="task-tabs">
+
+        <!-- 管理员视角：全员任务流（v2.19.8） -->
+        <template v-if="adminScope === 'team'">
+          <div class="admin-scope__hint">
+            <span>{{ teamScopeText }}</span>
+            <span class="admin-scope__hint-sep">·</span>
+            <span>点任意任务可看详情，不必跳页</span>
+            <el-button size="small" link type="primary" :loading="teamLoading" @click="loadTeamWorkbench">
+              刷新
+            </el-button>
+          </div>
+          <div v-if="teamLoading && !teamWorkbench" class="dash-panel__bd">
+            <SkeletonLoader variant="list-item" :count="6" />
+          </div>
+          <div v-else-if="teamError" class="dash-panel__bd">
+            <el-alert type="warning" :closable="false" show-icon :title="teamError" />
+          </div>
+          <div v-else class="dash-panel__bd">
+            <TeamFlowBoard :data="teamWorkbench" @open-task="openTeamTask" />
+          </div>
+        </template>
+
+        <template v-else>
+          <div class="task-tabs">
           <button
             v-for="tab in taskTabs"
             :key="tab.value"
@@ -243,6 +296,7 @@
             </el-tag>
           </div>
         </TransitionGroup>
+        </template>
       </section>
 
       <section class="dash-panel">
@@ -465,6 +519,14 @@
         </div>
       </section>
     </div>
+
+    <!-- 任务详情抽屉：从全员任务流点进来，看完关掉还在原地 -->
+    <TaskDetailDrawer
+      v-model:visible="detailVisible"
+      :issue-id="detailIssueId"
+      :owner-name="detailOwner"
+      :project-name="detailProjectName"
+    />
   </div>
 </template>
 
@@ -498,6 +560,11 @@ import SkeletonLoader from '@/components/common/SkeletonLoader.vue'
 import ShinyText from '@/components/common/ShinyText.vue'
 import CountUp from '@/components/common/CountUp.vue'
 import RippleButton from '@/components/common/RippleButton.vue'
+import AdminBadge from '@/components/common/AdminBadge.vue'
+import TeamFlowBoard from '@/components/workbench/TeamFlowBoard.vue'
+import TaskDetailDrawer from '@/components/issue/TaskDetailDrawer.vue'
+import { getTeamWorkbench } from '@/api/workbench'
+import type { TeamWorkbenchData } from '@/types/workbench'
 
 type TaskTab = 'all' | 'today' | 'overdue'
 
@@ -509,6 +576,73 @@ const workbench = ref<WorkbenchData | null>(null)
 const loading = ref(true)
 const workbenchLoading = ref(true)
 const taskTab = ref<TaskTab>('all')
+
+// ==================== 管理员视角：全员任务流（v2.19.8） ====================
+
+/**
+ * 能不能看全员任务流。
+ *
+ * 三个条件任一成立即可（与后端口径一致，见 WorkbenchService#getTeamWorkbench）：
+ * 系统管理员（旧 role 字段或 RBAC role.manage）、团队管理员（RBAC team.manage）。
+ * 前端只用来决定"显示不显示入口"，真正的判定在后端——前端藏起来不等于安全。
+ */
+const canSeeTeamFlow = computed(
+  () => userStore.isAdmin || permissionStore.has('role.manage') || permissionStore.has('team.manage'),
+)
+
+/** mine = 我的任务（原有面板）；team = 全员任务流（管理员专属） */
+const adminScope = ref<'mine' | 'team'>('mine')
+const teamWorkbench = ref<TeamWorkbenchData | null>(null)
+const teamLoading = ref(false)
+const teamError = ref('')
+
+/** 详情抽屉状态：从任务流点进来时记住"是谁的任务流"，让抽屉头部有上下文 */
+const detailVisible = ref(false)
+const detailIssueId = ref<number | null>(null)
+const detailOwner = ref('')
+const detailProjectName = ref('')
+
+/** 徽标文案跟着真实权限档次走，不统一写"管理员"糊过去 */
+const adminBadgeLabel = computed(() => (userStore.isAdmin || permissionStore.has('role.manage') ? '系统管理员' : '团队管理员'))
+
+const teamScopeText = computed(() => {  const data = teamWorkbench.value
+  if (!data) return '正在统计全员任务…'
+  const names = data.teamNames.length ? data.teamNames.join('、') : '暂无团队'
+  return data.scope === 'SYSTEM'
+    ? `全部团队（${names}）`
+    : `你管理的团队（${names}）`
+})
+
+async function loadTeamWorkbench() {
+  teamLoading.value = true
+  teamError.value = ''
+  try {
+    const res = await getTeamWorkbench()
+    teamWorkbench.value = res.data
+  } catch (error: any) {
+    // 后端对非管理员返回 403 并带一句说明；把它原样显示出来，而不是"加载失败"
+    teamWorkbench.value = null
+    teamError.value = error?.response?.data?.message || '全员任务流加载失败，请稍后重试'
+  } finally {
+    teamLoading.value = false
+  }
+}
+
+/** 切到全员视角时才请求，避免普通用户/管理员每次进工作台都多打一次接口 */
+function switchToTeamFlow() {
+  adminScope.value = 'team'
+  if (!teamWorkbench.value) loadTeamWorkbench()
+}
+
+function openTeamTask(
+  task: { id: number; projectId: number; projectName?: string },
+  ownerName: string,
+) {
+  detailIssueId.value = task.id
+  detailOwner.value = ownerName
+  detailProjectName.value = task.projectName || ''
+  detailVisible.value = true
+}
 
 const { generating: generatingDemo, clearing: clearingDemo, existed: demoExisted, refreshStatus: refreshDemoStatus, generate: generateDemo, clear: clearDemo } = useDemoData()
 /** 生成/清除完就地刷新，让页面立刻变样 */
@@ -1119,11 +1253,85 @@ onMounted(() => {
 }
 
 /* --- 面板网格 --- */
+.dash-hero__badge {
+  margin-right: 8px;
+  vertical-align: 1px;
+}
+
 .dash-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 20px;
   margin-bottom: 20px;
+}
+
+/* 全员任务流要按人分列，窄栏放不下，切到全员视角时这张面板占满整行 */
+.dash-panel--wide {
+  grid-column: 1 / -1;
+}
+
+.dash-panel__hd-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 管理员的「我的 / 全员」切换：滑动的指示块，比两个 radio 更像"视角切换" */
+.admin-scope {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--bg-subtle-strong);
+  border: 1px solid var(--border-light);
+}
+
+.admin-scope__option {
+  position: relative;
+  z-index: 1;
+  padding: 3px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color 0.22s ease;
+
+  &.is-active {
+    color: #fff;
+  }
+}
+
+.admin-scope__indicator {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: calc(50% - 2px);
+  height: calc(100% - 4px);
+  border-radius: 999px;
+  background: var(--color-primary-solid);
+  transition: transform 0.28s cubic-bezier(0.22, 0.8, 0.3, 1);
+
+  &.is-right {
+    transform: translateX(100%);
+  }
+}
+
+.admin-scope__hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 18px 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+  flex-wrap: wrap;
+}
+
+.admin-scope__hint-sep {
+  color: var(--text-placeholder);
 }
 
 /* --- 面板 --- 零阴影，靠边框区分层级 */

@@ -106,17 +106,22 @@ const readAfter = async () => p2.evaluate(async () => {
 });
 
 
-// 服务端发现断开需要一点时间（DISCONNECT 帧或会话超时），轮询最多 20 秒
+// 服务端发现断开有两条路：浏览器正常关闭 SockJS 会发 DISCONNECT 帧（快），
+// 进程被杀/网络断只能等心跳超时（慢，最迟一个心跳周期 10 秒 + 调度延迟）。
+// 所以这里先做一次"优雅离开"（导航到 about:blank，让前端主动断开），再最多等 40 秒。
+await p2.waitForTimeout(500);
+const startedAt = Date.now();
 let after = null;
-for (let i = 0; i < 10; i++) {
+for (let i = 0; i < 20; i++) {
   after = await readAfter();
   if ((after?.onlineCount ?? 1) === 0) break;
   await p2.waitForTimeout(2000);
 }
+const elapsed = Math.round((Date.now() - startedAt) / 100) / 10;
 check(
   "关掉页面后在线人数回落，不留假在线",
   (after?.onlineCount ?? 1) === 0,
-  `onlineCount=${after?.onlineCount}`
+  `onlineCount=${after?.onlineCount}，耗时 ${elapsed}s（心跳周期 10s）`
 );
 
 await ctx2.close();

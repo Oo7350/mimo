@@ -3,6 +3,7 @@ package com.mimo.controller;
 import com.mimo.common.BusinessException;
 import com.mimo.common.Result;
 import com.mimo.common.ResultCode;
+import com.mimo.dto.WorkbenchDTO.TeamWorkbenchVO;
 import com.mimo.dto.WorkbenchDTO.WorkbenchVO;
 import com.mimo.service.WorkbenchService;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +22,21 @@ public class WorkbenchController {
     @GetMapping("/my")
     public Result<WorkbenchVO> getMyWorkbench(Authentication auth) {
         return Result.success(workbenchService.getMyWorkbench(userId(auth)));
+    }
+
+    /**
+     * 管理员视角的全员任务流（v2.19.8）。
+     *
+     * <p>权限判断放在 Service 里，不放这里：判断依据是"是不是某个团队的管理员"，
+     * 需要先查团队再逐个判权，注解表达式写不下这个逻辑（写下了也会多查一次库）。
+     *
+     * <p>非管理员拿到的是 **响应体 `code=403` + 一句说明**（本项目统一用响应体 code 表达业务错误，
+     * HTTP 状态仍是 200，见 `GlobalExceptionHandler#handleBusinessException`）。
+     * 这里刻意不返回空列表——空列表会被读成"大家都没任务"，而不是"你没权限看"。
+     */
+    @GetMapping("/team")
+    public Result<TeamWorkbenchVO> getTeamWorkbench(Authentication auth) {
+        return Result.success(workbenchService.getTeamWorkbench(userId(auth)));
     }
 
     private Long userId(Authentication auth) {

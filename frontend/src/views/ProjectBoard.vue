@@ -57,6 +57,23 @@
         <el-option label="按指派人" value="assignee" />
         <el-option label="按史诗" value="epic" />
       </el-select>
+      <!--
+        管理员快捷入口（v2.19.8）：泳道本来就能按指派人分组，但没人知道那是"看全员任务流"的办法。
+        这里给它一个显式开关，管理员点一下就是每人一条泳道。
+      -->
+      <el-tooltip
+        v-if="canSeeTeamFlow && currentView === 'kanban'"
+        content="管理员视角：每位成员一条泳道，谁的活在哪个状态一目了然"
+        placement="bottom"
+      >
+        <button
+          :class="['board__admin-flow', { 'is-active': swimlaneMode === 'assignee' }]"
+          @click="toggleAdminFlow"
+        >
+          <el-icon><Files /></el-icon>
+          全员泳道
+        </button>
+      </el-tooltip>
       <div class="board__presets">
         <button
           v-for="p in filterPresets"
@@ -279,6 +296,7 @@
 import { ref, computed, onMounted, watch } from "vue"
 import { useRoute } from "vue-router"
 import { useUserStore } from "@/store/user"
+import { usePermissionStore } from "@/store/permission"
 import { getBoard, moveIssue } from "@/api/board"
 import { getProjectById } from "@/api/project"
 import { getAvailableTransitions } from "@/api/workflow"
@@ -291,12 +309,25 @@ import AiIssueCreator from "@/components/issue/AiIssueCreator.vue"
 import IssueCard from "@/components/issue/IssueCard.vue"
 import BugTableView from "@/components/issue/bug/BugTableView.vue"
 import StoryMap from "@/components/issue/story/StoryMap.vue"
-import { Search, Grid, List, Connection, Box, Document, WarningFilled, MagicStick } from "@element-plus/icons-vue"
+import { Search, Grid, List, Connection, Box, Document, WarningFilled, MagicStick, Files } from "@element-plus/icons-vue"
 import { useWebSocket } from "@/composables/useWebSocket"
 import { getReports, generateReport } from "@/api/report"
 
 const route = useRoute()
 const userStore = useUserStore()
+const permissionStore = usePermissionStore()
+
+/**
+ * 管理员快捷入口（v2.19.8）：能不能显示「全员泳道」。
+ * 前端口径与工作台、后端一致（旧 role / RBAC role.manage / team.manage），只决定显示与否。
+ */
+const canSeeTeamFlow = computed(
+  () => userStore.isAdmin || permissionStore.has('role.manage') || permissionStore.has('team.manage'),
+)
+
+function toggleAdminFlow() {
+  swimlaneMode.value = swimlaneMode.value === 'assignee' ? '' : 'assignee'
+}
 const projectId = Number(route.params.id)
 const projectName = ref("")
 const teamId = ref<number>(0)
@@ -797,6 +828,23 @@ onMounted(async () => {
     &.is-active {
       background: var(--bg-subtle); border-color: var(--text-muted);
       color: var(--text-primary); font-weight: 700;
+    }
+  }
+
+  /* 管理员专属：「全员泳道」开关。用金色描边与普通筛选项区分开 */
+  &__admin-flow {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 5px 12px; border-radius: 7px; font-size: 12px; font-weight: 700;
+    border: 1px solid rgba(180, 83, 9, 0.35);
+    background: var(--bg-warning-soft); color: var(--color-warning);
+    cursor: pointer; transition: all 0.16s;
+
+    &:hover { border-color: #b45309; transform: translateY(-1px); }
+
+    &.is-active {
+      background: linear-gradient(135deg, #fde68a, #fbbf24 60%, #f59e0b);
+      border-color: rgba(180, 83, 9, 0.5);
+      color: #7c2d12;
     }
   }
 

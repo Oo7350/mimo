@@ -1,17 +1,26 @@
 package com.mimo.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mimo.common.BusinessException;
 import com.mimo.dto.ProjectDTO.ProjectVO;
+import com.mimo.dto.WorkbenchDTO.MemberStreamVO;
+import com.mimo.dto.WorkbenchDTO.TeamWorkbenchVO;
 import com.mimo.dto.WorkbenchDTO.WorkbenchVO;
 import com.mimo.entity.Issue;
 import com.mimo.entity.Project;
 import com.mimo.entity.Sprint;
+import com.mimo.entity.Team;
+import com.mimo.entity.TeamMember;
+import com.mimo.entity.User;
 import com.mimo.entity.WorkLog;
 import com.mimo.mapper.IssueChangeRequestMapper;
 import com.mimo.mapper.IssueMapper;
 import com.mimo.mapper.IssueReviewMapper;
 import com.mimo.mapper.ProjectMapper;
 import com.mimo.mapper.SprintMapper;
+import com.mimo.mapper.TeamMapper;
+import com.mimo.mapper.TeamMemberMapper;
+import com.mimo.mapper.UserMapper;
 import com.mimo.mapper.WorkLogMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -22,9 +31,12 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -48,6 +60,16 @@ class WorkbenchServiceTest {
     private IssueChangeRequestService issueChangeRequestService;
     @Mock
     private IssueReviewService issueReviewService;
+    @Mock
+    private TeamMapper teamMapper;
+    @Mock
+    private TeamMemberMapper teamMemberMapper;
+    @Mock
+    private UserMapper userMapper;
+    @Mock
+    private AccessControlService accessControlService;
+    @Mock
+    private PresenceService presenceService;
 
     @Test
     void shouldReturnCrossProjectTasksRiskAndWeeklySummary() {
@@ -143,8 +165,170 @@ class WorkbenchServiceTest {
                 .isEqualTo("别人的项目");
     }
 
-    private com.mimo.dto.IssueGovernanceDTO.ReviewVO review(Long id, Long issueId, Long submitterId) {
-        com.mimo.dto.IssueGovernanceDTO.ReviewVO review = new com.mimo.dto.IssueGovernanceDTO.ReviewVO();
+    // ==================== 管理员视角：全员任务流（v2.19.8） ====================
+
+    @Test
+    void teamWorkbenchGroupsByMemberAndFlagsOverdue() {
+        // 系统管理员：范围是全部团队
+        when(accessControlService.isSystemAdmin(1L)).thenReturn(true);
+        when(teamMapper.selectList(any())).thenReturn(List.of(team(1L, "Mimo 团队")));
+        when(teamMemberMapper.selectList(any())).thenReturn(List.of(
+                teamMember(1L, 10L, "ROLE_MEMBER"),
+                teamMember(1L, 11L, "ROLE_ADMIN")));
+        when(userMapper.selectBatchIds(any())).thenReturn(List.of(
+                user(10L, "zhangsan", "ROLE_MEMBER"),
+                user(11L, "lisi", "ROLE_ADMIN")));
+        when(projectMapper.selectList(any())).thenReturn(List.of(teamProject(100L, 1L)));
+
+        LocalDate today = LocalDate.now();
+        Issue zhangsanOverdue = issue(1L, "TASK", "逾期两天", "HIGH", today.minusDays(2), 100L, null);
+        zhangsanOverdue.setAssigneeId(10L);
+        Issue zhangsanTodo = issue(2L, "TASK", "待开始", "LOW", today.plusDays(3), 100L, null);
+        zhangsanTodo.setAssigneeId(10L);
+        Issue lisiDoing = issue(3L, "STORY", "进行中的故事", "MEDIUM", today.plusDays(2), 100L, null);
+        lisiDoing.setAssigneeId(11L);
+        lisiDoing.setStatus("IN_PROGRESS");
+        Issue lisiDone = issue(4L, "TASK", "上周就做完了", "MEDIUM", today.minusDays(5), 100L, null);
+        lisiDone.setAssigneeId(11L);
+        lisiDone.setStatus("DONE");
+        Issue nobody = issue(5L, "BUG", "没人认领的缺陷", "HIGHEST", today.plusDays(1), 100L, null);
+        when(issueMapper.selectList(any())).thenReturn(
+                List.of(zhangsanOverdue, zhangsanTodo, lisiDoing, lisiDone, nobody));
+        when(projectMapper.selectBatchIds(any())).thenReturn(List.of(teamProject(100L, 1L)));
+        when(presenceService.filterOnline(any())).thenReturn(Set.of(11L));
+
+        TeamWorkbenchVO result = service().getTeamWorkbench(1L);
+
+        assertThat(result.getScope()).isEqualTo("SYSTEM");
+        assertThat(result.getTeamIds()).containsExactly(1L);
+        assertThat(result.getMembers()).extracting(MemberStreamVO::getUsername)
+                .containsExactly("zhangsan", "lisi");
+
+        MemberStreamVO zhang = result.getMembers().get(0);
+        assertThat(zhang.getOpenCount()).isEqualTo(2);
+        assertThat(zhang.getOverdueTaskCount()).isEqualTo(1);
+        assertThat(zhang.getLoadLevel()).isEqualTo("BUSY");
+        assertThat(zhang.getLoadReason()).contains("1 项逾期");
+        // 逾期任务必须排在这个人的第一位，别让管理员自己找
+        assertThat(zhang.getTasks()).extracting("id").containsExactly(1L, 2L);
+        assertThat(zhang.getOnline()).isFalse();
+
+        MemberStreamVO li = result.getMembers().get(1);
+        assertThat(li.getAdmin()).isTrue();
+        assertThat(li.getOnline()).isTrue();
+        assertThat(li.getDoneCount()).isEqualTo(1);
+        assertThat(li.getInProgressCount()).isEqualTo(1);
+
+        // 未指派的单独统计——这是管理员最该先处理的一类
+        assertThat(result.getSummary().getUnassignedTaskCount()).isEqualTo(1);
+        assertThat(result.getSummary().getUnassignedTasks().get(0).getIssueKey()).isEqualTo("MIMO-5");
+        assertThat(result.getSummary().getOpenTaskCount()).isEqualTo(4);
+        assertThat(result.getSummary().getDoneTaskCount()).isEqualTo(1);
+        assertThat(result.getSummary().getOverdueTaskCount()).isEqualTo(1);
+        assertThat(result.getSummary().getBusyMemberCount()).isEqualTo(2);
+        assertThat(result.getSummary().getOnlineMemberCount()).isEqualTo(1);
+    }
+
+    @Test
+    void teamWorkbenchKeepsMembersWithoutTasks() {
+        // 空闲的人也是信息：如果前端只能看到"有任务的人"，管理员会以为团队只有三个人
+        when(accessControlService.isSystemAdmin(1L)).thenReturn(true);
+        when(teamMapper.selectList(any())).thenReturn(List.of(team(1L, "Mimo 团队")));
+        when(teamMemberMapper.selectList(any())).thenReturn(List.of(
+                teamMember(1L, 10L, "ROLE_MEMBER"),
+                teamMember(1L, 12L, "ROLE_MEMBER")));
+        when(userMapper.selectBatchIds(any())).thenReturn(List.of(
+                user(10L, "zhangsan", "ROLE_MEMBER"),
+                user(12L, "wangwu", "ROLE_MEMBER")));
+        when(projectMapper.selectList(any())).thenReturn(List.of(teamProject(100L, 1L)));
+        Issue busy = issue(1L, "TASK", "只有他有活", "MEDIUM", LocalDate.now().plusDays(2), 100L, null);
+        busy.setAssigneeId(10L);
+        when(issueMapper.selectList(any())).thenReturn(List.of(busy));
+        when(projectMapper.selectBatchIds(any())).thenReturn(List.of(teamProject(100L, 1L)));
+        when(presenceService.filterOnline(any())).thenReturn(Set.of());
+
+        TeamWorkbenchVO result = service().getTeamWorkbench(1L);
+
+        assertThat(result.getMembers()).hasSize(2);
+        MemberStreamVO idle = result.getMembers().stream()
+                .filter(member -> "wangwu".equals(member.getUsername()))
+                .findFirst().orElseThrow();
+        assertThat(idle.getOpenCount()).isZero();
+        assertThat(idle.getLoadLevel()).isEqualTo("IDLE");
+        assertThat(idle.getLoadReason()).contains("没有未完成任务");
+        assertThat(result.getSummary().getBusyMemberCount()).isEqualTo(1);
+    }
+
+    @Test
+    void teamWorkbenchRejectsMemberWhoManagesNoTeam() {
+        when(accessControlService.isSystemAdmin(5L)).thenReturn(false);
+        when(teamMapper.selectList(any())).thenReturn(List.of(team(1L, "别人的团队")));
+        when(accessControlService.isTeamAdmin(5L, 1L)).thenReturn(false);
+
+        assertThatThrownBy(() -> service().getTeamWorkbench(5L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("只有管理员能查看全员任务流");
+    }
+
+    @Test
+    void teamWorkbenchScopesToManagedTeamsForTeamAdmin() {
+        // 团队管理员只看自己管理的团队：团队 2 不在他名下，成员也不该出现
+        when(accessControlService.isSystemAdmin(1L)).thenReturn(false);
+        when(teamMapper.selectList(any())).thenReturn(List.of(
+                team(1L, "我管理的团队"),
+                team(2L, "别人的团队")));
+        when(accessControlService.isTeamAdmin(1L, 1L)).thenReturn(true);
+        when(accessControlService.isTeamAdmin(1L, 2L)).thenReturn(false);
+        when(teamMemberMapper.selectList(any())).thenReturn(List.of(teamMember(1L, 10L, "ROLE_MEMBER")));
+        when(userMapper.selectBatchIds(any())).thenReturn(List.of(user(10L, "zhangsan", "ROLE_MEMBER")));
+        when(projectMapper.selectList(any())).thenReturn(List.of(teamProject(100L, 1L)));
+        when(issueMapper.selectList(any())).thenReturn(List.of());
+        when(projectMapper.selectBatchIds(any())).thenReturn(List.of(teamProject(100L, 1L)));
+        when(presenceService.filterOnline(any())).thenReturn(Set.of());
+
+        TeamWorkbenchVO result = service().getTeamWorkbench(1L);
+
+        assertThat(result.getScope()).isEqualTo("TEAM");
+        assertThat(result.getTeamIds()).containsExactly(1L);
+        assertThat(result.getTeamNames()).containsExactly("我管理的团队");
+    }
+
+    private Team team(Long id, String name) {
+        Team team = new Team();
+        team.setId(id);
+        team.setName(name);
+        team.setDeleted(0);
+        return team;
+    }
+
+    private TeamMember teamMember(Long teamId, Long userId, String role) {
+        TeamMember member = new TeamMember();
+        member.setTeamId(teamId);
+        member.setUserId(userId);
+        member.setRole(role);
+        return member;
+    }
+
+    private User user(Long id, String username, String role) {
+        User user = new User();
+        user.setId(id);
+        user.setUsername(username);
+        user.setEmail(username + "@mimo.dev");
+        user.setRole(role);
+        user.setDeleted(0);
+        return user;
+    }
+
+    private Project teamProject(Long id, Long teamId) {
+        Project project = new Project();
+        project.setId(id);
+        project.setName("项目 " + id);
+        project.setTeamId(teamId);
+        project.setDeleted(0);
+        return project;
+    }
+
+    private com.mimo.dto.IssueGovernanceDTO.ReviewVO review(Long id, Long issueId, Long submitterId) {        com.mimo.dto.IssueGovernanceDTO.ReviewVO review = new com.mimo.dto.IssueGovernanceDTO.ReviewVO();
         review.setId(id);
         review.setIssueId(issueId);
         review.setRoundNo(1);
@@ -166,7 +350,8 @@ class WorkbenchServiceTest {
     private WorkbenchService service() {
         return new WorkbenchService(issueMapper, issueReviewMapper, issueChangeRequestMapper,
                 sprintMapper, projectMapper, workLogMapper, projectService,
-                issueChangeRequestService, issueReviewService, new ObjectMapper());
+                issueChangeRequestService, issueReviewService, new ObjectMapper(),
+                teamMapper, teamMemberMapper, userMapper, accessControlService, presenceService);
     }
 
     private Issue issue(Long id, String type, String title, String priority,

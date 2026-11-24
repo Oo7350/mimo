@@ -81,8 +81,10 @@
         </div>
         <el-dropdown trigger="click" @command="handleCommand">
           <span class="mimo-header__user">
-            <el-avatar :size="30" icon="UserFilled" />
-            <span>{{ userStore.username }}</span>
+            <el-avatar :size="30" icon="UserFilled" :class="{ 'is-admin': isAdminAccount }" />
+            <span class="mimo-header__username">{{ userStore.username }}</span>
+            <!-- 管理员在顶栏就有身份标记：不然"我能看全员任务流"这件事只有自己知道 -->
+            <AdminBadge v-if="isAdminAccount" size="small" :label="adminLabel" />
             <el-icon><ArrowDown /></el-icon>
           </span>
           <template #dropdown>
@@ -167,6 +169,7 @@ import { getMyProjects } from '@/api/project'
 import { getNotifications } from '@/api/notification'
 import type { ProjectVO } from '@/types'
 import BreadcrumbNav from './BreadcrumbNav.vue'
+import AdminBadge from '@/components/common/AdminBadge.vue'
 import CommandPalette from '@/components/common/CommandPalette.vue'
 import AiChatPanel from '@/components/common/AiChatPanel.vue'
 import { useTour, abortTourOnNavigate, type TourTopic } from '@/composables/useTour'
@@ -253,6 +256,19 @@ const adminNavGroup = {
  */
 const permissionStore = usePermissionStore()
 const isLegacyAdmin = computed(() => userStore.userInfo?.role === 'ROLE_ADMIN')
+
+/**
+ * 顶栏身份标记（v2.19.8）。口径与后端一致，但只用来决定**显示什么**：
+ * - 系统管理员：旧 role 字段或 RBAC `role.manage`
+ * - 团队管理员：RBAC `team.manage`（能看自己团队的全员任务流）
+ * 前端不做安全判断，隐藏徽标不等于没权限。
+ */
+const isAdminAccount = computed(
+  () => isLegacyAdmin.value || permissionStore.has('role.manage') || permissionStore.has('team.manage'),
+)
+const adminLabel = computed(() =>
+  isLegacyAdmin.value || permissionStore.has('role.manage') ? '管理员' : '团队管理员',
+)
 
 const adminNavItems = computed(() =>
   adminNavGroup.items.filter(
@@ -525,6 +541,18 @@ watch(() => route.path, () => {
     color: var(--text-primary);
 
     &:hover { background: var(--bg-hover); }
+
+    /* 管理员头像加一圈金色描边：一眼能看出"这个账号权限不一样" */
+    .el-avatar.is-admin {
+      box-shadow: 0 0 0 2px var(--bg-card), 0 0 0 3.5px #f59e0b;
+    }
+  }
+
+  &__username {
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 

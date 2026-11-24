@@ -8,6 +8,7 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     AcceptanceCriteria: typeof import('./components/issue/story/AcceptanceCriteria.vue')['default']
+    AdminBadge: typeof import('./components/common/AdminBadge.vue')['default']
     AiChatPanel: typeof import('./components/common/AiChatPanel.vue')['default']
     AiIssueCreator: typeof import('./components/issue/AiIssueCreator.vue')['default']
     AiTaskSplitter: typeof import('./components/issue/AiTaskSplitter.vue')['default']
@@ -100,7 +101,9 @@ declare module 'vue' {
     StoryDialog: typeof import('./components/issue/story/StoryDialog.vue')['default']
     StoryMap: typeof import('./components/issue/story/StoryMap.vue')['default']
     TaskCard: typeof import('./components/issue/task/TaskCard.vue')['default']
+    TaskDetailDrawer: typeof import('./components/issue/TaskDetailDrawer.vue')['default']
     TaskDialog: typeof import('./components/issue/task/TaskDialog.vue')['default']
+    TeamFlowBoard: typeof import('./components/workbench/TeamFlowBoard.vue')['default']
     UserBadge: typeof import('./components/common/UserBadge.vue')['default']
     VelocityChart: typeof import('./components/common/VelocityChart.vue')['default']
     WorkLogTab: typeof import('./components/issue/WorkLogTab.vue')['default']

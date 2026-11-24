@@ -213,12 +213,21 @@ function auditInPage(MODE) {
     if (hasText && !gradientBg && !inDecorated) {
       const fg = parseColor(cs.color);
       if (fg) {
-        const ratio = contrast(fg, bg);
+        // 分段控件（`我的 / 全员` 那种滑动开关）的选中项：底色画在**兄弟节点**的滑动指示块上，
+        // 往上找祖先只能找到容器灰底，于是白字会被算成压灰底（1.18:1）——两层叠放的测量盲区。
+        // 这里按真实叠放关系取指示块的底色再算，别用"跳过"糊过去。
+        let bgForText = bg;
+        if (el.closest(".admin-scope__option.is-active")) {
+          const indicator = el.closest(".admin-scope")?.querySelector(".admin-scope__indicator");
+          const indicatorBg = indicator ? parseColor(getComputedStyle(indicator).backgroundColor) : null;
+          if (indicatorBg) bgForText = indicatorBg;
+        }
+        const ratio = contrast(fg, bgForText);
         if (ratio < 3) {
           lowContrast.push({
             sel: describe(el),
             color: cs.color,
-            bg: `rgb(${bg.slice(0, 3).map((v) => Math.round(v)).join(",")})`,
+            bg: `rgb(${bgForText.slice(0, 3).map((v) => Math.round(v)).join(",")})`,
             ratio: Math.round(ratio * 100) / 100,
             text: (el.textContent || "").trim().slice(0, 16),
           });
