@@ -343,6 +343,56 @@ async function main() {
         `授权=${assign.code} 验收=${r.code} ${r.data?.status || r.message}`
       );
     }
+
+    // ---------- K. 工作台「待我处理」里可以直接通过（v2.19.5 新交互） ----------
+    // 以前要"点进项目 → 看板 → 卡片 → 验收页签"才能点通过，四条路换一个按钮。
+    {
+      const issueD = await createIssue(`验收矩阵D-${STAMP}`);
+      await api("POST", `/issues/${issueD.id}/reviews`, { completionNote: "D 号任务做完了" }, tDev);
+
+      const { chromium } = requirePlaywright();
+      const browser = await chromium.launch({ headless: true });
+      try {
+        const admin = await newPage(browser, ADMIN);
+        const page = admin.page;
+        await page.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded" });
+        await page.waitForTimeout(3000);
+
+        // 必须限定在「待我处理」面板内：同名工作项也会出现在"我的任务"里，
+        // 全局按 issueKey 匹配会数到任务行，误判成"处理完还在列表"
+        const panel = page.locator(".dash-panel", { hasText: "待我处理" }).first();
+        const row = panel.locator(".dash-row", { hasText: issueD.issueKey }).first();
+        const rowVisible = await row.count();
+        const approveBtn = row.locator("button", { hasText: "通过" }).first();
+        const hasApprove = await approveBtn.count();
+
+        let clicked = false;
+        if (hasApprove) {
+          await approveBtn.click();
+          // ElMessageBox.prompt：说明留空直接点「通过」
+          await page.waitForTimeout(600);
+          const confirm = page.locator(".el-message-box__btns button", { hasText: "通过" }).last();
+          await confirm.click();
+          await page.waitForTimeout(2200);
+          clicked = true;
+        }
+
+        const stillThere = await panel.locator(".dash-row", { hasText: issueD.issueKey }).count();
+        const after = await api("GET", `/issues/${issueD.id}/reviews`, null, tAdmin);
+        const approved = (after.data || []).some(
+          (x) => x.issueId === issueD.id && x.status === "APPROVED"
+        );
+
+        record(
+          "K. 工作台「待我处理」能就地通过验收（不用进项目看板）",
+          rowVisible > 0 && hasApprove > 0 && clicked && stillThere === 0 && approved,
+          `行=${rowVisible} 通过按钮=${hasApprove} 处理后仍在列表=${stillThere} 记录已通过=${approved}`
+        );
+        await admin.context.close();
+      } finally {
+        await browser.close();
+      }
+    }
   } finally {
     console.log(
       `\n提示：本次数据（项目 ${projectId} / 团队 ${teamId}）可用 ` +

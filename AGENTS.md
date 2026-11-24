@@ -1,6 +1,6 @@
 # AGENTS.md
 
-> **最新版本**：v2.19.4（2026-11-24）— 验收按角色分工。补上多角色验收矩阵 e2e（`e2e/review-matrix.mjs`，12 条），写着写着抓到一个真问题：验收面板的「通过 / 打回」以前对**所有人**显示，提交人自己、完全无关的普通成员都看得到，点了才被后端 403 拒——已按后端同一口径改成"该看到的看到、不该看到的被告知在等谁"（BUG-102）。KNOWN-017（核心链路缺 e2e）随之关闭，另登记 KNOWN-024（e2e 未接 CI）。核心链路口径：5 套 38 条断言。
+> **最新版本**：v2.19.5（2026-11-24）— 两处链路闭合：① 工作台「待我处理」现在可以直接通过 / 打回待验收（以前要走五步换一个按钮），打回必须填原因，面板下还写清了"验收通过不会自动完成、负责人回看板标记完成"；② 示例数据能生成也能收回——新增 `DELETE /api/admin/demo-data`，只删生成器自己造的东西（项目/工作项/评论/工时/验收/版本快照/变更申请/附件/标签/通知/看板列/迭代/燃尽快照/报告/动态/工作流/交付快照/Wiki），团队仅在"除示例项目外没别的项目"时才删。过程中修掉 BUG-103（清除后再生成撞 `uk_project_key` 报 500，根因是唯一索引不看逻辑删除标记）。e2e 加到 5 套 39 条（review-matrix 新增工作台就地验收一条），后端测试 154 项。
 >
 > **文档版本号以本文件 + `bug-log.md` 为准**：同一批工作流自动生成改动，另一台机器的提交写 v2.17.1、`CLAUDE.md` 写 v2.18.1，合并后实际是 v2.19.3（`CLAUDE.md` 头部已同步）。
 
@@ -10,8 +10,8 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 Mimo is a lightweight Trello-like project management platform for small teams. It supports team collaboration, kanban task tracking, and progress visualization.
 
-- **Version**: v2.19.4 — 验收按角色分工：界面别撒谎 + 多角色矩阵 e2e (2026-11-24)
-- **Previous**: v2.19.3 — 合并另一台机器的工作流自动生成 (2026-11-24)
+- **Version**: v2.19.5 — 工作台就地验收 + 示例数据一键清除 (2026-11-24)
+- **Previous**: v2.19.4 — 验收按角色分工：界面别撒谎 + 多角色矩阵 e2e (2026-11-24)
 - **GitHub**: https://github.com/Oo7350/mimo
 - **API docs**: `接口文档.md` (70+ endpoints, Chinese)
 - **User manual**: `操作手册.md` (Chinese)
@@ -215,6 +215,23 @@ All v2.15 AI roadmap items are implemented. Future work may replace the lexical 
 - **Board Sync Flow**: Drag → `PUT /api/board/issue/move` → backend updates issue + logs + WebSocket broadcast → all board subscribers receive event → optimistic UI update
 
 ## Version History
+
+### v2.19.5 — 工作台就地验收 + 示例数据一键清除 (2026-11-24)
+
+- **工作台「待我处理」直接处理**：`views/Dashboard.vue` 的待验收行加「通过 / 打回」，
+  通过可留空说明、打回必须填原因；处理后就地刷新。变更审批仍只给「去审批 →」（要先看影响分析）。
+  面板底部写明"验收通过不会自动完成，负责人回看板标记完成"，避免"点了通过就以为结束"。
+- **示例数据一键清除**：`DemoDataService.clear()` + `DELETE /api/admin/demo-data`，
+  只删生成器造的东西，团队按"是否只剩示例项目"决定去留；前端按钮按状态在「生成 / 清除」间切换。
+- **BUG-103（Medium）**：清除后再生成 500（`Duplicate entry 'DEMO2'`）。根因是 `projects.uk_project_key`
+  是唯一索引而项目是逻辑删除，`allocateProjectKey()` 只查未删除行 → 又挑到同一个 Key。
+  修复：`ProjectMapper.selectAllKeysIncludingDeleted()` / `selectByNameIncludingDeleted()` 两条自定义 SQL，
+  分配 Key 一律问前者；补 2 条单测把"清除后再分配"钉住。
+- **清库脚本同步修**：`e2e/cleanup-residue.sql` 先删 `burndown_snapshots` 再删 `sprints`，
+  并在末尾做全局孤儿收尾（通知 / 燃尽快照 / 交付快照），结果查询多两列孤儿计数。
+- **验证**：后端 154 项全绿；e2e 5 套 **39 条**全绿（review-matrix 13 / main-chain 11 /
+  next-step 6 / chain-links 5 / workflow-guard 4）；`vue-tsc` 与 `npm run build` 通过。
+  接口实测：生成(23) → 清除 → `exists:false` → 再生成(24) 正常，孤儿数据 0。
 
 ### v2.19.4 — 验收按角色分工：界面别撒谎 + 多角色矩阵 e2e (2026-11-24)
 

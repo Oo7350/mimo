@@ -10,9 +10,14 @@
         />
       </template>
       <template #action>
-        <!-- 空库/想演示时的入口：管理员一键铺一套示例数据（KNOWN-020） -->
+        <!-- 空库/想演示时的入口：管理员一键铺一套示例数据（KNOWN-020）；铺过之后这里变成"清除" -->
         <el-button
-          v-if="permissionStore.isSuperAdmin"
+          v-if="permissionStore.isSuperAdmin && existed"
+          :loading="clearing"
+          @click="clear(fetchProjects)"
+        >清除示例数据</el-button>
+        <el-button
+          v-else-if="permissionStore.isSuperAdmin"
           :loading="generating"
           @click="generate(fetchProjects)"
         >生成示例数据</el-button>
@@ -84,7 +89,7 @@ import { usePermissionStore } from "@/store/permission"
 import { useDemoData } from "@/composables/useDemoData"
 
 const permissionStore = usePermissionStore()
-const { generating, generate } = useDemoData()
+const { generating, clearing, existed, refreshStatus, generate, clear } = useDemoData()
 
 const userStore = useUserStore()
 const projects = ref<any[]>([])
@@ -150,7 +155,11 @@ async function handleDelete(p: any) {
   }
 }
 
-onMounted(fetchProjects)
+onMounted(() => {
+  fetchProjects()
+  // 决定页头显示"生成示例数据"还是"清除示例数据"
+  if (permissionStore.isSuperAdmin) refreshStatus()
+})
 </script>
 
 <style scoped lang="scss">

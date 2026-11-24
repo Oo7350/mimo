@@ -121,10 +121,13 @@
           <span class="dash-next__no dash-next__no--alt">或</span>
           <div class="dash-next__step-text">
             <b>一键生成示例数据，先看看满起来是什么样</b>
-            <span>会建一个示例项目（含 3 个迭代 / 15 个工作项 / 评论 / 工时 / 验收 / 报告），不影响你已有的数据</span>
+            <span>会建一个示例项目（含 3 个迭代 / 15 个工作项 / 评论 / 工时 / 验收 / 报告），不影响你已有的数据；不想要了在项目列表页头可以一键清除</span>
           </div>
-          <el-button size="small" :loading="generatingDemo" @click="handleGenerateDemo">
+          <el-button v-if="!demoExisted" size="small" :loading="generatingDemo" @click="handleGenerateDemo">
             生成示例数据
+          </el-button>
+          <el-button v-else size="small" :loading="clearingDemo" @click="handleClearDemo">
+            清除示例数据
           </el-button>
         </li>
       </ol>
@@ -260,6 +263,7 @@
             v-for="item in pendingItems"
             :key="`${item.kind}-${item.id}`"
             class="dash-row"
+            :class="{ 'dash-row--acting': actingReviewId === item.id }"
             @click="openReview(item)"
           >
             <span class="dash-row__type">{{ item.kind === 'CHANGE' ? '审' : '验' }}</span>
@@ -273,7 +277,35 @@
               <span v-if="item.summary" class="pending-summary">{{ item.summary }}</span>
             </div>
             <span class="pending-time">{{ formatTime(item.submittedAt) }}</span>
+            <!--
+              验收可以直接在这里处理：以前必须"点进项目 → 看板 → 卡片 → 验收页签"才能点通过，
+              四条路换来一个按钮。变更审批仍只给跳转，因为要先看影响分析。
+            -->
+            <div v-if="item.kind === 'REVIEW'" class="dash-row__actions" @click.stop>
+              <el-button
+                size="small"
+                type="success"
+                plain
+                :loading="actingReviewId === item.id"
+                @click="approvePending(item)"
+              >
+                通过
+              </el-button>
+              <el-button
+                size="small"
+                type="danger"
+                plain
+                :disabled="actingReviewId === item.id"
+                @click="rejectPending(item)"
+              >
+                打回
+              </el-button>
+            </div>
+            <span v-else class="dash-row__go">去审批 →</span>
           </div>
+          <p v-if="pendingReviewCount" class="dash-panel__footnote">
+            验收通过后工作项不会自动完成，负责人回到看板标记完成（门禁会放行）。
+          </p>
         </div>
       </section>
     </div>
@@ -439,11 +471,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/store/user'
 import { usePermissionStore } from '@/store/permission'
 import { useDemoData } from '@/composables/useDemoData'
 import request from '@/api/request'
 import { getMyWorkbench } from '@/api/workbench'
+import { approveIssueReview, rejectIssueReview } from '@/api/issue-governance'
 import { PRIORITY_LABEL } from '@/utils/constants'
 import {
   Grid,
@@ -476,10 +510,14 @@ const loading = ref(true)
 const workbenchLoading = ref(true)
 const taskTab = ref<TaskTab>('all')
 
-const { generating: generatingDemo, generate: generateDemo } = useDemoData()
-/** 生成完就地刷新，让页面立刻满起来 */
+const { generating: generatingDemo, clearing: clearingDemo, existed: demoExisted, refreshStatus: refreshDemoStatus, generate: generateDemo, clear: clearDemo } = useDemoData()
+/** 生成/清除完就地刷新，让页面立刻变样 */
 const handleGenerateDemo = () =>
   generateDemo(async () => {
+    await Promise.all([fetchDashboard(), fetchWorkbench()])
+  })
+const handleClearDemo = () =>
+  clearDemo(async () => {
     await Promise.all([fetchDashboard(), fetchWorkbench()])
   })
 
@@ -544,6 +582,7 @@ const pendingItems = computed(() =>
   ].sort((left, right) => (right.submittedAt || '').localeCompare(left.submittedAt || '')),
 )
 const pendingCount = computed(() => pendingItems.value.length)
+const pendingReviewCount = computed(() => workbench.value?.pendingTaskReviews?.length || 0)
 const hasProjects = computed(() => (dashboard.value?.myProjects?.length || 0) > 0)
 
 /**
@@ -720,6 +759,55 @@ function openReview(item: PendingWorkbenchReview) {
   openIssue(item.projectId, item.issueId)
 }
 
+/** 正在就地处理的验收记录 id（用来给那一行加 loading，避免连点两次） */
+const actingReviewId = ref<number | null>(null)
+
+/**
+ * 在工作台直接通过验收。
+ * 说明可留空——想写一句再通过的人有地方写，不想写的两点就能收工。
+ */
+async function approvePending(item: PendingWorkbenchReview) {
+  try {
+    const result = await ElMessageBox.prompt('可填写验收说明（留空也行）', `通过 ${item.issueKey} 的验收`, {
+      confirmButtonText: '通过',
+      cancelButtonText: '取消',
+      inputPlaceholder: '验收说明（可选）',
+    })
+    actingReviewId.value = item.id
+    await approveIssueReview(item.id, result.value)
+    ElMessage.closeAll() // request 拦截器已经弹过一条，避免两层提示
+    ElMessage.success(`已通过 ${item.issueKey} 的验收`)
+    await fetchWorkbench()
+  } catch (error: any) {
+    if (error === 'cancel' || error === 'close') return
+    ElMessage.error(error?.response?.data?.message || error?.message || '操作失败')
+  } finally {
+    actingReviewId.value = null
+  }
+}
+
+/** 打回必须写原因（后端同样强制），写清了提交人才知道改什么 */
+async function rejectPending(item: PendingWorkbenchReview) {
+  try {
+    const result = await ElMessageBox.prompt('请填写打回原因，提交人会收到通知', `打回 ${item.issueKey} 的验收`, {
+      confirmButtonText: '打回',
+      cancelButtonText: '取消',
+      inputPlaceholder: '例如：缺少回归测试 / 截图看不出改动',
+      inputValidator: (value) => Boolean(value?.trim()) || '打回原因不能为空',
+    })
+    actingReviewId.value = item.id
+    await rejectIssueReview(item.id, result.value)
+    ElMessage.closeAll()
+    ElMessage.success(`已打回 ${item.issueKey}，提交人会收到通知`)
+    await fetchWorkbench()
+  } catch (error: any) {
+    if (error === 'cancel' || error === 'close') return
+    ElMessage.error(error?.response?.data?.message || error?.message || '操作失败')
+  } finally {
+    actingReviewId.value = null
+  }
+}
+
 function openRejected(item: RejectedWorkbenchItem) {
   openIssue(item.projectId, item.issueId)
 }
@@ -731,6 +819,8 @@ function openSprint(projectId: number, sprintId: number) {
 onMounted(() => {
   fetchDashboard()
   fetchWorkbench()
+  // 决定空库那条入口显示"生成"还是"清除"
+  if (permissionStore.isSuperAdmin) refreshDemoStatus()
 })
 </script>
 
@@ -1184,6 +1274,31 @@ onMounted(() => {
 
 .week-range {
   font-weight: 500;
+}
+
+/* 就地处理：通过 / 打回，以及变更审批的跳转提示 */
+.dash-row__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.dash-row__go {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--color-primary);
+}
+
+.dash-row--acting {
+  opacity: 0.6;
+}
+
+.dash-panel__footnote {
+  margin: 8px 0 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.6;
 }
 
 .dash-row__type--danger {

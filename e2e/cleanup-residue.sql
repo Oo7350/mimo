@@ -54,6 +54,8 @@ DELETE FROM issues WHERE id IN (SELECT id FROM tmp_issues);
 -- ---------- 4. 项目级数据 ----------
 DELETE FROM activity_logs WHERE project_id IN (SELECT id FROM tmp_projects);
 DELETE FROM board_columns WHERE project_id IN (SELECT id FROM tmp_projects);
+-- 燃尽快照按 sprint 挂，sprint 一删就成了孤儿（v2.19.5 补：先删快照再删 sprint）
+DELETE FROM burndown_snapshots WHERE sprint_id IN (SELECT id FROM sprints WHERE project_id IN (SELECT id FROM tmp_projects));
 DELETE FROM sprints WHERE project_id IN (SELECT id FROM tmp_projects);
 DELETE FROM reports WHERE project_id IN (SELECT id FROM tmp_projects);
 DELETE FROM project_members WHERE project_id IN (SELECT id FROM tmp_projects);
@@ -96,6 +98,25 @@ DELETE FROM user_roles WHERE user_id IN (SELECT id FROM tmp_users);
 DELETE FROM user_levels WHERE user_id IN (SELECT id FROM tmp_users);
 DELETE FROM users WHERE id IN (SELECT id FROM tmp_users);
 
+-- ---------- 7. 全局孤儿收尾（可反复执行） ----------
+-- 以前这里只按 id 删，不看别人对它们的引用，于是留下三种孤儿：
+--   ① notifications 指向已经被硬删的工作项（开发库里积了几十条）
+--   ② burndown_snapshots 指向已经删掉的 sprint
+--   ③ delivery_daily_snapshots 指向已经删掉的项目
+-- 它们不会让页面崩，但会让"通知中心"和统计出现对不上的数字。
+DELETE FROM notifications
+WHERE related_type = 'ISSUE'
+  AND related_id IS NOT NULL
+  AND related_id NOT IN (SELECT id FROM issues);
+
+DELETE FROM burndown_snapshots
+WHERE sprint_id IS NOT NULL
+  AND sprint_id NOT IN (SELECT id FROM sprints);
+
+DELETE FROM delivery_daily_snapshots
+WHERE project_id IS NOT NULL
+  AND project_id NOT IN (SELECT id FROM projects);
+
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- ---------- 结果 ----------
@@ -103,4 +124,8 @@ SELECT (SELECT COUNT(*) FROM users)    AS users,
        (SELECT COUNT(*) FROM teams)    AS teams,
        (SELECT COUNT(*) FROM projects) AS projects,
        (SELECT COUNT(*) FROM issues WHERE deleted = 0) AS issues_live,
-       (SELECT COUNT(*) FROM issues WHERE title LIKE 'E2E任务%') AS leftover_e2e;
+       (SELECT COUNT(*) FROM issues WHERE title LIKE 'E2E任务%') AS leftover_e2e,
+       (SELECT COUNT(*) FROM notifications WHERE related_type = 'ISSUE'
+          AND related_id NOT IN (SELECT id FROM issues)) AS orphan_notifications,
+       (SELECT COUNT(*) FROM burndown_snapshots
+          WHERE sprint_id NOT IN (SELECT id FROM sprints)) AS orphan_burndown;

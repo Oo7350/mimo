@@ -125,6 +125,13 @@ mysql -umimo -pmimo123 mimo < e2e/cleanup-residue.sql
 只删带这些前缀/名字的用例数据，不碰 `admin`/`zhangsan`/`lisi` 和真实项目；可重复执行。
 **生产库不要执行。**
 
+v2.19.5 补了两件事：
+
+- 删 `sprints` **之前**先删 `burndown_snapshots`（sprint 是物理删除，快照回头就成了孤儿）；
+- 末尾加一段全局孤儿收尾：`notifications` 指向已不存在的工作项、`burndown_snapshots`
+  指向不存在的 sprint、`delivery_daily_snapshots` 指向不存在的项目，一并清掉。
+  结果查询也带了 `orphan_notifications` / `orphan_burndown` 两列，跑完应当都是 0。
+
 ## 工作流用例（`workflow-guard.mjs`）
 
 证明"工作流不是装饰"，同时盯住"看不懂"的那两处（v2.19.1）：
@@ -162,6 +169,7 @@ node e2e/workflow-guard.mjs http://localhost:5173
 | F | 已处理记录不能再动 | 再 approve = 400「该验收记录已处理」 |
 | G | 打回必须填原因 | 空原因 = 400；打回后 work item 回 `IN_PROGRESS`，并进提交人「被驳回」 |
 | H | 团队管理员能验收 | 授 `PROJECT_MANAGER`（含 `team.manage`）在 TEAM 作用域后，普通成员身份的验收 = 200 |
+| K | 工作台能就地通过 | `/dashboard` 的「待我处理」里点「通过」→ 记录变 `APPROVED`，该行从列表消失（v2.19.5） |
 
 ```bash
 node e2e/review-matrix.mjs http://localhost:5173

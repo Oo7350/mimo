@@ -4,6 +4,15 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mimo.common.BusinessException;
 import com.mimo.common.ResultCode;
 import com.mimo.entity.ActivityLog;
+import com.mimo.entity.Attachment;
+import com.mimo.entity.BurndownSnapshot;
+import com.mimo.entity.DeliveryDailySnapshot;
+import com.mimo.entity.IssueChangeRequest;
+import com.mimo.entity.IssueLabel;
+import com.mimo.entity.IssueVersion;
+import com.mimo.entity.WikiAttachment;
+import com.mimo.entity.WikiPage;
+import com.mimo.entity.WikiVersion;
 import com.mimo.entity.BoardColumn;
 import com.mimo.entity.Comment;
 import com.mimo.entity.Issue;
@@ -17,7 +26,17 @@ import com.mimo.entity.Team;
 import com.mimo.entity.TeamMember;
 import com.mimo.entity.User;
 import com.mimo.entity.WorkLog;
+import com.mimo.entity.Workflow;
 import com.mimo.mapper.ActivityLogMapper;
+import com.mimo.mapper.AttachmentMapper;
+import com.mimo.mapper.BurndownSnapshotMapper;
+import com.mimo.mapper.DeliveryDailySnapshotMapper;
+import com.mimo.mapper.IssueChangeRequestMapper;
+import com.mimo.mapper.IssueLabelMapper;
+import com.mimo.mapper.IssueVersionMapper;
+import com.mimo.mapper.WikiAttachmentMapper;
+import com.mimo.mapper.WikiPageMapper;
+import com.mimo.mapper.WikiVersionMapper;
 import com.mimo.mapper.BoardColumnMapper;
 import com.mimo.mapper.CommentMapper;
 import com.mimo.mapper.IssueMapper;
@@ -31,6 +50,7 @@ import com.mimo.mapper.TeamMapper;
 import com.mimo.mapper.TeamMemberMapper;
 import com.mimo.mapper.UserMapper;
 import com.mimo.mapper.WorkLogMapper;
+import com.mimo.mapper.WorkflowMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -81,6 +101,16 @@ public class DemoDataService {
     private final ReportMapper reportMapper;
     private final ActivityLogMapper activityLogMapper;
     private final NotificationMapper notificationMapper;
+    private final WorkflowMapper workflowMapper;
+    private final IssueVersionMapper issueVersionMapper;
+    private final IssueChangeRequestMapper issueChangeRequestMapper;
+    private final AttachmentMapper attachmentMapper;
+    private final IssueLabelMapper issueLabelMapper;
+    private final BurndownSnapshotMapper burndownSnapshotMapper;
+    private final DeliveryDailySnapshotMapper deliveryDailySnapshotMapper;
+    private final WikiPageMapper wikiPageMapper;
+    private final WikiVersionMapper wikiVersionMapper;
+    private final WikiAttachmentMapper wikiAttachmentMapper;
     private final AccessControlService accessControlService;
 
     /** 现在有没有演示数据 */
@@ -93,6 +123,128 @@ public class DemoDataService {
             result.put("issueCount", issueMapper.selectCount(new LambdaQueryWrapper<Issue>()
                     .eq(Issue::getProjectId, project.getId()).eq(Issue::getDeleted, 0)));
         }
+        return result;
+    }
+
+    /**
+     * 清掉示例数据（v2.19.5）。
+     *
+     * <p>生成出来的东西必须能收回去：否则演示完要一条条手删，或者干脆留一堆假数据混在真数据里。
+     * 删除范围就是<b>生成器自己造的那些</b>——示例项目 + 它的工作项及其子记录 + 自动生成的工作流，
+     * 以及"示例团队"（只在这台机器上除了示例项目没别的项目时才删）。
+     *
+     * <p>不碰：其它项目、其它团队、用户账号、公告、Wiki 之外的任何全局数据。
+     */
+    @Transactional
+    public Map<String, Object> clear(Long operatorId) {
+        if (!accessControlService.isSystemAdmin(operatorId)) {
+            throw new BusinessException(ResultCode.FORBIDDEN, "只有系统管理员可以清除演示数据");
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        Project project = findDemoProject();
+        if (project == null) {
+            result.put("cleared", false);
+            result.put("message", "当前没有示例数据，不用清");
+            return result;
+        }
+
+        Long projectId = project.getId();
+        Long teamId = project.getTeamId();
+        // 先取 id 集合，再删子表：主表删掉之后子表就找不到归属了
+        List<Long> issueIds = issueMapper.selectList(new LambdaQueryWrapper<Issue>()
+                        .eq(Issue::getProjectId, projectId))
+                .stream().map(Issue::getId).toList();
+        List<Long> sprintIds = sprintMapper.selectList(new LambdaQueryWrapper<Sprint>()
+                        .eq(Sprint::getProjectId, projectId))
+                .stream().map(Sprint::getId).toList();
+
+        int comments = 0;
+        int workLogs = 0;
+        int reviews = 0;
+        if (!issueIds.isEmpty()) {
+            comments = commentMapper.delete(new LambdaQueryWrapper<Comment>()
+                    .in(Comment::getIssueId, issueIds));
+            workLogs = workLogMapper.delete(new LambdaQueryWrapper<WorkLog>()
+                    .in(WorkLog::getIssueId, issueIds));
+            reviews = issueReviewMapper.delete(new LambdaQueryWrapper<IssueReview>()
+                    .in(IssueReview::getIssueId, issueIds));
+            notificationMapper.delete(new LambdaQueryWrapper<Notification>()
+                    .in(Notification::getRelatedId, issueIds)
+                    .eq(Notification::getRelatedType, "ISSUE"));
+            // 工作项的其它子记录：不清就是一堆指向不存在工作项的孤儿数据
+            // （验收 / 变更审批的申请、版本快照、附件、标签）
+            issueVersionMapper.delete(new LambdaQueryWrapper<IssueVersion>()
+                    .in(IssueVersion::getIssueId, issueIds));
+            issueChangeRequestMapper.delete(new LambdaQueryWrapper<IssueChangeRequest>()
+                    .in(IssueChangeRequest::getIssueId, issueIds));
+            attachmentMapper.delete(new LambdaQueryWrapper<Attachment>()
+                    .in(Attachment::getIssueId, issueIds));
+            issueLabelMapper.delete(new LambdaQueryWrapper<IssueLabel>()
+                    .in(IssueLabel::getIssueId, issueIds));
+        }
+
+        // 迭代维度的燃尽快照（看过燃尽图就会产生）
+        if (!sprintIds.isEmpty()) {
+            burndownSnapshotMapper.delete(new LambdaQueryWrapper<BurndownSnapshot>()
+                    .in(BurndownSnapshot::getSprintId, sprintIds));
+        }
+
+        // 项目级：工作流、动态、报告、交付快照、Wiki、成员、看板列、迭代、工作项、项目本体
+        workflowMapper.delete(new LambdaQueryWrapper<Workflow>().eq(Workflow::getProjectId, projectId));
+        deliveryDailySnapshotMapper.delete(new LambdaQueryWrapper<DeliveryDailySnapshot>()
+                .eq(DeliveryDailySnapshot::getProjectId, projectId));
+        List<Long> wikiPageIds = wikiPageMapper.selectList(new LambdaQueryWrapper<WikiPage>()
+                        .eq(WikiPage::getProjectId, projectId))
+                .stream().map(WikiPage::getId).toList();
+        if (!wikiPageIds.isEmpty()) {
+            wikiVersionMapper.delete(new LambdaQueryWrapper<WikiVersion>()
+                    .in(WikiVersion::getPageId, wikiPageIds));
+            wikiAttachmentMapper.delete(new LambdaQueryWrapper<WikiAttachment>()
+                    .in(WikiAttachment::getPageId, wikiPageIds));
+            wikiPageMapper.delete(new LambdaQueryWrapper<WikiPage>()
+                    .eq(WikiPage::getProjectId, projectId));
+        }
+        activityLogMapper.delete(new LambdaQueryWrapper<ActivityLog>()
+                .eq(ActivityLog::getProjectId, projectId));
+        int reports = reportMapper.delete(new LambdaQueryWrapper<Report>()
+                .eq(Report::getProjectId, projectId));
+        projectMemberMapper.delete(new LambdaQueryWrapper<ProjectMember>()
+                .eq(ProjectMember::getProjectId, projectId));
+        boardColumnMapper.delete(new LambdaQueryWrapper<BoardColumn>()
+                .eq(BoardColumn::getProjectId, projectId));
+        sprintMapper.delete(new LambdaQueryWrapper<Sprint>().eq(Sprint::getProjectId, projectId));
+        int issues = issueMapper.delete(new LambdaQueryWrapper<Issue>()
+                .eq(Issue::getProjectId, projectId));
+        projectMapper.deleteById(projectId);
+
+        // 团队：只有"除了这个示例项目没别的项目"时才删，避免连坐用户自己的团队
+        boolean teamDeleted = false;
+        if (teamId != null) {
+            long remaining = projectMapper.selectCount(new LambdaQueryWrapper<Project>()
+                    .eq(Project::getTeamId, teamId));
+            Team team = teamMapper.selectById(teamId);
+            boolean autoTeam = team != null && "示例团队".equals(team.getName());
+            if (remaining == 0 && autoTeam) {
+                teamMemberMapper.delete(new LambdaQueryWrapper<TeamMember>()
+                        .eq(TeamMember::getTeamId, teamId));
+                teamMapper.deleteById(teamId);
+                teamDeleted = true;
+            }
+        }
+
+        log.info("清除示例数据：projectId={}, 工作项={}, 评论={}, 工时={}, 验收={}, 报告={}, 团队删除={}",
+                projectId, issues, comments, workLogs, reviews, reports, teamDeleted);
+
+        result.put("cleared", true);
+        result.put("projectId", projectId);
+        result.put("issueCount", issues);
+        result.put("commentCount", comments);
+        result.put("workLogCount", workLogs);
+        result.put("reviewCount", reviews);
+        result.put("reportCount", reports);
+        result.put("sprintCount", sprintIds.size());
+        result.put("teamDeleted", teamDeleted);
+        result.put("message", "示例数据已清除");
         return result;
     }
 
@@ -281,8 +433,9 @@ public class DemoDataService {
      * 所以这里先看现有 Key 再取，绝不硬编码。
      */
     String allocateProjectKey() {
-        List<String> taken = projectMapper.selectList(null).stream()
-                .map(Project::getKey)
+        // 必须连"已被逻辑删除"的行一起看：唯一索引不看 deleted 标记，
+        // 只查未删除的行会导致清除后再生成时重复挑到同一个 Key（v2.19.5 的 500 就这么来的）
+        List<String> taken = projectMapper.selectAllKeysIncludingDeleted().stream()
                 .filter(Objects::nonNull)
                 .map(String::toUpperCase)
                 .toList();

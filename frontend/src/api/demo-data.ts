@@ -24,3 +24,19 @@ export function generateDemoData() {
     reportCount?: number
   }>("/admin/demo-data")
 }
+
+/** 清除示例数据（v2.19.5）：只删生成器自己造的东西，其它项目和团队不受影响 */
+export function clearDemoData() {
+  return request.delete<{
+    cleared: boolean
+    message: string
+    projectId?: number
+    issueCount?: number
+    commentCount?: number
+    workLogCount?: number
+    reviewCount?: number
+    reportCount?: number
+    sprintCount?: number
+    teamDeleted?: boolean
+  }>("/admin/demo-data")
+}

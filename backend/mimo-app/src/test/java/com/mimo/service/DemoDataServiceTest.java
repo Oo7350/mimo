@@ -21,6 +21,16 @@ import com.mimo.mapper.TeamMapper;
 import com.mimo.mapper.TeamMemberMapper;
 import com.mimo.mapper.UserMapper;
 import com.mimo.mapper.WorkLogMapper;
+import com.mimo.mapper.WorkflowMapper;
+import com.mimo.mapper.AttachmentMapper;
+import com.mimo.mapper.BurndownSnapshotMapper;
+import com.mimo.mapper.DeliveryDailySnapshotMapper;
+import com.mimo.mapper.IssueChangeRequestMapper;
+import com.mimo.mapper.IssueLabelMapper;
+import com.mimo.mapper.IssueVersionMapper;
+import com.mimo.mapper.WikiAttachmentMapper;
+import com.mimo.mapper.WikiPageMapper;
+import com.mimo.mapper.WikiVersionMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -60,6 +70,16 @@ class DemoDataServiceTest {
     @Mock private ReportMapper reportMapper;
     @Mock private ActivityLogMapper activityLogMapper;
     @Mock private NotificationMapper notificationMapper;
+    @Mock private WorkflowMapper workflowMapper;
+    @Mock private AttachmentMapper attachmentMapper;
+    @Mock private BurndownSnapshotMapper burndownSnapshotMapper;
+    @Mock private DeliveryDailySnapshotMapper deliveryDailySnapshotMapper;
+    @Mock private IssueChangeRequestMapper issueChangeRequestMapper;
+    @Mock private IssueLabelMapper issueLabelMapper;
+    @Mock private IssueVersionMapper issueVersionMapper;
+    @Mock private WikiAttachmentMapper wikiAttachmentMapper;
+    @Mock private WikiPageMapper wikiPageMapper;
+    @Mock private WikiVersionMapper wikiVersionMapper;
     @Mock private AccessControlService accessControlService;
 
     @Test
@@ -162,9 +182,101 @@ class DemoDataServiceTest {
     @Test
     void shouldPickAFreeProjectKeyBecauseProjectKeyIsGloballyUnique() {
         // 踩过的坑：第一版硬写 "DEMO"，demo 项目本身占着 DEMO，一点就 500（Duplicate entry）
-        when(projectMapper.selectList(any())).thenReturn(List.of(projectWithKey("DEMO"), projectWithKey("DEMO2")));
+        when(projectMapper.selectAllKeysIncludingDeleted()).thenReturn(List.of("DEMO", "DEMO2"));
 
         assertThat(service().allocateProjectKey()).isEqualTo("DEMO3");
+    }
+
+    @Test
+    void shouldCountSoftDeletedProjectsWhenAllocatingKey() {
+        // 回到现场：清除示例数据（软删）之后再生成，旧实现只查未删除行 → 又挑到 DEMO2 → 500
+        when(projectMapper.selectAllKeysIncludingDeleted()).thenReturn(List.of("DEMO", "DEMO2", "DEMO3"));
+
+        assertThat(service().allocateProjectKey()).isEqualTo("DEMO4");
+    }
+
+    @Test
+    void shouldRejectClearForNonAdmin() {
+        when(accessControlService.isSystemAdmin(9L)).thenReturn(false);
+
+        assertThatThrownBy(() -> service().clear(9L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("只有系统管理员");
+
+        verify(projectMapper, never()).deleteById(any(Long.class));
+    }
+
+    @Test
+    void shouldClearDemoProjectAndItsChildrenButNotTheTeamThatStillHasProjects() {
+        when(accessControlService.isSystemAdmin(1L)).thenReturn(true);
+        Project demo = new Project();
+        demo.setId(42L);
+        demo.setName(DemoDataService.DEMO_PROJECT_NAME);
+        demo.setTeamId(7L);
+        when(projectMapper.selectOne(any())).thenReturn(demo);
+
+        Issue issue = new Issue();
+        issue.setId(500L);
+        when(issueMapper.selectList(any())).thenReturn(List.of(issue));
+        com.mimo.entity.Sprint sprint = new com.mimo.entity.Sprint();
+        sprint.setId(600L);
+        when(sprintMapper.selectList(any())).thenReturn(List.of(sprint));
+        when(projectMapper.selectCount(any())).thenReturn(1L); // 团队里还有别的项目 → 团队不能删
+
+        Map<String, Object> result = service().clear(1L);
+
+        assertThat(result.get("cleared")).isEqualTo(true);
+        assertThat(result.get("teamDeleted")).isEqualTo(false);
+        // 工作项的子记录必须先按 issueId 删，主表删掉就找不到了
+        verify(commentMapper).delete(any());
+        verify(workLogMapper).delete(any());
+        verify(issueReviewMapper).delete(any());
+        verify(notificationMapper).delete(any());
+        // 项目级：工作流（自动生成的那几套）与动态、报告、成员、看板列、迭代、工作项、项目本体
+        verify(workflowMapper).delete(any());
+        verify(activityLogMapper).delete(any());
+        verify(reportMapper).delete(any());
+        verify(projectMemberMapper).delete(any());
+        verify(boardColumnMapper).delete(any());
+        verify(sprintMapper).delete(any());
+        verify(issueMapper).delete(any());
+        verify(projectMapper).deleteById(42L);
+        verify(teamMapper, never()).deleteById(any(Long.class));
+    }
+
+    @Test
+    void shouldDeleteTheDemoOnlyTeamWhenNothingElseIsLeftInIt() {
+        when(accessControlService.isSystemAdmin(1L)).thenReturn(true);
+        Project demo = new Project();
+        demo.setId(42L);
+        demo.setName(DemoDataService.DEMO_PROJECT_NAME);
+        demo.setTeamId(7L);
+        when(projectMapper.selectOne(any())).thenReturn(demo);
+        when(issueMapper.selectList(any())).thenReturn(List.of());
+        when(sprintMapper.selectList(any())).thenReturn(List.of());
+        when(projectMapper.selectCount(any())).thenReturn(0L);
+        Team team = new Team();
+        team.setId(7L);
+        team.setName("示例团队");
+        when(teamMapper.selectById(7L)).thenReturn(team);
+
+        Map<String, Object> result = service().clear(1L);
+
+        assertThat(result.get("teamDeleted")).isEqualTo(true);
+        verify(teamMemberMapper).delete(any());
+        verify(teamMapper).deleteById(7L);
+    }
+
+    @Test
+    void shouldBeNoOpWhenThereIsNothingToClear() {
+        when(accessControlService.isSystemAdmin(1L)).thenReturn(true);
+        when(projectMapper.selectOne(any())).thenReturn(null);
+
+        Map<String, Object> result = service().clear(1L);
+
+        assertThat(result.get("cleared")).isEqualTo(false);
+        verify(projectMapper, never()).deleteById(any(Long.class));
+        verify(issueMapper, never()).delete(any());
     }
 
     private Project projectWithKey(String key) {
@@ -177,6 +289,8 @@ class DemoDataServiceTest {
         return new DemoDataService(userMapper, teamMapper, teamMemberMapper, projectMapper,
                 projectMemberMapper, boardColumnMapper, sprintMapper, issueMapper, issueKeyAllocator,
                 commentMapper, workLogMapper, issueReviewMapper, reportMapper, activityLogMapper,
-                notificationMapper, accessControlService);
+                notificationMapper, workflowMapper, issueVersionMapper, issueChangeRequestMapper, attachmentMapper,
+                issueLabelMapper, burndownSnapshotMapper, deliveryDailySnapshotMapper, wikiPageMapper,
+                wikiVersionMapper, wikiAttachmentMapper, accessControlService);
     }
 }
