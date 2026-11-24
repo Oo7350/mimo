@@ -374,6 +374,12 @@ function typeLetter(type: string) {
       color: var(--color-primary);
     }
 
+    /* 键盘焦点可见：没有它 Tab 键走到这看不见走到哪了 */
+    &:focus-visible {
+      outline: 2px solid var(--color-primary);
+      outline-offset: 2px;
+    }
+
     &.is-active {
       background: var(--color-primary-solid);
       border-color: var(--color-primary-solid);
@@ -446,6 +452,11 @@ function typeLetter(type: string) {
       transform: translateX(2px);
       box-shadow: 0 4px 12px rgba(15, 23, 42, 0.1);
     }
+
+    &:focus-visible {
+      outline: 2px solid var(--color-primary);
+      outline-offset: 2px;
+    }
   }
 
   &__unassigned-name {
@@ -469,7 +480,7 @@ function typeLetter(type: string) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 800;
     color: #fff;
     flex-shrink: 0;
@@ -563,7 +574,7 @@ function typeLetter(type: string) {
   }
 
   &__load {
-    font-size: 11.5px;
+    font-size: 12px;
     color: var(--text-muted);
   }
 
@@ -581,7 +592,7 @@ function typeLetter(type: string) {
     color: var(--text-primary);
 
     &--danger {
-      font-size: 11px;
+      font-size: 12px;
       color: var(--color-danger);
       font-weight: 600;
     }
@@ -655,6 +666,11 @@ function typeLetter(type: string) {
     border-color: var(--color-primary-light);
   }
 
+  &:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
   &--overdue {
     background: var(--bg-danger-soft);
   }
@@ -670,7 +686,7 @@ function typeLetter(type: string) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 800;
     color: #fff;
     flex-shrink: 0;
@@ -697,7 +713,7 @@ function typeLetter(type: string) {
   }
 
   &__meta {
-    font-size: 11.5px;
+    font-size: 12px;
     color: var(--text-muted);
     overflow: hidden;
     text-overflow: ellipsis;

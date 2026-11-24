@@ -119,6 +119,26 @@
 - **顺带修的可发现性**：第一版入口只放在「我的任务」面板标题里，用户实测"看不到这个功能"。
   Hero 区补一个金色「全员任务流」按钮（点了滚到面板并切视角），并把用例改成**从 Hero 按钮进入**
   （而不是点面板里的开关）—— 如果哪天这个按钮没了，用例会红。合计 18 条。
+### BUG-114: 抬字号"浮出水面"的低对比 tag 没同步修 + 新组件缺键盘焦点环 [Medium]
+
+- **文件**: `styles/global.css`、`styles/variables.css`、`components/workbench/TeamFlowBoard.vue`、
+  `components/issue/TaskDetailDrawer.vue`、`views/Dashboard.vue`、`views/ProjectBoard.vue`
+- **现象**: 把字号从 11/11.5px 抬到 12px 后，`theme-audit` 报出亮色 `el-tag` 的 info 浅 tag
+  （`待开始`/`草稿`，`#909399` on `#f4f4f5`）2.8:1、danger 实心 tag（`高风险`，白字压 `#f87171`）2.77:1；
+  同时发现新组件的按钮类控件（`flow-task` / `team-flow__chip` / `admin-scope__option` /
+  `dash-hero__admin-entry` / `board__admin-flow`）`outline: none`，键盘 Tab 走过去看不见。
+- **根因**: ① 这些 tag 以前 11.5px 小于体检阈值所以没被报 —— 抬字号让它们"浮出水面"，
+  但我只改了字号、没回头查对比度；② 新组件只写了 `:hover`，漏了 `:focus-visible`。
+- **修复**: ① `--el-color-danger`/`--el-color-error` 亮暗统一压到 `#dc2626`（白字 4.6:1），
+  亮色 `--el-color-warning` 从 `#fbbf24`（亮黄压亮底 1.56:1）压到 `#b45309`（深棕黄 4.6:1），
+  暗色块保留亮黄（深底要亮字）；info 浅 tag 文字从 `#909399` 抬到 `#64748b`（4.3:1）。
+  ② 迭代页"进行中"徽标 `#10b981` on 浅绿底 2.31:1 → 压深到 `#059669`（4.5:1）。
+  ③ 新组件（TeamFlowBoard / TaskDetailDrawer / Dashboard / ProjectBoard）所有可点控件
+  补 `:focus-visible` 键盘焦点环。
+- **教训**: "一处改、多处消"的操作（全局抬字号）会改变被体检命中的元素集合 —— 改完必须立刻
+  重跑体检，不能只跑自己改的那几个组件。这次 theme-audit 全站重扫揪出了 4 条隐藏低对比
+  （info tag / danger 实心 tag / warning 文字 tag / sprint 进行中徽标）。
+- **回归**: `theme-audit` 亮/暗两套主题 0 低对比 / 0 浅色块；小字从 54 处降到 32 处。
 ### 工具补丁：`theme-audit.mjs` 对"两层叠放"控件的测量盲区（非 BUG）
 
 新加的「我的 / 全员」滑动开关，选中项的白字压在**兄弟节点**（滑动指示块）的靛蓝底色上。
@@ -2373,11 +2393,11 @@
 |---------|------|
 | Critical | 6 |
 | High | 46 |
-| Medium | 40 |
+| Medium | 41 |
 | Low | 21 |
-| **已修复（BUG 条目）** | **113** |
+| **已修复（BUG 条目）** | **114** |
 | **已知未修复（KNOWN 条目）** | **3** |
-| **总计** | **116** |
+| **总计** | **117** |
 
 | 版本段 | BUG 条数 |
 |--------|---------|

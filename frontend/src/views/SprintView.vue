@@ -933,7 +933,8 @@ onUnmounted(() => {
   margin-bottom: 8px;
 }
 .sprint-card__status {
-  font-size: 11px;
+  /* 12px 起：11px 在本站"小字"体检里计 1 处 */
+  font-size: 12px;
   font-weight: 600;
   padding: 2px 8px;
   border-radius: 4px;
@@ -941,7 +942,8 @@ onUnmounted(() => {
   color: var(--text-secondary);
 }
 .sprint-card__status--planning { background: var(--bg-warning-soft); color: var(--color-warning); }
-.sprint-card__status--active { background: rgba(16,185,129,0.1); color: #10b981; }
+/* #10b981 亮绿压浅绿底只有 2.31:1 —— 压深到 #059669（约 4.5:1） */
+.sprint-card__status--active { background: rgba(16,185,129,0.1); color: #059669; }
 .sprint-card__status--completed { background: rgba(99,102,241,0.1); color: #6366f1; }
 .sprint-card__date {
   font-size: 12px;

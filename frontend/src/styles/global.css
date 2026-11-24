@@ -176,7 +176,19 @@ a:hover { color: var(--color-primary-dark); }
 .el-button:not(.el-button--primary):not(.el-button--default) { border-radius: 8px !important; }
 
 /* ═══ Tag — pill ═══ */
-.el-tag { border-radius: 7px !important; font-weight: 600; font-size: 11.5px; }
+/* 12px 起：11.5px 的中文在本站可读性体检里被统一归为"小字"（<12px 计 1 处） */
+.el-tag { border-radius: 7px !important; font-weight: 600; font-size: 12px; }
+
+/* info 浅 tag（"待开始 / 草稿"这类）：Element 默认 #909399 字压 #f4f4f5 底只有 2.8:1，
+   抬到 #64748b（深石板灰）后约 4.3:1，浅色 tag 的可读性不再靠猜 */
+.el-tag--info.is-light .el-tag__content,
+.el-tag--info:not(.is-dark):not(.is-plain) .el-tag__content {
+  color: #64748b;
+}
+[data-theme="dark"] .el-tag--info.is-light .el-tag__content,
+[data-theme="dark"] .el-tag--info:not(.is-dark):not(.is-plain) .el-tag__content {
+  color: #a8b3c7;
+}
 
 /* ═══ Table — clean ═══ */
 .el-table { border-radius: 12px; overflow: hidden; }

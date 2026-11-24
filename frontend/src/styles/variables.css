@@ -124,6 +124,8 @@
   /* 状态色当"文字"用（删除按钮、成功/警告标签）时，Element 默认值在浅底上只有 2.2–2.9:1；
      压深一档后白字实心块也更稳。浅色派生 --el-color-*-light-9 保持不变，仍是淡底。 */
   --el-color-success: #15803d;
+  /* 亮色下 warning 是"浅底上的文字色"，#fbbf24 亮黄压亮底只有 1.56:1 ——
+     压深到 #b45309（深棕黄，亮底 4.6:1 达标）。暗色块里仍用亮黄（深底要亮字）。 */
   --el-color-warning: #b45309;
   --el-color-danger: #dc2626;
   --el-color-error: #dc2626;
@@ -221,13 +223,13 @@
      这里保留亮色值给文字/图标用；实心按钮的底色在下面 html.dark 的 .el-button--* 里单独压深。 */
   --el-color-success: #34d399;
   --el-color-warning: #fbbf24;
-  --el-color-danger: #f87171;
-  --el-color-error: #f87171;
+  --el-color-danger: #dc2626;
+  --el-color-error: #dc2626;
   --el-color-info: #94a3b8;
-  --el-color-success-light-9: rgba(52, 211, 153, 0.16);
-  --el-color-warning-light-9: rgba(251, 191, 36, 0.16);
-  --el-color-danger-light-9: rgba(248, 113, 113, 0.16);
-  --el-color-error-light-9: rgba(248, 113, 113, 0.16);
+  --el-color-success-light-9: rgba(5, 150, 105, 0.16);
+  --el-color-warning-light-9: rgba(180, 83, 9, 0.16);
+  --el-color-danger-light-9: rgba(220, 38, 38, 0.16);
+  --el-color-error-light-9: rgba(220, 38, 38, 0.16);
   --el-color-info-light-9: rgba(148, 163, 184, 0.16);
 }
 
@@ -245,13 +247,13 @@ html.dark {
   --el-color-primary-dark-2: #4f46e5;
   --el-color-success: #34d399;
   --el-color-warning: #fbbf24;
-  --el-color-danger: #f87171;
-  --el-color-error: #f87171;
+  --el-color-danger: #dc2626;
+  --el-color-error: #dc2626;
   --el-color-info: #94a3b8;
-  --el-color-success-light-9: rgba(52, 211, 153, 0.16);
-  --el-color-warning-light-9: rgba(251, 191, 36, 0.16);
-  --el-color-danger-light-9: rgba(248, 113, 113, 0.16);
-  --el-color-error-light-9: rgba(248, 113, 113, 0.16);
+  --el-color-success-light-9: rgba(5, 150, 105, 0.16);
+  --el-color-warning-light-9: rgba(180, 83, 9, 0.16);
+  --el-color-danger-light-9: rgba(220, 38, 38, 0.16);
+  --el-color-error-light-9: rgba(220, 38, 38, 0.16);
   --el-color-info-light-9: rgba(148, 163, 184, 0.16);
 }
 

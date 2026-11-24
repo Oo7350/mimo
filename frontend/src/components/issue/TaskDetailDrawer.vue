@@ -333,7 +333,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown, true))
   }
 
   &__type {
-    font-size: 11.5px;
+    font-size: 12px;
     font-weight: 700;
     padding: 1px 8px;
     border-radius: 999px;
@@ -406,7 +406,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown, true))
   }
 
   &__meta-label {
-    font-size: 11.5px;
+    font-size: 12px;
     color: var(--text-muted);
   }
 
@@ -547,10 +547,15 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown, true))
       border-color: var(--color-primary-light);
       transform: translateX(2px);
     }
+
+    &:focus-visible {
+      outline: 2px solid var(--color-primary);
+      outline-offset: 2px;
+    }
   }
 
   &__subtask-key {
-    font-size: 11.5px;
+    font-size: 12px;
     color: var(--text-muted);
     font-variant-numeric: tabular-nums;
   }

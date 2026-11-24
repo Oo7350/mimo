@@ -838,6 +838,11 @@ onMounted(async () => {
 
     &:hover { border-color: #b45309; transform: translateY(-1px); }
 
+    &:focus-visible {
+      outline: 2px solid var(--color-warning);
+      outline-offset: 2px;
+    }
+
     &.is-active {
       background: linear-gradient(135deg, #fde68a, #fbbf24 60%, #f59e0b);
       border-color: rgba(180, 83, 9, 0.5);

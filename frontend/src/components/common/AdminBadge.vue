@@ -83,7 +83,7 @@ const title = computed(() => `${label.value}：可以查看全员任务流、处
   }
 
   &--small {
-    font-size: 11px;
+    font-size: 12px;
     padding: 1px 7px 1px 5px;
   }
 

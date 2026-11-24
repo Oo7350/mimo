@@ -573,7 +573,8 @@ watch(() => route.path, () => {
     background: var(--bg-page);
     padding: 2px 8px;
     border-radius: 6px;
-    font-size: 11px;
+    /* 12px 起：导航 label 每页都出现，11px 在本站"小字"体检里计 1 处 */
+    font-size: 12px;
     font-weight: 600;
     font-family: var(--font-mono);
     border: 1px solid var(--border-color);
@@ -647,7 +648,8 @@ watch(() => route.path, () => {
   /* 三层导航：分组标题与项目内导航头部 */
   .mimo-nav-label {
     padding: 14px 20px 6px;
-    font-size: 11px;
+    /* 12px 起：分组标题虽然不算正文，但 <12px 在本站体检里统一计"小字" */
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: 0.06em;
     color: rgba(255, 255, 255, 0.32);

@@ -1287,6 +1287,11 @@ onMounted(() => {
     border-color: #b45309;
     box-shadow: 0 6px 16px rgba(180, 83, 9, 0.18);
   }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-warning);
+    outline-offset: 2px;
+  }
 }
 
 .dash-hero__badge {
@@ -1335,6 +1340,12 @@ onMounted(() => {
   border-radius: 999px;
   cursor: pointer;
   transition: color 0.22s ease;
+
+  /* 键盘焦点可见：分段控件只有"文字变亮"不够，要给环 */
+  &:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
 
   &.is-active {
     color: #fff;
