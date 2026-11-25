@@ -6,6 +6,7 @@ import com.mimo.common.ResultCode;
 import com.mimo.dto.WorkflowDTO.*;
 import com.mimo.entity.Project;
 import com.mimo.mapper.ProjectMapper;
+import com.mimo.service.ProjectAccessService;
 import com.mimo.service.TeamService;
 import com.mimo.service.WorkflowService;
 import lombok.RequiredArgsConstructor;
@@ -26,6 +27,7 @@ public class WorkflowController {
     private final WorkflowService workflowService;
     private final ProjectMapper projectMapper;
     private final TeamService teamService;
+    private final ProjectAccessService projectAccessService;
 
     /** 获取项目的所有工作流（首次访问时按看板列自动生成默认配置） */
     @GetMapping("/project/{projectId}")
@@ -94,7 +96,8 @@ public class WorkflowController {
         Long userId = getLongPrincipal(auth);
         Project project = projectMapper.selectById(projectId);
         if (project == null) throw new BusinessException(ResultCode.PROJECT_NOT_FOUND);
-        if (!teamService.isTeamMember(project.getTeamId(), userId)) {
+        // 口径与"看"一致：系统管理员 / 团队成员 / 团队管理员都能操作（BUG-117）
+        if (!projectAccessService.canAccessProject(project.getId(), userId)) {
             throw new BusinessException(ResultCode.FORBIDDEN, "无权操作此项目");
         }
     }

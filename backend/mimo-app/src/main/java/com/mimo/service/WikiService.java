@@ -50,6 +50,7 @@ public class WikiService {
     private final ProjectMapper projectMapper;
     private final UserMapper userMapper;
     private final TeamService teamService;
+    private final ProjectAccessService projectAccessService;
     private final AccessControlService accessControlService;
     private final com.mimo.util.JwtUtil jwtUtil;
 
@@ -407,14 +408,14 @@ public class WikiService {
 
     // ============ 内部工具 ============
 
-    /** 校验项目存在 + 用户为项目所属团队成员（含系统/团队管理员） */
+    /** 校验项目存在 + 用户能访问该项目（系统管理员 / 团队成员 / 团队管理员） */
     private void requireMember(Long projectId, Long userId) {
         Project project = projectMapper.selectById(projectId);
         if (project == null) {
             throw new BusinessException(ResultCode.NOT_FOUND, "项目不存在");
         }
-        if (accessControlService.isSystemAdmin(userId)) return;
-        if (!teamService.isTeamMember(project.getTeamId(), userId)) {
+        // 注释早就写了"含系统/团队管理员"，但代码只放行了系统管理员（BUG-117 一起修）
+        if (!projectAccessService.canAccessProject(project.getId(), userId)) {
             throw new BusinessException(ResultCode.FORBIDDEN, "无权访问该项目知识库");
         }
     }

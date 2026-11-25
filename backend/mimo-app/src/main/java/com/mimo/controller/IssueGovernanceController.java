@@ -19,6 +19,7 @@ import com.mimo.mapper.ProjectMapper;
 import com.mimo.service.IssueChangeRequestService;
 import com.mimo.service.IssueReviewService;
 import com.mimo.service.IssueVersionService;
+import com.mimo.service.ProjectAccessService;
 import com.mimo.service.TeamService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
@@ -45,6 +46,7 @@ public class IssueGovernanceController {
     private final IssueMapper issueMapper;
     private final ProjectMapper projectMapper;
     private final TeamService teamService;
+    private final ProjectAccessService projectAccessService;
 
     @GetMapping("/issues/{issueId}/versions")
     public Result<List<IssueVersionVO>> versions(@PathVariable Long issueId, Authentication auth) {
@@ -146,7 +148,8 @@ public class IssueGovernanceController {
         if (issue == null) throw new BusinessException(ResultCode.ISSUE_NOT_FOUND);
         Project project = projectMapper.selectById(issue.getProjectId());
         if (project == null) throw new BusinessException(ResultCode.PROJECT_NOT_FOUND);
-        if (!teamService.isTeamMember(project.getTeamId(), userId)) {
+        // 口径与"看"一致：系统管理员 / 团队成员 / 团队管理员都能操作（BUG-117）
+        if (!projectAccessService.canAccessProject(project.getId(), userId)) {
             throw new BusinessException(ResultCode.FORBIDDEN, "无权访问该项目的工作项");
         }
         return issue;

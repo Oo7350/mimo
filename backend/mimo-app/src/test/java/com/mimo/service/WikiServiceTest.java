@@ -44,12 +44,19 @@ class WikiServiceTest {
     @Mock
     private com.mimo.mapper.TeamMemberMapper teamMemberMapper;
     @Mock
+    private com.mimo.mapper.IssueMapper issueMapper;
+    @Mock
     private JwtUtil jwtUtil;
 
     private WikiService service() {
+        AccessControlService accessControlService =
+                new AccessControlService(roleService, userMapper, teamMemberMapper);
+        // 越权判定统一走 ProjectAccessService（BUG-117），这里用真实的那个，
+        // 才能保证"非成员被拒、管理员放行"是真的在测规则，而不是测 mock
+        ProjectAccessService projectAccessService =
+                new ProjectAccessService(projectMapper, issueMapper, userMapper, teamService, accessControlService);
         return new WikiService(wikiPageMapper, wikiVersionMapper, wikiAttachmentMapper,
-                projectMapper, userMapper, teamService,
-                new AccessControlService(roleService, userMapper, teamMemberMapper), jwtUtil);
+                projectMapper, userMapper, teamService, projectAccessService, accessControlService, jwtUtil);
     }
 
     @Test

@@ -153,13 +153,14 @@ public class IssueController {
         throw new BusinessException(ResultCode.UNAUTHORIZED, "未登录或登录状态异常");
     }
 
-    /** 校验当前用户是否属于该任务所在项目的团队成员 */
+    /** 校验当前用户能操作该任务所在项目（系统管理员 / 团队成员 / 团队管理员） */
     private void assertProjectMember(Long issueId, Long userId) {
         Issue issue = issueMapper.selectById(issueId);
         if (issue == null) throw new BusinessException(ResultCode.PROJECT_NOT_FOUND);
         Project project = projectMapper.selectById(issue.getProjectId());
         if (project == null) throw new BusinessException(ResultCode.PROJECT_NOT_FOUND);
-        if (!teamService.isTeamMember(project.getTeamId(), userId)) {
+        // 口径与"看"一致（BUG-117）
+        if (!projectAccessService.canAccessProject(project.getId(), userId)) {
             throw new BusinessException(ResultCode.FORBIDDEN, "无权操作此任务");
         }
     }

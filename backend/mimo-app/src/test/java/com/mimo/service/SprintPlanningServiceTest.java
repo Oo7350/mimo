@@ -44,6 +44,12 @@ class SprintPlanningServiceTest {
     private DeliveryAnalyticsService deliveryAnalyticsService;
     @Mock
     private AiService aiService;
+    @Mock
+    private com.mimo.mapper.UserMapper userMapper;
+    @Mock
+    private RoleService roleService;
+    @Mock
+    private com.mimo.mapper.TeamMemberMapper teamMemberMapper;
 
     @Test
     void shouldReturnAdvisoryFallbackWithoutWritingIssues() {
@@ -213,8 +219,11 @@ class SprintPlanningServiceTest {
 
     private SprintPlanningService service() {
         ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
+        // 越权判定走真实 ProjectAccessService（BUG-117），成员/管理员规则才真的被测到
+        ProjectAccessService projectAccessService = new ProjectAccessService(projectMapper, issueMapper,
+                userMapper, teamService, new AccessControlService(roleService, userMapper, teamMemberMapper));
         return new SprintPlanningService(projectMapper, sprintMapper, issueMapper,
-                teamService, deliveryAnalyticsService, aiService, mapper);
+                teamService, projectAccessService, deliveryAnalyticsService, aiService, mapper);
     }
 
     private Project project() {

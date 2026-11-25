@@ -1,6 +1,6 @@
 # AGENTS.md
 
-> **最新版本**：v2.19.8（2026-11-24）— 管理员终于和普通账号长得不一样了：① 顶栏 / 工作台 Hero / 成员列都有了身份徽标（`AdminBadge`，琥珀盾牌 + 金色头像描边），口径是旧 `role` 字段、RBAC `role.manage`、`team.manage` 三者任一，前端只用它决定显不显示。② 工作台的「我的任务」面板加了管理员专属的「我的 / 全员」滑动切换，切到全员就是新接口 `GET /api/workbench/team` 的**全员任务流**：系统管理员看全部团队、团队管理员只看自己管理的团队，返回每人一条 `MemberStreamVO`（负载等级 + 一句话依据 + 排好序的任务）与 `summary`（含**未指派**任务）。空闲的人也占一列——空着本身是信息；未指派单独成栏；负载标签写依据（"有 1 项逾期，未完成 5 项"）而不是只给红黄绿。③ 点任意任务卡右侧滑出**详情抽屉**（`TaskDetailDrawer`：状态/优先级/逾期天数/故事点/标签、6 个字段格、Markdown 描述、验收标准完成度、缺陷信息、子任务、在项目里打开），看完 Esc 关掉还在原位，不跳页。④ 看板给管理员加了「全员泳道」开关。另外修了一条用户当场抓到的 High：前端自己用权限码判管理员，漏掉了 `team_members.role = ROLE_ADMIN` 这条旧字段兜底，团队管理员后端放行、界面却把入口藏了（BUG-113）——现在判定收敛到后端 `AccessControlService#resolveAdminScope`，经 `adminScope` 字段给前端，顶栏 / 工作台 / 看板三处只读这个结论。顺手打磨了一轮前端观感（BUG-114）：全站字号 12px 起（小字 54→32）、抬字号后浮出水面的 4 条隐藏低对比 tag 一并修掉（info/danger/warning/sprint 徽标）、新组件所有可点控件补键盘焦点环。过程中修掉 BUG-110（Element 抽屉的 `close-on-press-escape` 依赖焦点，鼠标点开后按 Esc 没反应）、BUG-111（统计卡标签压淡紫底 2.95:1）、BUG-112（在线人数一次请求问两遍 `PresenceService`，单测里恒为 0）；新登记 KNOWN-025（全员任务流无分页/无历史趋势）。后端 181 项测试、e2e **7 套 66 条**（新增 `admin-flow.mjs` 15 条，含亮/暗两套主题下新界面的对比度与溢出实测）、`vue-tsc`、`npm run build`、`probe-layout` 全绿。
+> **最新版本**：v2.19.8（2026-11-24）— 管理员终于和普通账号长得不一样了：① 顶栏 / 工作台 Hero / 成员列都有了身份徽标（`AdminBadge`，琥珀盾牌 + 金色头像描边），口径是旧 `role` 字段、RBAC `role.manage`、`team.manage` 三者任一，前端只用它决定显不显示。② 工作台的「我的任务」面板加了管理员专属的「我的 / 全员」滑动切换，切到全员就是新接口 `GET /api/workbench/team` 的**全员任务流**：系统管理员看全部团队、团队管理员只看自己管理的团队，返回每人一条 `MemberStreamVO`（负载等级 + 一句话依据 + 排好序的任务）与 `summary`（含**未指派**任务）。空闲的人也占一列——空着本身是信息；未指派单独成栏；负载标签写依据（"有 1 项逾期，未完成 5 项"）而不是只给红黄绿。③ 点任意任务卡右侧滑出**详情抽屉**（`TaskDetailDrawer`：状态/优先级/逾期天数/故事点/标签、6 个字段格、Markdown 描述、验收标准完成度、缺陷信息、子任务、在项目里打开），看完 Esc 关掉还在原位，不跳页。④ 看板给管理员加了「全员泳道」开关。另外修了一条用户当场抓到的 High：前端自己用权限码判管理员，漏掉了 `team_members.role = ROLE_ADMIN` 这条旧字段兜底，团队管理员后端放行、界面却把入口藏了（BUG-113）——现在判定收敛到后端 `AccessControlService#resolveAdminScope`，经 `adminScope` 字段给前端，顶栏 / 工作台 / 看板三处只读这个结论。顺手打磨了一轮前端观感（BUG-114）：全站字号 12px 起（小字 54→32）、抬字号后浮出水面的 4 条隐藏低对比 tag 一并修掉（info/danger/warning/sprint 徽标）、新组件所有可点控件补键盘焦点环。过程中修掉 BUG-110（Element 抽屉的 `close-on-press-escape` 依赖焦点，鼠标点开后按 Esc 没反应）、BUG-111（统计卡标签压淡紫底 2.95:1）、BUG-112（在线人数一次请求问两遍 `PresenceService`，单测里恒为 0）；新登记 KNOWN-025（全员任务流无分页/无历史趋势）。后端 187 项测试、e2e **7 套 66 条**（新增 `admin-flow.mjs` 15 条，含亮/暗两套主题下新界面的对比度与溢出实测）、`vue-tsc`、`npm run build`、`probe-layout` 全绿。
 > **上一版本**：v2.19.7（2026-11-24）— 暗色模式的颜色逻辑修好了、界面不再编数字：① 暗色主题下 Element 的 `html.dark` 会把 `--el-color-primary` 重置成默认蓝 `#409EFF`，品牌靛蓝被顶掉；同时多处把 `--text-primary`（暗色下近白）当实心块底色、页面标题写死 `#0f172a`，实测白字压白块只有 1.05:1、标题 1.09:1 直接看不见。现在统一走 `--color-primary-solid` / `--bg-subtle` / `--text-*` 语义变量，暗色实测 `浅色块 0 / 低对比 0`。② 团队页的"在线人数"原来取成员总数，现在 `PresenceService` 按 WebSocket 会话算真实在线，新接口 `GET /api/teams/{id}/presence`，并给简单 broker 加了 10 秒心跳（否则关页面后在线数会虚高）。③ 收口 5 条 Low（在线人数 / 部署脚本确认 / 硬编码颜色 / 无外键改体检工具 / e2e 残留），新增两把尺子：`e2e/theme-audit.mjs` 量配色、`tools/integrity-check.sql` 量孤儿数据（它顺手扫出 BUG-104）。后端 167 项测试、e2e 5 套 47 条断言、`vue-tsc` 与 `npm run build` 全绿。
 >
 > **上一版本**：v2.19.6（2026-11-24）— 工作流节点能指定责任人了：节点上加了 `ownerUserId`（谁负责把工作项从这一步交给下一步），配了之后只有他或项目管理员能推进，界面被挡住时会点名"这一步由「张三」负责"；`GET /workflow/transitions` 每条转换新增 `fromOwnerName/allowed/reason`，前端据此决定给按钮还是给原因。项目管理员永远能推进是**故意留的逃生口**（责任人休假/离职不能卡死流程）。顺手记一笔自测教训：开发库里 admin/zhangsan/lisi 在 team_members 里的 role **全是 ROLE_ADMIN**，拿他们当"普通成员"测权限会测到管理员放行路径，e2e 改成现场注册纯成员账号。核心链路口径：5 套 43 条断言，后端 160 项。
@@ -59,6 +59,7 @@ Mimo is a lightweight Trello-like project management platform for small teams. I
 | **部署必须人工确认** | `deploy.ps1` 需输入 `y`，`-Force` 跳过 | 脚本会 scp 覆盖生产并重启服务 | CI 里要显式传 `-Force` |
 | **改字号必须配布局探针** | 抬字号后除了重扫对比度，还要查"是否被裁切"（`overflow:hidden` 且 `scrollHeight/scrollWidth` 超出）与页面横向溢出 | 只看"小字数量归零"会漏掉撑坏的容器；`opacity:0` 的按钮仍占布局宽度，比字号更值得修（BUG-116） | 探针要覆盖真实路由，路由兜底重定向会造成"这页没问题"的假象 |
 | **全局改字号要立刻全站重扫对比度** | 抬 `el-tag`/`mimo-nav-label` 字号到 12px 后，`theme-audit` 全站重扫揪出 4 条浮出水面的历史低对比（以前 <12px 小于阈值没被抓） | 体检阈值是按"<12px 记小字"——字号一旦跨过阈值，原本没被抓的低对比会突然全冒出来 | BUG-114 |
+| **访问判定只写一次** | 用 `ProjectAccessService` 的 `canAccessProject` / `canAccessTeam` / `canManageProject`，调用点只保留自己的错误文案 | 同一判断题在 11 个地方各写一遍，每次漏一个角色：管理员"能看不能动"、团队管理员看不到待验收、注释与代码矛盾（BUG-115 + BUG-117） | 团队聊天与建/删项目属于**故意**只给团队权限，别一刀切放宽；关键判定别用 mock 测 |
 | **读门槛与写门槛必须同源** | 写操作统一走 `ProjectAccessService.requireProject(...)`，与读完全一致 | 各服务自己写 `isTeamMember(...)` 会出现"能看进去、一动手就被拦"，系统管理员看别的团队时连写都进不去（BUG-115） | 新增服务不要自己判；已发现 10+ 处同款写法，逐步收敛 |
 | **前端只读后端给的 `adminScope`** | 管理范围由 `AccessControlService#resolveAdminScope` 判定，写进 `/api/user/profile` 与登录响应；前端只用它决定显示什么 | 前端看不到旧字段兜底（`team_members.role`）与其他迁移开关，自己算必然对不上后端（BUG-113） | 多一个字段要跟着判定改；新增权限来源时只改 `resolveAdminScope` 一处 |
 | **管理员视角是"范围"不是"特权"** | `GET /api/workbench/team` 的差别只在**看哪些团队**：系统管理员看全部、团队管理员看自己管理的、其他人明确拒绝 | "管理员能看所有人的任务"是工作要求，不是奖励；把范围写清楚，越权与偷窥才分得清 | 团队管理员看不到别的团队（哪怕他是那个团队的普通成员）；范围口径要与 `AccessControlService` 保持一致，改一处必须改另一处 |
@@ -329,7 +330,11 @@ All v2.15 AI roadmap items are implemented. Future work may replace the lexical 
   修复：判定收敛到 `AccessControlService#resolveAdminScope`（返回 `SYSTEM / TEAM / NONE`），
   通过 `/api/user/profile` 与登录响应的 `adminScope` 字段给前端，`store/user.ts` 暴露 `isManager / managerLabel`，
   工作台/顶栏/看板三处只读这个结论。
-- **BUG-116（Low）**：历史遗留的 106 处 <12px 小字（9–11.5px，26 个文件）一次性抬到 12px；
+- **BUG-117（High）**：BUG-115 的同族问题——全后端 11 处"自己实现的写门槛"口径不一致：
+  系统管理员进别人团队打不开迭代/团队页、团队管理员看不到待验收、知识库注释与代码矛盾、
+  删别人工时的反而不含系统管理员。收敛到 `ProjectAccessService` 三个判定方法
+  （`canAccessProject`/`canAccessTeam`/`canManageProject`），调用点保留各自文案。
+  测试从 3 条扩到 9 条，关键判定改用真实实现而非 mock；真库双向验证（管理员 200 / 外人 403）。- **BUG-116（Low）**：历史遗留的 106 处 <12px 小字（9–11.5px，26 个文件）一次性抬到 12px；
   用裁切探针逐页验证后，13 个真实路由 **小字 0 / 横向溢出 0**。抬字号顺带暴露一个更隐蔽的问题：
   团队详情「关联项目」的删除按钮 `opacity: 0` 但仍占 ~60px 宽度，把项目名挤到 46px ——
   改成悬停浮层后回到 83px。教训写进 bug-log：全局改字号必须配布局探针，且探测脚本要用真实路由。

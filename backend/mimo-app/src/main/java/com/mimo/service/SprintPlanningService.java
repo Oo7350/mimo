@@ -53,6 +53,7 @@ public class SprintPlanningService {
     private final SprintMapper sprintMapper;
     private final IssueMapper issueMapper;
     private final TeamService teamService;
+    private final ProjectAccessService projectAccessService;
     private final DeliveryAnalyticsService deliveryAnalyticsService;
     private final AiService aiService;
     private final ObjectMapper objectMapper;
@@ -389,7 +390,8 @@ public class SprintPlanningService {
     }
 
     private void assertMember(Project project, Long userId) {
-        if (!teamService.isTeamMember(project.getTeamId(), userId)) {
+        // 口径与"看"一致：系统管理员 / 团队成员 / 团队管理员都能规划（BUG-117）
+        if (!projectAccessService.canAccessProject(project.getId(), userId)) {
             throw new BusinessException(ResultCode.FORBIDDEN, "无权规划该项目的 Sprint");
         }
     }

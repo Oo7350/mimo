@@ -6,6 +6,7 @@ import com.mimo.common.ResultCode;
 import com.mimo.common.AuditLog;
 import com.mimo.dto.TeamDTO.*;
 import com.mimo.dto.TeamPresenceVO;
+import com.mimo.service.ProjectAccessService;
 import com.mimo.service.TeamService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
@@ -20,6 +21,7 @@ import java.util.List;
 public class TeamController {
 
     private final TeamService teamService;
+    private final ProjectAccessService projectAccessService;
 
     @PostMapping
     @AuditLog(targetType = "'TEAM'", action = "'CREATE'", detail = "'创建团队: ' + #request.name")
@@ -145,8 +147,8 @@ public class TeamController {
     }
 
     private void assertCanReadTeam(Long teamId, Long userId) {
-        if (!teamService.isTeamMember(teamId, userId)
-                && !teamService.isTeamAdmin(teamId, userId)) {
+        // 以前漏了系统管理员：管理员进别人的团队会 403，但项目/看板却进得去（BUG-117）
+        if (!projectAccessService.canAccessTeam(teamId, userId)) {
             throw new BusinessException(ResultCode.FORBIDDEN, "无权查看该团队");
         }
     }

@@ -102,7 +102,8 @@ public class IssueReviewService {
             Issue issue = issueMapper.selectById(review.getIssueId());
             if (issue == null || Objects.equals(review.getSubmitterId(), userId)) continue;
             Project project = projectMapper.selectById(issue.getProjectId());
-            if (project == null || !teamService.isTeamMember(project.getTeamId(), userId)) continue;
+            // 用同一把尺子：不这么写会把"不在成员表里、但确实是团队管理员"的人挡在待验收之外（BUG-117）
+            if (project == null || !projectAccessService.canAccessProject(project.getId(), userId)) continue;
             if (isAdmin(issue, userId) || Objects.equals(issue.getReporterId(), userId)) {
                 result.add(toVO(review));
             }

@@ -88,7 +88,8 @@ public class BoardController {
     private void assertTeamMemberByProject(Long projectId, Long userId) {
         Project project = projectMapper.selectById(projectId);
         if (project == null) throw new BusinessException(ResultCode.PROJECT_NOT_FOUND);
-        if (!teamService.isTeamMember(project.getTeamId(), userId)) {
+        // 口径与"看"一致：系统管理员 / 团队成员 / 团队管理员都能操作（BUG-117）
+        if (!projectAccessService.canAccessProject(project.getId(), userId)) {
             throw new BusinessException(ResultCode.FORBIDDEN, "无权操作此看板");
         }
     }

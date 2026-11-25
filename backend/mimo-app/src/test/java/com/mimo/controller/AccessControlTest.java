@@ -40,6 +40,14 @@ class AccessControlTest {
     @Mock
     private ProjectAccessService projectAccessService;
     @Mock
+    private com.mimo.mapper.UserMapper userMapper;
+    @Mock
+    private com.mimo.mapper.IssueMapper issueMapper;
+    @Mock
+    private com.mimo.service.RoleService roleService;
+    @Mock
+    private com.mimo.mapper.TeamMemberMapper teamMemberMapper;
+    @Mock
     private EmailSendLogMapper emailSendLogMapper;
     @Mock
     private WebhookConfigMapper webhookConfigMapper;
@@ -58,8 +66,8 @@ class AccessControlTest {
         when(teamService.isTeamMember(2L, 9L)).thenReturn(false);
         when(teamService.isTeamAdmin(2L, 9L)).thenReturn(false);
 
-        SprintController controller = new SprintController(
-                sprintService, sprintHealthService, sprintMapper, projectMapper, teamService);
+        SprintController controller = new SprintController(sprintService, sprintHealthService,
+                sprintMapper, projectMapper, teamService, access());
 
         assertThatThrownBy(() -> controller.listByProject(1L, authentication))
                 .isInstanceOf(BusinessException.class)
@@ -75,10 +83,16 @@ class AccessControlTest {
         when(teamService.isTeamAdmin(2L, 9L)).thenReturn(true);
         when(sprintService.listByProject(1L)).thenReturn(List.of());
 
-        SprintController controller = new SprintController(
-                sprintService, sprintHealthService, sprintMapper, projectMapper, teamService);
+        SprintController controller = new SprintController(sprintService, sprintHealthService,
+                sprintMapper, projectMapper, teamService, access());
 
         assertThat(controller.listByProject(1L, authentication).getCode()).isEqualTo(200);
+    }
+
+    /** 真实的口径实现：越权规则在 ProjectAccessService 里，不是这里的 mock */
+    private ProjectAccessService access() {
+        return new ProjectAccessService(projectMapper, issueMapper, userMapper, teamService,
+                new com.mimo.service.AccessControlService(roleService, userMapper, teamMemberMapper));
     }
 
     @Test
@@ -87,7 +101,7 @@ class AccessControlTest {
         when(teamService.isTeamMember(2L, 9L)).thenReturn(false);
         when(teamService.isTeamAdmin(2L, 9L)).thenReturn(false);
 
-        TeamController controller = new TeamController(teamService);
+        TeamController controller = new TeamController(teamService, access());
 
         assertThatThrownBy(() -> controller.getById(2L, authentication))
                 .isInstanceOf(BusinessException.class)

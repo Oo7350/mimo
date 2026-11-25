@@ -187,6 +187,41 @@
   比 12px 字号更值得修；③ 探测脚本要覆盖**真实路由**（`/projects/1/sprints` 而不是 `/sprints`），
   否则路由兜底重定向会让你误判"这个页面没问题"（我第一次就踩了，四个页面全部量成同一个页面）。
 - **回归**: 13 页小字 0；`theme-audit` 亮暗 0 低对比 / 0 浅色块；e2e 7 套 66 条全绿。
+### BUG-117: 十几处"自己实现的写门槛"口径不一致——管理员进别人的团队能看不能动 [High]
+
+- **文件**: `ProjectAccessService`（新增 3 个判定方法）+ 9 个 Controller/Service：
+  `BoardController`、`IssueController`、`IssueGovernanceController`、`RagController`、
+  `DeliveryAnalyticsController`、`WorkflowController`、`SprintController`、`TeamController`、
+  `SprintPlanningService`、`WikiService`、`WorkLogService`（4 处）、`IssueReviewService`
+- **现象**（BUG-115 的同族问题，这次是系统性排查出来的）:
+  1. **系统管理员进别人团队 = 403**：`SprintController`、`TeamController` 的判断是
+     "团队成员 **或** 团队管理员"，漏了系统管理员 —— 而项目/看板接口是放行的，于是
+     "能进项目，打不开迭代、看不到团队页"。
+  2. **注释和代码直接矛盾**：`WikiService.requireMember` 注释写"含系统/团队管理员"，
+     代码只放行了系统管理员，团队管理员进不去知识库。
+  3. **团队管理员看不到待验收**：`IssueReviewService.pendingReviews` 先用
+     `isTeamMember` 过滤，不在成员表里的团队管理员直接被 `continue` 掉。
+  4. **删别人的工时**只有"创建人或团队管理员"，系统管理员反而删不掉。
+- **根因**: 同一个判断题（"这人能不能动这个项目"）被 11 个地方各写一遍，
+  每次漏一个角色。BUG-115 修了两个，这次把剩下的全部收敛。
+- **修复**: `ProjectAccessService` 增加三个**判定用**（不抛异常）方法，成为唯一口径：
+  | 方法 | 口径 | 用在哪 |
+  |------|------|--------|
+  | `canAccessProject(projectId, userId)` | 系统管理员 / 团队成员 / 团队管理员 | 看板、任务、工作项治理、知识库、交付分析、工作流、迭代规划、工时 |
+  | `canAccessTeam(teamId, userId)` | 同上，按团队 | 团队详情 |
+  | `canManageProject(projectId, userId)` | 系统管理员 / 项目负责人 / 团队管理员 | 删除别人的工时等"管理层"动作 |
+  各调用点保留自己的错误文案（"无权操作此看板"…），只把判定换掉。
+- **刻意不动**: 团队聊天（`ChatController`，成员私聊不该被管理员随便翻）、
+  建/改/删项目与团队加入审批（`ProjectController`/`ApprovalController`，本来就该是团队管理员）。
+- **回归**: `ProjectAccessServiceTest` 由 3 条扩到 **9 条**（系统管理员不在团队里、团队管理员不在成员表里、
+  外人、项目不存在、团队读、项目管理层）；`WikiServiceTest`/`SprintPlanningServiceTest`/`AccessControlTest`
+  改成注入**真实**的 `ProjectAccessService`，避免"测的是 mock 不是规则"。后端 **187 项**全绿。
+- **现场双向验证**（真库）：临时建团队 39 + 项目 43，把 admin 从 `team_members` 删掉后
+  以系统管理员身份请求 5 个接口全部 `200`；同一批接口换外人账号全部 `403`。
+  验证数据与迁移文件 `e2e/cleanup-bug117.sql` 已清理（projects/teams/columns/workflows/wiki 全 0）。
+- **教训**: ①"能看不能动"和"能动看不到"是一对，只修一边必翻车 —— 收敛到**唯一入口**才根治；
+  ②注释不是契约，"注释说含团队管理员"这种地方最该当成缺陷线索；
+  ③单测里如果注入的是 mock，测的是调用形状，不是规则本身；关键判定要用真实实现。
 ### 工具补丁：`theme-audit.mjs` 对"两层叠放"控件的测量盲区（非 BUG）
 
 新加的「我的 / 全员」滑动开关，选中项的白字压在**兄弟节点**（滑动指示块）的靛蓝底色上。
@@ -2440,12 +2475,12 @@
 | 严重程度 | 数量 |
 |---------|------|
 | Critical | 6 |
-| High | 47 |
+| High | 48 |
 | Medium | 41 |
 | Low | 22 |
-| **已修复（BUG 条目）** | **116** |
+| **已修复（BUG 条目）** | **117** |
 | **已知未修复（KNOWN 条目）** | **3** |
-| **总计** | **119** |
+| **总计** | **120** |
 
 | 版本段 | BUG 条数 |
 |--------|---------|

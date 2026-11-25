@@ -24,6 +24,7 @@ public class WorkLogService {
     private final SprintMapper sprintMapper;
     private final ProjectMapper projectMapper;
     private final TeamService teamService;
+    private final ProjectAccessService projectAccessService;
     private final UserMapper userMapper;
 
     /** 创建工时记录 */
@@ -33,7 +34,8 @@ public class WorkLogService {
         if (issue == null) throw new BusinessException(ResultCode.ISSUE_NOT_FOUND);
 
         Project project = projectMapper.selectById(issue.getProjectId());
-        if (project == null || !teamService.isTeamMember(project.getTeamId(), userId)) {
+        // 口径与"看"一致：系统管理员 / 团队成员 / 团队管理员都能记工时（BUG-117）
+        if (project == null || !projectAccessService.canAccessProject(project.getId(), userId)) {
             throw new BusinessException(ResultCode.FORBIDDEN, "无权操作");
         }
 
@@ -58,9 +60,9 @@ public class WorkLogService {
     public List<WorkLogVO> listByIssue(Long issueId, Long currentUserId) {
         Issue issue = issueMapper.selectById(issueId);
         if (issue == null) throw new BusinessException(ResultCode.ISSUE_NOT_FOUND);
-        // 权限校验：项目成员可查看
+        // 权限校验：能访问该项目的人可查看（含管理员，BUG-117）
         Project project = projectMapper.selectById(issue.getProjectId());
-        if (project == null || !teamService.isTeamMember(project.getTeamId(), currentUserId)) {
+        if (project == null || !projectAccessService.canAccessProject(project.getId(), currentUserId)) {
             throw new BusinessException(ResultCode.FORBIDDEN, "无权查看");
         }
         List<WorkLog> logs = workLogMapper.selectList(
@@ -81,11 +83,11 @@ public class WorkLogService {
         WorkLog log = workLogMapper.selectById(workLogId);
         if (log == null) throw new BusinessException(ResultCode.BAD_REQUEST, "工时记录不存在");
         if (!log.getUserId().equals(currentUserId)) {
-            // 非创建人：检查是否团队 admin
+            // 非创建人：检查是否项目管理层（系统管理员 / 项目负责人 / 团队管理员，BUG-117）
             Issue issue = issueMapper.selectById(log.getIssueId());
             Project project = issue != null ? projectMapper.selectById(issue.getProjectId()) : null;
-            if (project == null || !teamService.isTeamAdmin(project.getTeamId(), currentUserId)) {
-                throw new BusinessException(ResultCode.FORBIDDEN, "仅创建人或团队管理员可删除");
+            if (project == null || !projectAccessService.canManageProject(project.getId(), currentUserId)) {
+                throw new BusinessException(ResultCode.FORBIDDEN, "仅创建人或管理员可删除");
             }
         }
         workLogMapper.deleteById(workLogId);
@@ -107,7 +109,8 @@ public class WorkLogService {
         Sprint sprint = sprintMapper.selectById(sprintId);
         if (sprint == null) throw new BusinessException(ResultCode.SPRINT_NOT_FOUND);
         Project project = projectMapper.selectById(sprint.getProjectId());
-        if (project == null || !teamService.isTeamMember(project.getTeamId(), currentUserId)) {
+        // 口径与"看"一致（含管理员，BUG-117）
+        if (project == null || !projectAccessService.canAccessProject(project.getId(), currentUserId)) {
             throw new BusinessException(ResultCode.FORBIDDEN, "无权查看");
         }
 
