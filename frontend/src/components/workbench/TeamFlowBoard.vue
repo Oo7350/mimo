@@ -24,7 +24,41 @@
       </div>
     </div>
 
-    <!-- 工具条：搜索 + 筛选 + 排序 -->
+    <!-- 近 7 天趋势：柱高按当周最大值归一，今天标出来；口径写在脚注里，不藏在图表背后 -->
+    <section v-if="trend.length" class="team-flow__trend" data-testid="team-flow-trend">
+      <header class="team-flow__trend-hd">
+        <span class="team-flow__trend-title">近 7 天</span>
+        <span class="team-flow__trend-legend">
+          <span class="team-flow__legend-dot team-flow__legend-dot--created" />新建
+          <span class="team-flow__legend-dot team-flow__legend-dot--done" />完成
+        </span>
+      </header>
+      <div class="team-flow__trend-bars">
+        <div
+          v-for="(point, index) in trend"
+          :key="point.date"
+          class="team-flow__trend-col"
+          :class="{ 'is-today': index === trend.length - 1 }"
+          :title="`${point.date}：新建 ${point.created}，完成 ${point.done}`"
+        >
+          <div class="team-flow__trend-bars-wrap">
+            <span
+              class="team-flow__trend-bar team-flow__trend-bar--created"
+              :style="{ height: barHeight(point.created) }"
+            />
+            <span
+              class="team-flow__trend-bar team-flow__trend-bar--done"
+              :style="{ height: barHeight(point.done) }"
+            />
+          </div>
+          <span class="team-flow__trend-day">{{ shortDay(point.date, index) }}</span>
+          <span class="team-flow__trend-count">{{ point.created }}/{{ point.done }}</span>
+        </div>
+      </div>
+      <p class="team-flow__trend-note">{{ data?.trendNote }}</p>
+    </section>
+
+    <!-- 工具条：搜索 + 筛选 + 排序（全部走服务端，见 query 说明） -->
     <div class="team-flow__toolbar">
       <el-input
         v-model="keyword"
@@ -41,14 +75,13 @@
         <button
           v-for="option in filterOptions"
           :key="option.value"
-          :class="['team-flow__chip', { 'is-active': riskFilter === option.value }]"
-          @click="riskFilter = option.value"
+          :class="['team-flow__chip', { 'is-active': query.only === option.value }]"
+          @click="setOnly(option.value)"
         >
           {{ option.label }}
-          <span v-if="option.count !== undefined" class="team-flow__chip-count">{{ option.count }}</span>
         </button>
       </div>
-      <el-radio-group v-model="sortMode" size="small" class="team-flow__sort">
+      <el-radio-group :model-value="query.sort" size="small" class="team-flow__sort" @change="setSort">
         <el-radio-button value="load">按负载</el-radio-button>
         <el-radio-button value="name">按姓名</el-radio-button>
         <el-radio-button value="overdue">按逾期</el-radio-button>
@@ -161,6 +194,15 @@
             <el-icon class="flow-task__arrow"><ArrowRight /></el-icon>
           </button>
         </TransitionGroup>
+
+        <!-- 被 taskLimit 截断时把差额说出来：卡片只给了 N 张，别让人以为他就这么点活 -->
+        <button
+          v-if="member.taskTotal > member.tasks.length"
+          class="member-stream__more"
+          @click="emit('expand-member', member)"
+        >
+          还有 {{ member.taskTotal - member.tasks.length }} 项没显示（共 {{ member.taskTotal }} 项）· 点击展开
+        </button>
       </article>
     </div>
 
@@ -169,30 +211,67 @@
       :description="emptyText"
       :image-size="64"
     />
+
+    <!-- 分页：成员多时一页只看 8 个人，页码文案写清"筛出 N / 共 M" -->
+    <footer v-if="data && data.memberTotalAll > 0" class="team-flow__pager" data-testid="team-flow-pager">
+      <span class="team-flow__pager-info">
+        第 {{ data.memberPage }}/{{ data.memberPageCount }} 页 · 共 {{ data.memberTotal }} 人
+        <template v-if="data.memberTotal !== data.memberTotalAll">
+          （全队 {{ data.memberTotalAll }} 人，已按条件筛选）
+        </template>
+      </span>
+      <div class="team-flow__pager-btns">
+        <el-button
+          size="small"
+          :disabled="data.memberPage <= 1"
+          data-testid="team-flow-prev"
+          @click="goPage(data.memberPage - 1)"
+        >
+          上一页
+        </el-button>
+        <el-button
+          size="small"
+          :disabled="data.memberPage >= data.memberPageCount"
+          data-testid="team-flow-next"
+          @click="goPage(data.memberPage + 1)"
+        >
+          下一页
+        </el-button>
+      </div>
+    </footer>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { ArrowRight, Search, WarningFilled } from '@element-plus/icons-vue'
 import AdminBadge from '@/components/common/AdminBadge.vue'
 import { avatarGradient } from '@/utils/color'
-import type { MemberLoadLevel, MemberStream, TeamWorkbenchData, WorkbenchTask } from '@/types/workbench'
+import type {
+  MemberLoadLevel,
+  MemberStream,
+  TeamWorkbenchData,
+  TeamWorkbenchQuery,
+  WorkbenchTask,
+} from '@/types/workbench'
 
 const props = defineProps<{
   data: TeamWorkbenchData | null
+  /** 当前查询条件由父组件持有（它是发请求的人），这里只负责显示与触发变更 */
+  query: TeamWorkbenchQuery
 }>()
 
 const emit = defineEmits<{
   (event: 'open-task', task: { id: number; projectId: number } & Partial<WorkbenchTask>, ownerName: string): void
+  (event: 'query-change', patch: TeamWorkbenchQuery): void
+  (event: 'expand-member', member: MemberStream): void
 }>()
 
-const keyword = ref('')
-const riskFilter = ref<'all' | 'overdue' | 'doing' | 'idle'>('all')
-const sortMode = ref<'load' | 'name' | 'overdue'>('load')
+const keyword = ref(props.query.keyword || '')
 
 const summary = computed(() => props.data?.summary)
 const members = computed(() => props.data?.members || [])
+const trend = computed(() => props.data?.trend || [])
 
 const summaryItems = computed(() => [
   { key: 'members', label: '成员', value: summary.value?.memberCount ?? 0, tone: 'neutral' },
@@ -209,77 +288,76 @@ function isOverdue(task: { dueDate?: string; riskLevel?: string }) {
   return task.dueDate < new Date().toISOString().slice(0, 10)
 }
 
-const filterOptions = computed(() => [
-  { label: '全部', value: 'all' as const, count: members.value.length },
-  {
-    label: '有逾期',
-    value: 'overdue' as const,
-    count: members.value.filter((member) => member.overdueTaskCount > 0).length,
-  },
-  {
-    label: '进行中',
-    value: 'doing' as const,
-    count: members.value.filter((member) => member.inProgressCount > 0).length,
-  },
-  {
-    label: '空闲',
-    value: 'idle' as const,
-    count: members.value.filter((member) => member.openCount === 0).length,
-  },
-])
+/**
+ * 筛选按钮不再显示条数：条数必须由"全队"算，而这一页只有 8 个人。
+ * 之前在前端算，会出现"有逾期 3"点进去只看到 1 个人——数字是假的。
+ * 现在数字由后端在"筛选后总数"里给（分页文案里那句"共 N 人"）。
+ */
+const filterOptions = [
+  { label: '全部', value: 'all' as const },
+  { label: '有逾期', value: 'overdue' as const },
+  { label: '进行中', value: 'doing' as const },
+  { label: '空闲', value: 'idle' as const },
+]
 
-const matchedMembers = computed(() => {
-  const text = keyword.value.trim().toLowerCase()
-  let list = members.value
-  if (riskFilter.value === 'overdue') list = list.filter((member) => member.overdueTaskCount > 0)
-  else if (riskFilter.value === 'doing') list = list.filter((member) => member.inProgressCount > 0)
-  else if (riskFilter.value === 'idle') list = list.filter((member) => member.openCount === 0)
-  if (text) {
-    list = list.filter(
-      (member) =>
-        member.username.toLowerCase().includes(text) ||
-        member.tasks.some((task) => task.title.toLowerCase().includes(text)),
-    )
-  }
-  return [...list]
+/** 排序与筛选都已在服务端完成，这里直接用后端的顺序 */
+const visibleMembers = computed(() => members.value)
+
+/** 搜索防抖：每敲一个字都打一次接口没必要，也容易乱序返回 */
+let keywordTimer: ReturnType<typeof setTimeout> | null = null
+watch(keyword, (value) => {
+  if (keywordTimer) clearTimeout(keywordTimer)
+  keywordTimer = setTimeout(() => {
+    emit('query-change', { keyword: value.trim(), page: 1 })
+  }, 320)
 })
 
-const maxOpen = computed(() => Math.max(1, ...members.value.map((member) => member.openCount || 0)))
+function setOnly(value: TeamWorkbenchQuery['only']) {
+  emit('query-change', { only: value, page: 1 })
+}
 
-const visibleMembers = computed(() => {
-  const list = matchedMembers.value
-  if (sortMode.value === 'name') {
-    return [...list].sort((left, right) => left.username.localeCompare(right.username, 'zh-Hans-CN'))
-  }
-  if (sortMode.value === 'overdue') {
-    return [...list].sort((left, right) => right.overdueTaskCount - left.overdueTaskCount)
-  }
-  return [...list].sort((left, right) => right.openCount - left.openCount)
-})
+function setSort(value: string | number | boolean | undefined) {
+  emit('query-change', { sort: (value as TeamWorkbenchQuery['sort']) || 'load', page: 1 })
+}
 
-const unassignedVisible = computed(() => {
-  const list = props.data?.summary?.unassignedTasks || []
-  const text = keyword.value.trim().toLowerCase()
-  if (!text) return list
-  return list.filter(
-    (task) => task.title.toLowerCase().includes(text) || (task.issueKey || '').toLowerCase().includes(text),
-  )
-})
+function goPage(page: number) {
+  emit('query-change', { page })
+}
+
+/** 趋势柱高：按当周最大值归一，免得"新建 2 / 完成 1"被拉成满格看不出来 */
+const trendMax = computed(() => Math.max(1, ...trend.value.flatMap((point) => [point.created, point.done])))
+
+function barHeight(value: number) {
+  if (!value) return '2px'
+  return `${Math.max(8, Math.round((value / trendMax.value) * 100))}%`
+}
+
+/** 柱下标只写"日"，今天写"今天"，避免 7 个 11-2x 挤成一排看不清 */
+function shortDay(date: string, index: number) {
+  if (index === trend.value.length - 1) return '今天'
+  return date.slice(5)
+}
+
+const unassignedVisible = computed(() => props.data?.summary?.unassignedTasks || [])
 
 const emptyText = computed(() => {
-  if (!members.value.length) return '这个范围内还没有团队成员'
-  if (keyword.value.trim()) return `没有匹配「${keyword.value.trim()}」的成员或任务`
-  if (riskFilter.value === 'overdue') return '当前没有成员手上有逾期任务'
-  if (riskFilter.value === 'doing') return '当前没有成员有进行中的任务'
-  if (riskFilter.value === 'idle') return '没有人是空闲的，全员都有活'
+  if (!members.value.length && !props.data?.memberTotalAll) return '这个范围内还没有团队成员'
+  if (props.query.keyword) return `没有匹配「${props.query.keyword}」的成员或任务`
+  if (props.query.only === 'overdue') return '当前没有成员手上有逾期任务'
+  if (props.query.only === 'doing') return '当前没有成员有进行中的任务'
+  if (props.query.only === 'idle') return '没有人是空闲的，全员都有活'
   return '暂无数据'
 })
 
 function loadWidth(member: MemberStream) {
+  // 负载条是"本页内相对最忙的人"——跨页比较反而会让人以为翻页后同一个人变轻松了，
+  // 所以这里只在本页取值，页内可比就够了
   const ratio = (member.openCount || 0) / maxOpen.value
   // 最少给 6%，否则 1 项和 0 项在视觉上一样，"有一点活"就看不出来了
   return Math.max(6, Math.round(ratio * 100))
 }
+
+const maxOpen = computed(() => Math.max(1, ...members.value.map((member) => member.openCount || 0)))
 
 function loadLabel(level: MemberLoadLevel) {
   return {
@@ -344,6 +422,134 @@ function typeLetter(type: string) {
     align-items: center;
     gap: 10px;
     flex-wrap: wrap;
+  }
+
+  /* 近 7 天趋势：两色细柱 + 日期，柱高按当周最大值归一 */
+  &__trend {
+    padding: 10px 12px 8px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    background: var(--bg-subtle);
+  }
+
+  &__trend-hd {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+
+  &__trend-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  &__trend-legend {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  &__legend-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    display: inline-block;
+
+    &--created {
+      background: var(--color-primary-solid);
+    }
+
+    &--done {
+      background: #12b76a;
+      margin-left: 8px;
+    }
+  }
+
+  &__trend-bars {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 6px;
+    align-items: end;
+  }
+
+  &__trend-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+
+    &.is-today &__trend-day {
+      /* 文字色别用 --color-primary-solid：它是给"实心底色"用的，暗色下压在卡片上只有 2.8:1 */
+      color: var(--color-primary);
+      font-weight: 700;
+    }
+  }
+
+  &__trend-bars-wrap {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 42px;
+    width: 100%;
+    justify-content: center;
+  }
+
+  &__trend-bar {
+    width: 9px;
+    border-radius: 3px 3px 1px 1px;
+    transition: height 0.35s ease;
+
+    &--created {
+      background: var(--color-primary-solid);
+      opacity: 0.85;
+    }
+
+    &--done {
+      background: #12b76a;
+    }
+  }
+
+  &__trend-day {
+    font-size: 12px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+  }
+
+  &__trend-count {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  &__trend-note {
+    margin: 6px 0 0;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+  }
+
+  /* 分页：把"筛出几人 / 全队几人"写清楚，别让人以为团队只剩这么多人 */
+  &__pager {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding-top: 4px;
+  }
+
+  &__pager-info {
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  &__pager-btns {
+    display: inline-flex;
+    gap: 8px;
   }
 
   &__search {
@@ -642,6 +848,31 @@ function typeLetter(type: string) {
     max-height: 420px;
     overflow-y: auto;
     padding-right: 2px;
+  }
+
+  /* "还有 N 项没显示"：说明卡片被截断了，点一下能展开（上限由后端定） */
+  &__more {
+    margin-top: 6px;
+    padding: 5px 8px;
+    width: 100%;
+    font-size: 12px;
+    /* 文字用随主题提亮的 --color-primary；--color-primary-solid 只留给实心底色 */
+    color: var(--color-primary);
+    background: transparent;
+    border: 1px dashed var(--border-color);
+    border-radius: 7px;
+    cursor: pointer;
+    transition: background 0.18s ease, border-color 0.18s ease;
+
+    &:hover {
+      background: var(--bg-subtle);
+      border-color: var(--color-primary);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--color-primary);
+      outline-offset: 2px;
+    }
   }
 }
 

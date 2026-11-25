@@ -93,8 +93,31 @@ public class WorkbenchDTO {
         private List<Long> teamIds;
         private List<String> teamNames;
         private TeamWorkbenchSummaryVO summary;
-        /** 按"待办数降序 + 逾期优先"排好序的成员流 */
+        /** 当前页的成员流（按"逾期降序 + 待办降序"排序后切页） */
         private List<MemberStreamVO> members;
+        /** 成员总数（筛选后的，不是当前页人数） */
+        private Integer memberTotal;
+        /** 不筛选时的成员总数（前端用来写"筛出 3 / 共 12 人"） */
+        private Integer memberTotalAll;
+        /** 当前页码，从 1 开始 */
+        private Integer memberPage;
+        private Integer memberPageSize;
+        /** 总页数；没有成员时也给 1，避免前端显示"第 1/0 页" */
+        private Integer memberPageCount;
+        /** 每个成员最多带回几条任务；超出部分只给计数（见 MemberStreamVO.taskTotal） */
+        private Integer taskLimit;
+        /** 近 7 天每天的新建 / 完成数（含今天，按日期升序） */
+        private List<TrendPointVO> trend;
+        /** 趋势口径说明，直接展示给用户 —— 图表背后不该藏着没人知道的口径 */
+        private String trendNote;
+    }
+
+    @Data
+    public static class TrendPointVO {
+        /** 日期 yyyy-MM-dd */
+        private String date;
+        private Integer created;
+        private Integer done;
     }
 
     @Data
@@ -141,8 +164,10 @@ public class WorkbenchDTO {
         private Integer inProgressCount;
         private Integer overdueTaskCount;
         private Integer doneCount;
-        /** 未完成任务，按 逾期 → 到期日 → 优先级 排好序 */
+        /** 未完成任务，按 逾期 → 到期日 → 优先级 排好序；条数受 taskLimit 限制 */
         private List<WorkbenchTaskVO> tasks;
+        /** 这个人一共有几条未完成任务（不管有没有被 taskLimit 截断） */
+        private Integer taskTotal;
         /** 负载标签：OVERLOADED / BUSY / NORMAL / IDLE，前端据此上色 */
         private String loadLevel;
         /** 一句话解释负载怎么算出来的，避免界面给个标签却不说依据 */

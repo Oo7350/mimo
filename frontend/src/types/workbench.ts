@@ -97,6 +97,8 @@ export interface MemberStream {
   overdueTaskCount: number
   doneCount: number
   tasks: WorkbenchTask[]
+  /** 这个人一共有几条未完成任务（tasks 可能被 taskLimit 截断） */
+  taskTotal: number
   loadLevel: MemberLoadLevel
   loadReason: string
 }
@@ -130,5 +132,35 @@ export interface TeamWorkbenchData {
   teamIds: number[]
   teamNames: string[]
   summary: TeamWorkbenchSummary
+  /** 当前页的成员流（筛选、排序、分页都在后端做） */
   members: MemberStream[]
+  /** 筛完之后的成员总数 */
+  memberTotal: number
+  /** 不筛选时的成员总数（用来说明"筛出 3 / 共 12"） */
+  memberTotalAll: number
+  memberPage: number
+  memberPageSize: number
+  memberPageCount: number
+  /** 每个成员最多带回几条任务 */
+  taskLimit: number
+  trend: TrendPoint[]
+  /** 趋势口径说明，直接显示给用户 */
+  trendNote: string
+}
+
+/** 近 7 天的新建 / 完成 */
+export interface TrendPoint {
+  date: string
+  created: number
+  done: number
+}
+
+/** 全员任务流的查询条件（筛选/排序/分页都走服务端，否则"筛选"只筛当前页会骗人） */
+export interface TeamWorkbenchQuery {
+  page?: number
+  pageSize?: number
+  keyword?: string
+  only?: 'all' | 'overdue' | 'doing' | 'idle'
+  sort?: 'load' | 'name' | 'overdue'
+  taskLimit?: number
 }

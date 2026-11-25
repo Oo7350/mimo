@@ -4,7 +4,7 @@
  * 背景：管理员账号以前和普通账号长得一模一样，谁也看不出"这个号能看全员"；
  * 而"我的任务"只显示分配给自己的，管理员想知道**每个人手上有什么**只能一个个问。
  *
- * 断言（8 条）：
+ * 断言（26 条，含 v2.20.1 的分页/筛选/趋势 6 条）：
  *   1. 管理员的顶栏有身份徽标（普通成员没有）
  *   2. 工作台有「我的 / 全员」切换，普通成员看不到
  *   3. 切到全员后，成员列数量 = 团队成员数
@@ -114,6 +114,70 @@ check(
     Number(String(stats.find((s) => s.label === "空闲成员")?.value)) ===
       apiData.summary.memberCount - apiData.summary.busyMemberCount,
   `未完成 ${statOf("未完成")}/${apiData.summary.openTaskCount}，逾期 ${statOf("逾期")}/${apiData.summary.overdueTaskCount}`,
+);
+
+// ==================== 分页 / 筛选 / 趋势（v2.20.1）====================
+// 这一组验的是"分页不是视觉效果"：接口按 pageSize 真的回了更少的人，
+// 筛选在服务端算（不然"筛出 N 人"只数了当前页），趋势来自真实事件而不是编的。
+const fetchTeam = (query) =>
+  adminPage.evaluate(
+    async ({ t, q }) => {
+      const res = await fetch(`/api/workbench/team${q}`, { headers: { Authorization: `Bearer ${t}` } });
+      return (await res.json()).data;
+    },
+    { t: token, q: query },
+  );
+
+const paged1 = await fetchTeam("?memberPage=1&pageSize=1&taskLimit=2");
+check(
+  "服务端分页真的切了数据（pageSize=1 只回 1 个人，但仍告诉你总数）",
+  paged1.members.length === 1 &&
+    paged1.memberTotal === apiData.memberTotal &&
+    paged1.memberPageCount === Math.max(1, apiData.memberTotal),
+  `本页 ${paged1.members.length} 人 / 共 ${paged1.memberTotal} 人 / ${paged1.memberPageCount} 页`,
+);
+
+const paged2 = await fetchTeam("?memberPage=2&pageSize=1");
+check(
+  "翻页拿到的是不同的人（不是同一页重发一遍）",
+  paged2.members.length === 1 && paged2.members[0].userId !== paged1.members[0].userId,
+  `${paged1.members[0]?.username} → ${paged2.members[0]?.username}`,
+);
+
+const capped = await fetchTeam("?taskLimit=2&pageSize=30");
+const cappedMember = capped.members.find((member) => member.taskTotal > member.tasks.length);
+check(
+  "每人任务按 taskLimit 截断，但计数没被截断（否则负载标签会说谎）",
+  cappedMember
+    ? cappedMember.tasks.length === 2 && cappedMember.openCount === cappedMember.taskTotal
+    : capped.members.every((member) => member.tasks.length === member.taskTotal),
+  cappedMember
+    ? `${cappedMember.username}: 下发 ${cappedMember.tasks.length} 条 / 实有 ${cappedMember.taskTotal} 条 / openCount ${cappedMember.openCount}`
+    : "本轮没有成员超过 2 项，退化为校验：下发数 = 实有数",
+);
+
+const idleOnly = await fetchTeam("?only=idle&pageSize=30");
+check(
+  "筛选在服务端生效（筛「空闲」后每个人 openCount 都是 0）",
+  idleOnly.members.every((member) => member.openCount === 0) &&
+    idleOnly.memberTotal === idleOnly.members.length &&
+    idleOnly.memberTotal <= idleOnly.memberTotalAll,
+  `筛出 ${idleOnly.memberTotal} 人 / 全队 ${idleOnly.memberTotalAll} 人`,
+);
+
+const trendCols = await adminPage.locator(".team-flow__trend-col").count();
+const trendNoteText = (await adminPage.locator(".team-flow__trend-note").innerText()).trim();
+check(
+  "近 7 天趋势有 7 根柱子，并把口径写在界面上",
+  trendCols === 7 && apiData.trend?.length === 7 && /活动日志/.test(trendNoteText),
+  `${trendCols} 根柱子；脚注「${trendNoteText.slice(0, 24)}…」`,
+);
+
+const pagerText = (await adminPage.locator('[data-testid="team-flow-pager"]').innerText()).replace(/\s+/g, " ");
+check(
+  "分页文案写清「第 x/y 页 · 共 N 人」，不让人以为团队只有一页的人",
+  pagerText.includes(`共 ${apiData.memberTotal} 人`),
+  pagerText,
 );
 
 // ==================== 详情抽屉 ====================
@@ -352,19 +416,45 @@ await toggleTheme(adminPage); // 还原亮色，避免影响后续用例
   let blockedHint = false;
   let reviewEnabled = false;
   if (usableStreams > 0) {
-    await streamsWithTasks.last().locator(".flow-task").first().click();
-    await adminPage.waitForSelector(".task-drawer__title", { timeout: 15000 });
-    await adminPage.getByRole("button", { name: /在项目里打开/ }).click();
-    await adminPage.waitForURL(/\/projects\/\d+\/board/, { timeout: 20000 });
-    await adminPage.waitForTimeout(2600);
+    // 不能随便点第一张卡：能不能"提交验收"取决于工作项状态。固定点"最后一列第一张"时，
+    // 那张卡可能已经验收过/已提交待审，按钮本来就不该出现 —— 用例会误判成权限问题。
+    // 这里按接口给的状态挑一张"本来就允许提交验收"的卡（进行中、非缺陷型）。
+    const candidates = apiData.members
+      .flatMap((member) => member.tasks.map((task) => ({ ...task, owner: member.username })))
+      .filter((task) => task.status === "IN_PROGRESS" && task.type !== "BUG");
+    const target = candidates.find((task) => task.projectId) || null;
 
-    const reviewBtn = adminPage.getByRole("button", { name: "提交验收" }).first();
-    hasReviewBtn = (await reviewBtn.count()) > 0;
-    blockedHint = await adminPage.evaluate(() => {
-      const text = document.body.textContent || "";
-      return /只有任务负责人（[^）]*）可以提交验收/.test(text);
-    });
-    reviewEnabled = hasReviewBtn && !(await reviewBtn.isDisabled().catch(() => true));
+    if (!target) {
+      check("能找到一张「进行中、非缺陷」的卡来验代提交", false, "接口里没有符合条件的任务，跳过点击");
+    } else {
+      await adminPage
+        .locator(".flow-task")
+        .filter({ hasText: target.issueKey })
+        .first()
+        .click();
+      await adminPage.waitForSelector(".task-drawer__title", { timeout: 15000 });
+      await adminPage.getByRole("button", { name: /在项目里打开/ }).click();
+      await adminPage.waitForURL(/\/projects\/\d+\/board/, { timeout: 20000 });
+      await adminPage.waitForTimeout(2600);
+
+      const reviewBtn = adminPage.getByRole("button", { name: "提交验收" }).first();
+      hasReviewBtn = (await reviewBtn.count()) > 0;
+      blockedHint = await adminPage.evaluate(() => {
+        const text = document.body.textContent || "";
+        return /只有任务负责人（[^）]*）可以提交验收/.test(text);
+      });
+      reviewEnabled = hasReviewBtn && !(await reviewBtn.isDisabled().catch(() => true));
+      if (!hasReviewBtn) {
+        // 失败时把现场说清楚：这块看板上到底有哪些按钮、弹窗开了没有
+        const buttons = await adminPage.evaluate(() =>
+          Array.from(document.querySelectorAll("button"))
+            .map((el) => (el.textContent || "").trim())
+            .filter((text) => text && text.length <= 12)
+            .slice(0, 18),
+        );
+        console.log(`  现场：${target.issueKey}（${target.owner}）状态=${target.status} 按钮=${buttons.join("/")}`);
+      }
+    }
   }
   check(
     "管理员在别人负责的任务上不被按成员门槛拦（提交验收可点、无「只有负责人」说明）",

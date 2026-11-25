@@ -1,11 +1,17 @@
 package com.mimo.service;
 
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
+import org.junit.jupiter.api.BeforeAll;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mimo.common.BusinessException;
 import com.mimo.dto.ProjectDTO.ProjectVO;
 import com.mimo.dto.WorkbenchDTO.MemberStreamVO;
 import com.mimo.dto.WorkbenchDTO.TeamWorkbenchVO;
 import com.mimo.dto.WorkbenchDTO.WorkbenchVO;
+import com.mimo.entity.ActivityLog;
+import com.mimo.entity.BoardColumn;
 import com.mimo.entity.Issue;
 import com.mimo.entity.Project;
 import com.mimo.entity.Sprint;
@@ -13,6 +19,8 @@ import com.mimo.entity.Team;
 import com.mimo.entity.TeamMember;
 import com.mimo.entity.User;
 import com.mimo.entity.WorkLog;
+import com.mimo.mapper.ActivityLogMapper;
+import com.mimo.mapper.BoardColumnMapper;
 import com.mimo.mapper.IssueChangeRequestMapper;
 import com.mimo.mapper.IssueMapper;
 import com.mimo.mapper.IssueReviewMapper;
@@ -42,6 +50,23 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class WorkbenchServiceTest {
 
+    /**
+     * LambdaQueryWrapper 生成条件时要用实体元数据（字段名 ↔ 列名）。
+     * 纯 Mockito 用例没有 MyBatis 上下文，得手动灌一次，否则抛
+     * "can not find lambda cache for this entity"（同 RoleServiceTest 的做法）。
+     */
+    @BeforeAll
+    static void initTableInfo() {
+        MapperBuilderAssistant assistant = new MapperBuilderAssistant(new MybatisConfiguration(), "");
+        TableInfoHelper.initTableInfo(assistant, Issue.class);
+        TableInfoHelper.initTableInfo(assistant, ActivityLog.class);
+        TableInfoHelper.initTableInfo(assistant, BoardColumn.class);
+    }
+
+    @Mock
+    private ActivityLogMapper activityLogMapper;
+    @Mock
+    private BoardColumnMapper boardColumnMapper;
     @Mock
     private IssueMapper issueMapper;
     @Mock
@@ -293,6 +318,150 @@ class WorkbenchServiceTest {
         assertThat(result.getTeamNames()).containsExactly("我管理的团队");
     }
 
+    // ==================== v2.20.1：筛选 / 排序 / 分页 / 趋势 ====================
+
+    @Test
+    void teamWorkbenchPaginatesAfterSortingSoFirstPageIsTheBusiest() {
+        // 5 个成员，每页 2 人：第 1 页必须是"最该管的两个人"，不是按 id 排的头两个
+        stubSystemAdminWithMembers(5);
+        Issue many = issue(900L, "TASK", "最忙的人的第一件事", "HIGH", LocalDate.now().minusDays(3), 100L, null);
+        many.setAssigneeId(10L);
+        Issue manyToo = issue(901L, "TASK", "最忙的人的第二件事", "LOW", LocalDate.now(), 100L, null);
+        manyToo.setAssigneeId(10L);
+        Issue some = issue(902L, "TASK", "第二忙的任务", "MEDIUM", LocalDate.now(), 100L, null);
+        some.setAssigneeId(11L);
+        when(issueMapper.selectList(any())).thenReturn(List.of(many, manyToo, some));
+
+        TeamWorkbenchVO page1 = service().getTeamWorkbench(1L, 1, 2, 6, null, "all", "load");
+
+        assertThat(page1.getMembers()).hasSize(2);
+        assertThat(page1.getMemberTotal()).isEqualTo(5);
+        assertThat(page1.getMemberTotalAll()).isEqualTo(5);
+        assertThat(page1.getMemberPageCount()).isEqualTo(3);
+        assertThat(page1.getMembers().get(0).getUserId()).isEqualTo(10L);
+        assertThat(page1.getMembers().get(0).getOpenCount()).isEqualTo(2);
+
+        TeamWorkbenchVO page3 = service().getTeamWorkbench(1L, 3, 2, 6, null, "all", "load");
+        assertThat(page3.getMembers()).hasSize(1);
+
+        // 页码超出上限时夹到最后一页，不返回空白页
+        TeamWorkbenchVO clamped = service().getTeamWorkbench(1L, 99, 2, 6, null, "all", "load");
+        assertThat(clamped.getMemberPage()).isEqualTo(3);
+        assertThat(clamped.getMembers()).hasSize(1);
+    }
+
+    @Test
+    void teamWorkbenchCapsTasksPerMemberButCountsStayedFull() {
+        // 抓过的坑：被截断的列表拿去算计数，负载标签就会说谎
+        stubSystemAdminWithMembers(1);
+        List<Issue> tasks = new java.util.ArrayList<>();
+        for (int i = 0; i < 8; i++) {
+            Issue issue = issue(800L + i, "TASK", "任务 " + i, "MEDIUM",
+                    LocalDate.now().plusDays(i), 100L, null);
+            issue.setAssigneeId(10L);
+            tasks.add(issue);
+        }
+        when(issueMapper.selectList(any())).thenReturn(tasks);
+
+        TeamWorkbenchVO result = service().getTeamWorkbench(1L, 1, 8, 3, null, "all", "load");
+
+        MemberStreamVO only = result.getMembers().get(0);
+        assertThat(only.getTasks()).hasSize(3);
+        assertThat(only.getTaskTotal()).isEqualTo(8);
+        assertThat(only.getOpenCount()).isEqualTo(8);
+        assertThat(result.getTaskLimit()).isEqualTo(3);
+    }
+
+    @Test
+    void teamWorkbenchFiltersAndSortsOnServer() {
+        stubSystemAdminWithMembers(3);
+        Issue overdue = issue(700L, "TASK", "逾期活", "HIGH", LocalDate.now().minusDays(2), 100L, null);
+        overdue.setAssigneeId(10L);
+        when(issueMapper.selectList(any())).thenReturn(List.of(overdue));
+
+        // 只有 10 号有逾期任务，11/12 号空着
+        TeamWorkbenchVO overdueOnly = service().getTeamWorkbench(1L, 1, 8, 6, null, "overdue", "overdue");
+        assertThat(overdueOnly.getMembers()).extracting(MemberStreamVO::getUserId).containsExactly(10L);
+        assertThat(overdueOnly.getMemberTotal()).isEqualTo(1);
+        assertThat(overdueOnly.getMemberTotalAll()).isEqualTo(3);
+
+        TeamWorkbenchVO idleOnly = service().getTeamWorkbench(1L, 1, 8, 6, null, "idle", "name");
+        assertThat(idleOnly.getMembers()).hasSize(2);
+        assertThat(idleOnly.getMemberTotal()).isEqualTo(2);
+
+        // 关键词按用户名匹配
+        TeamWorkbenchVO byName = service().getTeamWorkbench(1L, 1, 8, 6, "member11", "all", "name");
+        assertThat(byName.getMembers()).extracting(MemberStreamVO::getUsername).containsExactly("member11");
+
+        // 概览统计不受筛选影响：筛"空闲"不该让"未完成"跟着变成 0
+        assertThat(idleOnly.getSummary().getMemberCount()).isEqualTo(3);
+        assertThat(idleOnly.getSummary().getOpenTaskCount()).isEqualTo(1);
+    }
+
+    @Test
+    void teamWorkbenchTrendCountsOnlyRealMoveIntoTerminalColumn() {
+        // 趋势必须来自活动日志：新建 = CREATE，完成 = MOVE 且目标列是终态列。
+        // 用 updated_at 近似的话，"改个标题"会被算成完成。
+        stubSystemAdminWithMembers(1);
+        when(issueMapper.selectList(any())).thenReturn(List.of());
+        LocalDateTime now = LocalDateTime.now();
+        when(activityLogMapper.selectList(any())).thenReturn(List.of(
+                activityLog(100L, "CREATE", "创建了 MIMO-1", now),
+                activityLog(100L, "MOVE", "将 MIMO-1 从 待办 移动到 完成", now),
+                activityLog(100L, "MOVE", "将 MIMO-2 从 待办 移动到 进行中", now),
+                activityLog(100L, "UPDATE", "改了标题", now)));
+        // 项目的列一次取回：完成算终态，进行中不算（判定交给 BoardColumnRules，不靠 SQL 过滤）
+        BoardColumn done = new BoardColumn();
+        done.setProjectId(100L);
+        done.setName("完成");
+        BoardColumn doing = new BoardColumn();
+        doing.setProjectId(100L);
+        doing.setName("进行中");
+        when(boardColumnMapper.selectList(any())).thenReturn(List.of(done, doing));
+
+        TeamWorkbenchVO result = service().getTeamWorkbench(1L, 1, 8, 6, null, "all", "overdue");
+
+        assertThat(result.getTrend()).hasSize(7);
+        assertThat(result.getTrend().get(6).getDate()).isEqualTo(LocalDate.now().toString());
+        assertThat(result.getTrend().get(6).getCreated()).isEqualTo(1);
+        assertThat(result.getTrend().get(6).getDone()).isEqualTo(1);
+        assertThat(result.getTrendNote()).contains("活动日志");
+    }
+
+    @Test
+    void trendTargetColumnParsingIgnoresUnknownDetails() {
+        assertThat(WorkbenchService.targetColumnName("将 MIMO-1 从 待办 移动到 完成")).isEqualTo("完成");
+        assertThat(WorkbenchService.targetColumnName("将 MIMO-1 从 待办 移动到进行中")).isEqualTo("进行中");
+        assertThat(WorkbenchService.targetColumnName("随手改了个标题")).isNull();
+        assertThat(WorkbenchService.targetColumnName(null)).isNull();
+    }
+
+    private void stubSystemAdminWithMembers(int memberCount) {
+        when(accessControlService.isSystemAdmin(1L)).thenReturn(true);
+        when(teamMapper.selectList(any())).thenReturn(List.of(team(1L, "Mimo 团队")));
+        List<TeamMember> members = new java.util.ArrayList<>();
+        List<User> users = new java.util.ArrayList<>();
+        for (int i = 0; i < memberCount; i++) {
+            members.add(teamMember(1L, 10L + i, "ROLE_MEMBER"));
+            users.add(user(10L + i, "member1" + i, "ROLE_MEMBER"));
+        }
+        when(teamMemberMapper.selectList(any())).thenReturn(members);
+        when(userMapper.selectBatchIds(any())).thenReturn(users);
+        when(projectMapper.selectList(any())).thenReturn(List.of(teamProject(100L, 1L)));
+        when(projectMapper.selectBatchIds(any())).thenReturn(List.of(teamProject(100L, 1L)));
+        when(presenceService.filterOnline(any())).thenReturn(Set.of());
+    }
+
+    private ActivityLog activityLog(Long projectId, String action, String detail, LocalDateTime createdAt) {
+        ActivityLog log = new ActivityLog();
+        log.setProjectId(projectId);
+        log.setTargetType("ISSUE");
+        log.setAction(action);
+        log.setDetail(detail);
+        log.setCreatedAt(createdAt);
+        return log;
+    }
+
     private Team team(Long id, String name) {
         Team team = new Team();
         team.setId(id);
@@ -351,7 +520,8 @@ class WorkbenchServiceTest {
         return new WorkbenchService(issueMapper, issueReviewMapper, issueChangeRequestMapper,
                 sprintMapper, projectMapper, workLogMapper, projectService,
                 issueChangeRequestService, issueReviewService, new ObjectMapper(),
-                teamMapper, teamMemberMapper, userMapper, accessControlService, presenceService);
+                teamMapper, teamMemberMapper, userMapper, activityLogMapper, boardColumnMapper,
+                accessControlService, presenceService);
     }
 
     private Issue issue(Long id, String type, String title, String priority,

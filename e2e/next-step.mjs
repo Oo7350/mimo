@@ -69,6 +69,26 @@ async function api(token, method, url, body) {
   }
 }
 
+/**
+ * 打开页面：给足超时 + 失败重试一次。
+ *
+ * 只用于"打开首页/登录页"这种前置动作 —— 用例本身的断言仍然是一次性的，
+ * 不给业务校验开后门（重试会把真失败藏起来）。
+ */
+async function gotoWithRetry(page, url, attempts = 2) {
+  let lastError;
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
+      return;
+    } catch (error) {
+      lastError = error;
+      console.log(`  导航失败（第 ${i}/${attempts} 次）：${String(error.message).split("\n")[0]}`);
+    }
+  }
+  throw lastError;
+}
+
 async function freshPage(browser) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   await context.addInitScript(() => {
@@ -81,7 +101,10 @@ async function freshPage(browser) {
   });
   const page = await context.newPage();
   page.setDefaultTimeout(20000);
-  await page.goto(`${BASE}/login`, { waitUntil: "domcontentloaded" });
+  // 首次导航给 20 秒在"连跑十几套之后"会偶发不够：Vite 开发服务器要重新编译入口，
+  // 机器忙的时候能卡到 20 秒边界上（实测挂了这一次）。这里给 45 秒并重试一次，
+  // 只放宽"打开首页"这一步，不是给用例本身开后门。
+  await gotoWithRetry(page, `${BASE}/login`, 2);
   await page.getByPlaceholder("请输入用户名").fill(ADMIN.username);
   await page.getByPlaceholder("请输入密码").fill(ADMIN.password);
   await page.getByRole("button", { name: /登\s*录/ }).click();

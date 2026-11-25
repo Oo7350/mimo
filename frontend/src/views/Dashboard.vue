@@ -236,7 +236,7 @@
             <span>{{ teamScopeText }}</span>
             <span class="admin-scope__hint-sep">·</span>
             <span>点任意任务可看详情，不必跳页</span>
-            <el-button size="small" link type="primary" :loading="teamLoading" @click="loadTeamWorkbench">
+            <el-button size="small" link type="primary" :loading="teamLoading" @click="loadTeamWorkbench()">
               刷新
             </el-button>
           </div>
@@ -247,7 +247,13 @@
             <el-alert type="warning" :closable="false" show-icon :title="teamError" />
           </div>
           <div v-else class="dash-panel__bd">
-            <TeamFlowBoard :data="teamWorkbench" @open-task="openTeamTask" />
+            <TeamFlowBoard
+              :data="teamWorkbench"
+              :query="teamQuery"
+              @open-task="openTeamTask"
+              @query-change="onTeamQueryChange"
+              @expand-member="expandMemberTasks"
+            />
           </div>
         </template>
 
@@ -572,7 +578,7 @@ import AdminBadge from '@/components/common/AdminBadge.vue'
 import TeamFlowBoard from '@/components/workbench/TeamFlowBoard.vue'
 import TaskDetailDrawer from '@/components/issue/TaskDetailDrawer.vue'
 import { getTeamWorkbench } from '@/api/workbench'
-import type { TeamWorkbenchData } from '@/types/workbench'
+import type { TeamWorkbenchData, TeamWorkbenchQuery } from '@/types/workbench'
 
 type TaskTab = 'all' | 'today' | 'overdue'
 
@@ -601,6 +607,11 @@ const adminScope = ref<'mine' | 'team'>('mine')
 const teamWorkbench = ref<TeamWorkbenchData | null>(null)
 const teamLoading = ref(false)
 const teamError = ref('')
+/**
+ * 全员任务流的查询条件（v2.20.1）。放在父组件，因为**发请求的是父组件**；
+ * 筛选/排序/分页全走服务端 —— 前端自己切页再自己筛，"有逾期 3 人"其实只数了当前页。
+ */
+const teamQuery = ref<TeamWorkbenchQuery>({ page: 1, only: 'all', sort: 'overdue', keyword: '' })
 
 /** 详情抽屉状态：从任务流点进来时记住"是谁的任务流"，让抽屉头部有上下文 */
 const detailVisible = ref(false)
@@ -619,12 +630,20 @@ const teamScopeText = computed(() => {  const data = teamWorkbench.value
     : `你管理的团队（${names}）`
 })
 
-async function loadTeamWorkbench() {
+async function loadTeamWorkbench(query: TeamWorkbenchQuery = teamQuery.value) {
   teamLoading.value = true
   teamError.value = ''
   try {
-    const res = await getTeamWorkbench()
+    const res = await getTeamWorkbench(query)
     teamWorkbench.value = res.data
+    // 页码以服务端为准：请求了第 9 页但只剩 3 页时，服务端会把 memberPage 夹到 3，
+    // 这里同步回来，否则"上一页/下一页"的可用状态会和实际内容对不上
+    teamQuery.value = {
+      page: res.data.memberPage,
+      only: query.only ?? 'all',
+      sort: query.sort ?? 'overdue',
+      keyword: query.keyword ?? '',
+    }
   } catch (error: any) {
     // 后端对非管理员返回 403 并带一句说明；把它原样显示出来，而不是"加载失败"
     teamWorkbench.value = null
@@ -632,6 +651,26 @@ async function loadTeamWorkbench() {
   } finally {
     teamLoading.value = false
   }
+}
+
+/** 面板里改了筛选/排序/翻页：合并条件后重新请求 */
+function onTeamQueryChange(patch: TeamWorkbenchQuery) {
+  const next: TeamWorkbenchQuery = { ...teamQuery.value, ...patch }
+  if (patch.page === undefined) next.page = 1
+  void loadTeamWorkbench(next)
+}
+
+/**
+ * 点某人卡片下的"还有 N 项没显示"：把每个人的任务上限提到服务端允许的最大值。
+ *
+ * 单人上限 20 是后端定的（防止一次拉爆），所以这里不可能"无限展开"；
+ * 按钮上的文案始终是差额，展开后如果还有剩余，按钮会继续说还有几项 —— 界面不撒谎。
+ */
+async function expandMemberTasks(member: { taskTotal?: number }) {
+  const cap = 20
+  const nextLimit = Math.min(cap, member.taskTotal || cap)
+  if ((nextLimit || 0) <= (teamQuery.value.taskLimit || 6)) return
+  await loadTeamWorkbench({ ...teamQuery.value, taskLimit: nextLimit })
 }
 
 /** 切到全员视角时才请求，避免普通用户/管理员每次进工作台都多打一次接口 */

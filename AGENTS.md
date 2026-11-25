@@ -1,6 +1,7 @@
 # AGENTS.md
 
-> **最新版本**：v2.20.0（2026-11-25）— 这一版全在补"看得见但动不了"的坑，顺手把回归变成一条命令：① **BUG-115**：管理员从「全员任务流」点进成员的任务后，操作被按普通成员拦住（详情面板明写「只有任务负责人（lisi）可以提交验收」）。根因是读门槛在 `ProjectAccessService`（管理员放行）、写门槛却在治理服务里各写一遍（只认 `team_members` 有行）。现在写门槛委托统一入口，`submit()` 抽出 `assertCanSubmit`：负责人**或**管理员都能提交；管理员代提交后仍不能自己验收（职责分离）。② **BUG-117**：同族问题全量排查——发现 11 处"自己实现的写门槛"，症状包括系统管理员进别人团队打不开迭代/团队页、团队管理员看不到待验收、`WikiService` 注释写"含团队管理员"代码却没有、系统管理员删不掉别人的工时。统一收敛到 `canAccessProject / canAccessTeam / canManageProject` 三个判定；团队聊天、建改删项目、加入审批**故意**只给团队权限。真库双向验证：把 admin 从 `team_members` 删掉后 5 个接口 200、换外人账号 403。③ **BUG-116**：全站剩余 106 处 9–11.5px 小字抬到 12px，并用新写的裁切探针确认没撑坏（13 页小字 0、横向溢出 0），顺带揪出一个 `opacity:0` 但仍占 60px 宽度的删除按钮把项目名挤成 46px。④ **BUG-118 / KNOWN-024**：新增 `e2e/run-all.mjs`——一条命令跑 **12 套 120 条 + 3 探针**，失败即退出码 1；顺手发现连跑时 `admin-flow` 会因"挑最后一个成员列"（空闲账号排最后）而超时，单独跑却是绿的。也在这里更正一个长期说错的数字：仓库一直是 **12 套**，不是文档里写的 7 套。CI 配置 `.github/workflows/e2e.yml` 已写，但**没在真实 runner 上跑过**。后端 187 项测试、`vue-tsc`、`npm run build` 全绿。
+> **最新版本**：v2.20.1（2026-11-25）— 全员任务流从"一次铺开所有人"变成能用的面板（关闭 KNOWN-025）：① **分页在后端**（`memberPage` / `pageSize` 默认 8 上限 30、每人 `taskLimit` 默认 6 上限 20），切页顺序是"先筛选 → 再排序 → 最后切页"，所以第 1 页永远是最该管的几个人；被截掉的任务只给计数（`taskTotal`），界面写"还有 N 项没显示（共 M 项）· 点击展开"。② **筛选/排序也搬到服务端**（`keyword` / `only` / `sort`）——这是做分页时才发现的连带 bug：以前筛选按钮上的"有逾期 3"数的是**当前页那 8 个人**，点进去可能只看到 1 个；现在筛选按钮不再显示人数，改由分页文案写"第 x/y 页 · 共 N 人（全队 M 人，已按条件筛选）"，分母永远是全队。③ **概览数字永远按全队算**，筛"空闲"不会让"未完成"变成 0。④ **近 7 天趋势**取自 `activity_logs` 的真实事件（新建 = `CREATE`，完成 = `MOVE` 且目标列是终态列），**不拿 `issues.updated_at` 近似**——项目没有完成时间字段，用更新时间冒充会在"改个标题"时虚增完成数；口径随接口下发并写在图下面。⑤ 把"终态列"判定抽成 `util/BoardColumnRules`（看板拖拽与趋势共用一处，别各写一遍）。过程中自己修掉两个错：`vo.setMembers(streams)` 残留在分页之后会把结果覆盖成全量（页码在变、数据没切），新按钮把 `--color-primary-solid` 当文字色用（暗色 2.82:1，主题审计当场抓到）；另外给 `next-step` 的首屏导航加了 45 秒超时 + 一次重试（连跑十几套后偶发超时，不是产品缺陷）。后端 **192 项**测试、e2e **12 套 126 条 + 3 探针**、`vue-tsc`、`npm run build` 全绿。
+> **上一版本**：v2.20.0（2026-11-25）— 这一版全在补"看得见但动不了"的坑，顺手把回归变成一条命令：① **BUG-115**：管理员从「全员任务流」点进成员的任务后，操作被按普通成员拦住（详情面板明写「只有任务负责人（lisi）可以提交验收」）。根因是读门槛在 `ProjectAccessService`（管理员放行）、写门槛却在治理服务里各写一遍（只认 `team_members` 有行）。现在写门槛委托统一入口，`submit()` 抽出 `assertCanSubmit`：负责人**或**管理员都能提交；管理员代提交后仍不能自己验收（职责分离）。② **BUG-117**：同族问题全量排查——发现 11 处"自己实现的写门槛"，症状包括系统管理员进别人团队打不开迭代/团队页、团队管理员看不到待验收、`WikiService` 注释写"含团队管理员"代码却没有、系统管理员删不掉别人的工时。统一收敛到 `canAccessProject / canAccessTeam / canManageProject` 三个判定；团队聊天、建改删项目、加入审批**故意**只给团队权限。真库双向验证：把 admin 从 `team_members` 删掉后 5 个接口 200、换外人账号 403。③ **BUG-116**：全站剩余 106 处 9–11.5px 小字抬到 12px，并用新写的裁切探针确认没撑坏（13 页小字 0、横向溢出 0），顺带揪出一个 `opacity:0` 但仍占 60px 宽度的删除按钮把项目名挤成 46px。④ **BUG-118 / KNOWN-024**：新增 `e2e/run-all.mjs`——一条命令跑 **12 套 120 条 + 3 探针**，失败即退出码 1；顺手发现连跑时 `admin-flow` 会因"挑最后一个成员列"（空闲账号排最后）而超时，单独跑却是绿的。也在这里更正一个长期说错的数字：仓库一直是 **12 套**，不是文档里写的 7 套。CI 配置 `.github/workflows/e2e.yml` 已写，但**没在真实 runner 上跑过**。后端 187 项测试、`vue-tsc`、`npm run build` 全绿。
 > **上一版本**：v2.19.8（2026-11-24）— 管理员终于和普通账号长得不一样了：① 顶栏 / 工作台 Hero / 成员列都有了身份徽标（`AdminBadge`，琥珀盾牌 + 金色头像描边），口径是旧 `role` 字段、RBAC `role.manage`、`team.manage` 三者任一，前端只用它决定显不显示。② 工作台的「我的任务」面板加了管理员专属的「我的 / 全员」滑动切换，切到全员就是新接口 `GET /api/workbench/team` 的**全员任务流**：系统管理员看全部团队、团队管理员只看自己管理的团队，返回每人一条 `MemberStreamVO`（负载等级 + 一句话依据 + 排好序的任务）与 `summary`（含**未指派**任务）。空闲的人也占一列——空着本身是信息；未指派单独成栏；负载标签写依据（"有 1 项逾期，未完成 5 项"）而不是只给红黄绿。③ 点任意任务卡右侧滑出**详情抽屉**（`TaskDetailDrawer`：状态/优先级/逾期天数/故事点/标签、6 个字段格、Markdown 描述、验收标准完成度、缺陷信息、子任务、在项目里打开），看完 Esc 关掉还在原位，不跳页。④ 看板给管理员加了「全员泳道」开关。另外修了一条用户当场抓到的 High：前端自己用权限码判管理员，漏掉了 `team_members.role = ROLE_ADMIN` 这条旧字段兜底，团队管理员后端放行、界面却把入口藏了（BUG-113）——现在判定收敛到后端 `AccessControlService#resolveAdminScope`，经 `adminScope` 字段给前端，顶栏 / 工作台 / 看板三处只读这个结论。顺手打磨了一轮前端观感（BUG-114）：全站字号 12px 起（小字 54→32）、抬字号后浮出水面的 4 条隐藏低对比 tag 一并修掉（info/danger/warning/sprint 徽标）、新组件所有可点控件补键盘焦点环。过程中修掉 BUG-110（Element 抽屉的 `close-on-press-escape` 依赖焦点，鼠标点开后按 Esc 没反应）、BUG-111（统计卡标签压淡紫底 2.95:1）、BUG-112（在线人数一次请求问两遍 `PresenceService`，单测里恒为 0）；新登记 KNOWN-025（全员任务流无分页/无历史趋势）。后端 187 项测试、e2e **12 套 120 条**（新增 `admin-flow.mjs` 15 条，含亮/暗两套主题下新界面的对比度与溢出实测）、`vue-tsc`、`npm run build`、`probe-layout` 全绿。
 > **上一版本**：v2.19.7（2026-11-24）— 暗色模式的颜色逻辑修好了、界面不再编数字：① 暗色主题下 Element 的 `html.dark` 会把 `--el-color-primary` 重置成默认蓝 `#409EFF`，品牌靛蓝被顶掉；同时多处把 `--text-primary`（暗色下近白）当实心块底色、页面标题写死 `#0f172a`，实测白字压白块只有 1.05:1、标题 1.09:1 直接看不见。现在统一走 `--color-primary-solid` / `--bg-subtle` / `--text-*` 语义变量，暗色实测 `浅色块 0 / 低对比 0`。② 团队页的"在线人数"原来取成员总数，现在 `PresenceService` 按 WebSocket 会话算真实在线，新接口 `GET /api/teams/{id}/presence`，并给简单 broker 加了 10 秒心跳（否则关页面后在线数会虚高）。③ 收口 5 条 Low（在线人数 / 部署脚本确认 / 硬编码颜色 / 无外键改体检工具 / e2e 残留），新增两把尺子：`e2e/theme-audit.mjs` 量配色、`tools/integrity-check.sql` 量孤儿数据（它顺手扫出 BUG-104）。后端 167 项测试、e2e 5 套 47 条断言、`vue-tsc` 与 `npm run build` 全绿。
 >
@@ -60,6 +61,9 @@ Mimo is a lightweight Trello-like project management platform for small teams. I
 | **部署必须人工确认** | `deploy.ps1` 需输入 `y`，`-Force` 跳过 | 脚本会 scp 覆盖生产并重启服务 | CI 里要显式传 `-Force` |
 | **改字号必须配布局探针** | 抬字号后除了重扫对比度，还要查"是否被裁切"（`overflow:hidden` 且 `scrollHeight/scrollWidth` 超出）与页面横向溢出 | 只看"小字数量归零"会漏掉撑坏的容器；`opacity:0` 的按钮仍占布局宽度，比字号更值得修（BUG-116） | 探针要覆盖真实路由，路由兜底重定向会造成"这页没问题"的假象 |
 | **全局改字号要立刻全站重扫对比度** | 抬 `el-tag`/`mimo-nav-label` 字号到 12px 后，`theme-audit` 全站重扫揪出 4 条浮出水面的历史低对比（以前 <12px 小于阈值没被抓） | 体检阈值是按"<12px 记小字"——字号一旦跨过阈值，原本没被抓的低对比会突然全冒出来 | BUG-114 |
+| **筛选项的分母必须是被统计的全体** | 筛选/排序/分页一律放服务端；数字写清"筛出 N / 全队 M" | 前端筛当前页会得出"有逾期 3 人"而实际全队 12 人的假数字（v2.20.1 之前就是这样） | 但前端筛选无需请求、更快；代价是它只能看见一页 |
+| **趋势从事件算，不从"最后更新时间"猜** | 完成数 = `activity_logs` 里 MOVE 到终态列的事件；口径随接口下发并展示 | 用 `issues.updated_at` 近似时，改个标题、改个标签都会虚增"完成数" | 事件表写得更慢；但数字能被解释 |
+| **看板列语义只有一处** | `util/BoardColumnRules#isTerminalName`，拖拽门禁与趋势统计都调它 | 抄两份的判断迟早不一致（BUG-115/117 就是这个病根） | 多一个类；好处是改口径只改一处 |
 | **"我跑过 N 套"不等于"仓库有 N 套"** | 收口前先 `ls e2e`；新套件必须登记进 `run-all.mjs` 的清单 | 手敲命令会漏：文档写 7 套、实际 12 套，漏掉的 5 套一直绿但没人看（BUG-118） | 共享真实库的用例有顺序依赖，选择器别假设"最后一个是什么" |
 | **访问判定只写一次** | 用 `ProjectAccessService` 的 `canAccessProject` / `canAccessTeam` / `canManageProject`，调用点只保留自己的错误文案 | 同一判断题在 11 个地方各写一遍，每次漏一个角色：管理员"能看不能动"、团队管理员看不到待验收、注释与代码矛盾（BUG-115 + BUG-117） | 团队聊天与建/删项目属于**故意**只给团队权限，别一刀切放宽；关键判定别用 mock 测 |
 | **读门槛与写门槛必须同源** | 写操作统一走 `ProjectAccessService.requireProject(...)`，与读完全一致 | 各服务自己写 `isTeamMember(...)` 会出现"能看进去、一动手就被拦"，系统管理员看别的团队时连写都进不去（BUG-115） | 新增服务不要自己判；已发现 10+ 处同款写法，逐步收敛 |
@@ -140,6 +144,12 @@ java -jar target/mimo-backend-1.0.0-SNAPSHOT.jar
 本机有一份现成的（不进仓库）：`. C:\mimo-env\dev-env.ps1`，里面就这几个值。
 这套坑是 v2.19.7 重启后端时踩到的：jar 明明打好了，却报 `WeakKeyException` / `Access denied`，
 看起来像"构建坏了"，其实只是环境变量没带。
+
+**路径注意（本机）**：`C:\mimo-env\mimo` 是指向 `C:\Users\小晟\Desktop\AItest\mimo` 的 junction。
+**前端构建要走真实路径**（`cd C:\Users\小晟\Desktop\AItest\mimo\frontend`）——从 junction 路径跑
+`npm run build` 会报 `[vite:build-html] The "fileName" ... must be strings that are neither absolute
+nor relative paths, received "../../../Users/..."`（v2.20.1 踩到，白查了一轮）。
+后端 `mvn` 用哪条路径都行。
 
 
 ### Frontend (from `frontend/`)
@@ -351,7 +361,12 @@ All v2.15 AI roadmap items are implemented. Future work may replace the lexical 
   修复：判定收敛到 `AccessControlService#resolveAdminScope`（返回 `SYSTEM / TEAM / NONE`），
   通过 `/api/user/profile` 与登录响应的 `adminScope` 字段给前端，`store/user.ts` 暴露 `isManager / managerLabel`，
   工作台/顶栏/看板三处只读这个结论。
-- **BUG-118（Low，测试基础设施）**：把 12 套 e2e 串成一条命令时暴露 —— `admin-flow` 用
+- **KNOWN-025 收口（分页 + 服务端筛选 + 趋势）**：全员任务流原来是"一次铺开所有人"。
+  补分页时发现原来的筛选是**假**的——分母是当前页 8 个人（"有逾期 3"点进去可能只有 1 个），
+  于是一起搬到服务端。趋势取自 `activity_logs` 的真实 CREATE / MOVE 事件，
+  不拿 `issues.updated_at` 近似（改个标题就会虚增完成数）。顺带把"终态列"判定抽成
+  `util/BoardColumnRules`，看板拖拽与趋势共用一处。自己踩了两个坑：`vo.setMembers(streams)`
+  残留会把分页结果覆盖成全量；新按钮把 `--color-primary-solid` 当文字色（暗色 2.82:1）。- **BUG-118（Low，测试基础设施）**：把 12 套 e2e 串成一条命令时暴露 —— `admin-flow` 用
   `.member-stream` 的**最后一个**当"有任务的成员列"，而本套件和别的套件都会注册空闲账号
   （`e2e-flowmember*`）排在最后，于是等一个永不出现的卡片：单独跑绿、连跑必红。
   改成挑"真正带 `.flow-task` 的列"并新增一条检查。同时新增 `e2e/run-all.mjs`（12 套 120 条

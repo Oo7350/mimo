@@ -9,12 +9,16 @@ import com.mimo.dto.IssueGovernanceDTO.ChangeRequestVO;
 import com.mimo.dto.IssueGovernanceDTO.ReviewVO;
 import com.mimo.dto.ProjectDTO.ProjectVO;
 import com.mimo.dto.WorkbenchDTO.*;
+import com.mimo.entity.ActivityLog;
+import com.mimo.entity.BoardColumn;
 import com.mimo.entity.Issue;
 import com.mimo.entity.IssueChangeRequest;
 import com.mimo.entity.IssueReview;
 import com.mimo.entity.Project;
 import com.mimo.entity.Sprint;
 import com.mimo.entity.WorkLog;
+import com.mimo.mapper.ActivityLogMapper;
+import com.mimo.mapper.BoardColumnMapper;
 import com.mimo.mapper.IssueChangeRequestMapper;
 import com.mimo.mapper.IssueMapper;
 import com.mimo.mapper.IssueReviewMapper;
@@ -27,6 +31,7 @@ import com.mimo.mapper.WorkLogMapper;
 import com.mimo.entity.Team;
 import com.mimo.entity.TeamMember;
 import com.mimo.entity.User;
+import com.mimo.util.BoardColumnRules;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -34,6 +39,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.time.temporal.TemporalAdjusters;
 import java.util.*;
@@ -48,6 +54,14 @@ public class WorkbenchService {
             "HIGHEST", 0, "HIGH", 1, "MEDIUM", 2, "LOW", 3, "LOWEST", 4
     );
 
+    /** 全员任务流默认每页几个人 / 每人最多带几条任务，以及上限（防止有人拿 pageSize=99999 打库） */
+    static final int DEFAULT_MEMBER_PAGE_SIZE = 8;
+    static final int MAX_MEMBER_PAGE_SIZE = 30;
+    static final int DEFAULT_TASK_LIMIT = 6;
+    static final int MAX_TASK_LIMIT = 20;
+    /** 趋势看几天（含今天） */
+    static final int TREND_DAYS = 7;
+
     private final IssueMapper issueMapper;
     private final IssueReviewMapper issueReviewMapper;
     private final IssueChangeRequestMapper issueChangeRequestMapper;
@@ -61,6 +75,8 @@ public class WorkbenchService {
     private final TeamMapper teamMapper;
     private final TeamMemberMapper teamMemberMapper;
     private final UserMapper userMapper;
+    private final ActivityLogMapper activityLogMapper;
+    private final BoardColumnMapper boardColumnMapper;
     private final AccessControlService accessControlService;
     private final PresenceService presenceService;
 
@@ -134,6 +150,32 @@ public class WorkbenchService {
      * 在 10 人团队上就是 40 次往返，管理员每刷新一次页面都要付这个代价。
      */
     public TeamWorkbenchVO getTeamWorkbench(Long operatorId) {
+        return getTeamWorkbench(operatorId, 1, DEFAULT_MEMBER_PAGE_SIZE, DEFAULT_TASK_LIMIT,
+                null, "all", "overdue");
+    }
+
+    /**
+     * 管理员视角的全员任务流（v2.20.1 起支持筛选、排序、分页与趋势）。
+     *
+     * <p>为什么筛选和分页都放在后端：前端切页 + 前端筛选凑在一起会骗人——
+     * "有逾期 3 人"实际只数了当前页的 8 个人。既然口径在服务端，筛选也一起在服务端做，
+     * 前端只负责把条件发过来（`keyword` / `only` / `sort` / `page`）。</p>
+     *
+     * <p>为什么分页在后端：否则"分页"只是视觉效果，请求照样把全量数据拉下来。
+     * 成员一多，载荷主要浪费在"某个人的第 30 条任务"上，所以每个人另有 `taskLimit`，
+     * 超出部分只给计数（`taskTotal`），前端写"还有 N 项"。</p>
+     *
+     * <p>为什么趋势不自己编：完成数从 `activity_logs` 的真实 MOVE 事件里数
+     * （目标列按 {@link com.mimo.util.BoardColumnRules#isTerminalName} 判定），
+     * 不拿 `issues.updated_at` 近似——项目没有单独的完成时间字段，
+     * 用更新时间冒充会在"改个标题"时虚增完成数。口径说明随接口一起下发（`trendNote`）。</p>
+     */
+    public TeamWorkbenchVO getTeamWorkbench(Long operatorId, int memberPage, int pageSize, int taskLimit,
+                                            String keyword, String only, String sort) {
+        int page = Math.max(1, memberPage);
+        int size = Math.max(1, Math.min(pageSize, MAX_MEMBER_PAGE_SIZE));
+        int limit = Math.max(1, Math.min(taskLimit, MAX_TASK_LIMIT));
+
         boolean systemAdmin = accessControlService.isSystemAdmin(operatorId);
 
         // 先确定范围：系统管理员 = 全部团队；团队管理员 = 自己管理的团队
@@ -159,6 +201,13 @@ public class WorkbenchService {
 
         TeamWorkbenchSummaryVO summary = new TeamWorkbenchSummaryVO();
         vo.setSummary(summary);
+        vo.setMemberPage(1);
+        vo.setMemberPageSize(size);
+        vo.setMemberPageCount(1);
+        vo.setMemberTotal(0);
+        vo.setTaskLimit(limit);
+        vo.setTrend(emptyTrend());
+        vo.setTrendNote(trendNote());
         if (teamIds.isEmpty()) {
             summary.setMemberCount(0);
             summary.setBusyMemberCount(0);
@@ -224,10 +273,15 @@ public class WorkbenchService {
             Long userId = entry.getKey();
             User user = users.get(userId);
             List<Issue> assigned = byAssignee.getOrDefault(userId, List.of());
-            List<WorkbenchTaskVO> tasks = assigned.stream()
+            List<WorkbenchTaskVO> allTasks = assigned.stream()
                     .map(issue -> toTask(issue, projects, sprints, blockingDependencies, today))
                     .sorted(taskComparator())
                     .toList();
+            // 任务数受 taskLimit 限制：成员一多，载荷主要浪费在"某个人的第 30 条任务"上，
+            // 而管理员通常只关心最该处理的几条；剩余数量通过 taskTotal 让前端说清"还有 N 项"
+            List<WorkbenchTaskVO> tasks = allTasks.size() > limit
+                    ? new ArrayList<>(allTasks.subList(0, limit))
+                    : allTasks;
 
             MemberStreamVO stream = new MemberStreamVO();
             stream.setUserId(userId);
@@ -238,10 +292,12 @@ public class WorkbenchService {
             stream.setOnline(onlineUserIds.contains(userId));
             stream.setAdmin(isMemberAdmin(userId, entry.getValue(), user, memberTeams.get(userId)));
             stream.setTasks(tasks);
-            stream.setOpenCount(tasks.size());
-            stream.setInProgressCount((int) tasks.stream()
+            stream.setTaskTotal(allTasks.size());
+            // 计数一律按"全部任务"算，不能按被截断的列表算 —— 否则负载标签会说谎
+            stream.setOpenCount(allTasks.size());
+            stream.setInProgressCount((int) allTasks.stream()
                     .filter(task -> "IN_PROGRESS".equals(task.getStatus())).count());
-            stream.setOverdueTaskCount((int) tasks.stream()
+            stream.setOverdueTaskCount((int) allTasks.stream()
                     .filter(task -> "HIGH".equals(task.getRiskLevel())
                             && task.getRiskReasons() != null
                             && task.getRiskReasons().stream().anyMatch(reason -> reason.startsWith("已逾期")))
@@ -260,6 +316,31 @@ public class WorkbenchService {
                 .comparing(UnassignedTaskVO::getDueDate, Comparator.nullsLast(LocalDate::compareTo))
                 .thenComparing(task -> PRIORITY_RANK.getOrDefault(task.getPriority(), 9)));
 
+        // 概览统计永远按"全部成员"算，不受筛选影响 —— 否则筛一下"空闲"，
+        // 面板顶上的"未完成/逾期"会跟着变成空闲成员的数字，看着像全队突然轻松了。
+        summary.setMemberCount(streams.size());
+        summary.setBusyMemberCount((int) streams.stream()
+                .filter(stream -> stream.getOpenCount() != null && stream.getOpenCount() > 0).count());
+
+        // 筛选 → 排序 → 切页，顺序不能反：先切页再筛选会得到"这一页里符合条件的几个人"
+        List<MemberStreamVO> matched = filterStreams(streams, keyword, only);
+        sortStreams(matched, sort);
+
+        int memberTotal = matched.size();
+        int pageCount = Math.max(1, (memberTotal + size - 1) / size);
+        int safePage = Math.min(page, pageCount);
+        int fromIndex = Math.min((safePage - 1) * size, memberTotal);
+        int toIndex = Math.min(fromIndex + size, memberTotal);
+        vo.setMembers(new ArrayList<>(matched.subList(fromIndex, toIndex)));
+        vo.setMemberTotal(memberTotal);
+        vo.setMemberTotalAll(streams.size());
+        vo.setMemberPage(safePage);
+        vo.setMemberPageSize(size);
+        vo.setMemberPageCount(pageCount);
+        vo.setTaskLimit(limit);
+        vo.setTrend(buildTrend(projectIds, today));
+        vo.setTrendNote(trendNote());
+
         summary.setMemberCount(streams.size());
         summary.setBusyMemberCount((int) streams.stream()
                 .filter(stream -> stream.getOpenCount() != null && stream.getOpenCount() > 0).count());
@@ -273,8 +354,49 @@ public class WorkbenchService {
         summary.setUnassignedTasks(unassigned);
         summary.setOnlineMemberCount(onlineUserIds.size());
 
-        vo.setMembers(streams);
+        // 注意：这里不能再 vo.setMembers(streams) —— members 已经按"筛选 + 排序 + 切页"设置过，
+        // 覆盖成全量会让分页看起来生效（页码在变）而实际把所有成员都发下来。
         return vo;
+    }
+
+    /** 只保留符合筛选条件的成员；条件为空/未知一律不筛 */
+    private List<MemberStreamVO> filterStreams(List<MemberStreamVO> streams, String keyword, String only) {
+        String text = keyword == null ? "" : keyword.trim().toLowerCase();
+        String mode = only == null ? "all" : only.trim().toLowerCase();
+        return streams.stream()
+                .filter(stream -> switch (mode) {
+                    case "overdue" -> stream.getOverdueTaskCount() != null && stream.getOverdueTaskCount() > 0;
+                    case "doing" -> stream.getInProgressCount() != null && stream.getInProgressCount() > 0;
+                    case "idle" -> stream.getOpenCount() != null && stream.getOpenCount() == 0;
+                    default -> true;
+                })
+                .filter(stream -> text.isEmpty() || matchesKeyword(stream, text))
+                .collect(Collectors.toCollection(ArrayList::new));
+    }
+
+    private boolean matchesKeyword(MemberStreamVO stream, String text) {
+        String username = stream.getUsername() == null ? "" : stream.getUsername().toLowerCase();
+        if (username.contains(text)) return true;
+        // 任务标题只看已下发的那部分：被 taskLimit 截断的任务没传给前端，
+        // 若在后端按全量标题匹配，前端会出现"搜到了人但列不出那条任务"的怪状态
+        return stream.getTasks() != null && stream.getTasks().stream()
+                .anyMatch(task -> task.getTitle() != null && task.getTitle().toLowerCase().contains(text));
+    }
+
+    private void sortStreams(List<MemberStreamVO> streams, String sort) {
+        String mode = sort == null ? "overdue" : sort.trim().toLowerCase();
+        Comparator<MemberStreamVO> comparator = switch (mode) {
+            case "name" -> Comparator.comparing(MemberStreamVO::getUsername,
+                    Comparator.nullsLast(String::compareTo));
+            case "load" -> Comparator
+                    .comparing(MemberStreamVO::getOpenCount, Comparator.reverseOrder())
+                    .thenComparing(MemberStreamVO::getUserId);
+            default -> Comparator
+                    .comparing(MemberStreamVO::getOverdueTaskCount, Comparator.reverseOrder())
+                    .thenComparing(MemberStreamVO::getOpenCount, Comparator.reverseOrder())
+                    .thenComparing(MemberStreamVO::getUserId);
+        };
+        streams.sort(comparator);
     }
 
     /** 任务排序：逾期的先上，再按计划完成日，再按优先级 —— 与个人工作台同一口径 */
@@ -282,6 +404,101 @@ public class WorkbenchService {
         return Comparator
                 .comparing(WorkbenchTaskVO::getDueDate, Comparator.nullsLast(LocalDate::compareTo))
                 .thenComparingInt(task -> PRIORITY_RANK.getOrDefault(task.getPriority(), 9));
+    }
+
+    /**
+     * 近 {@value #TREND_DAYS} 天的新建 / 完成趋势。
+     *
+     * <p>数据来源是 `activity_logs` 的真实事件，不是猜的：
+     * 新建数 = `CREATE` 事件，完成数 = `MOVE` 事件且**目标列**是终态列。
+     * 目标列名从事件描述里取（"将 DEMO-1 从 待办 移动到 完成"），再按该项目的列名集合判定，
+     * 判定规则与看板拖拽共用 {@link com.mimo.util.BoardColumnRules#isTerminalName}。</p>
+     *
+     * <p>已知边界（写在 `trendNote` 里一起给前端）：
+     * ① 只统计当前还能看到的项目；② 列被重命名后，历史事件里的旧列名匹配不上会被跳过（少算不多算）。</p>
+     */
+    private List<TrendPointVO> buildTrend(List<Long> projectIds, LocalDate today) {
+        Map<String, TrendPointVO> byDate = new LinkedHashMap<>();
+        for (int i = TREND_DAYS - 1; i >= 0; i--) {
+            String date = today.minusDays(i).toString();
+            TrendPointVO point = new TrendPointVO();
+            point.setDate(date);
+            point.setCreated(0);
+            point.setDone(0);
+            byDate.put(date, point);
+        }
+        if (projectIds.isEmpty()) return new ArrayList<>(byDate.values());
+
+        LocalDateTime since = today.minusDays(TREND_DAYS - 1L).atStartOfDay();
+        List<ActivityLog> logs = activityLogMapper.selectList(new LambdaQueryWrapper<ActivityLog>()
+                .in(ActivityLog::getProjectId, projectIds)
+                .in(ActivityLog::getAction, List.of("CREATE", "MOVE"))
+                .ge(ActivityLog::getCreatedAt, since)
+                .select(ActivityLog::getProjectId, ActivityLog::getAction,
+                        ActivityLog::getDetail, ActivityLog::getCreatedAt));
+        // 每个项目自己的"终态列名"集合，避免跨项目串味（A 项目的"完成"列在 B 项目可能不存在）
+        Map<Long, Set<String>> terminalCache = new HashMap<>();
+        for (ActivityLog log : logs) {
+            if (log.getCreatedAt() == null) continue;
+            TrendPointVO point = byDate.get(log.getCreatedAt().toLocalDate().toString());
+            if (point == null) continue;
+            if ("CREATE".equals(log.getAction())) {
+                point.setCreated(point.getCreated() + 1);
+                continue;
+            }
+            String target = targetColumnName(log.getDetail());
+            if (target == null) continue;
+            if (terminalColumnsOf(log.getProjectId(), terminalCache).contains(target)) {
+                point.setDone(point.getDone() + 1);
+            }
+        }
+        return new ArrayList<>(byDate.values());
+    }
+
+    /** 从 "将 DEMO-1 从 待办 移动到 完成" 里取出目标列名；取不到返回 null（不猜） */
+    static String targetColumnName(String detail) {
+        if (detail == null) return null;
+        int idx = detail.lastIndexOf("移动到 ");
+        if (idx < 0) idx = detail.lastIndexOf("移动到");
+        if (idx < 0) return null;
+        String target = detail.substring(idx + ("移动到".length())).trim();
+        if (target.isEmpty()) return null;
+        return target;
+    }
+
+    /**
+     * 这个项目的**终态列名集合**（每次调用只查一次库，按项目缓存）。
+     *
+     * <p>一开始写的是"按（项目, 列名）逐个查"，一天几十条事件就是几十次往返；
+     * 而且把判定逻辑靠 SQL 的 where 保证，单测里 mock 一粗就会误判。现在把项目的列一次取回来，
+     * 判定留给 {@link BoardColumnRules}：既少查库，判定也只在一处。</p>
+     */
+    private Set<String> terminalColumnsOf(Long projectId, Map<Long, Set<String>> cache) {
+        if (projectId == null) return Set.of();
+        return cache.computeIfAbsent(projectId, key -> boardColumnMapper.selectList(
+                        new LambdaQueryWrapper<BoardColumn>().eq(BoardColumn::getProjectId, key))
+                .stream()
+                .filter(column -> BoardColumnRules.isTerminalName(column.getName()))
+                .map(BoardColumn::getName)
+                .collect(Collectors.toSet()));
+    }
+
+    private List<TrendPointVO> emptyTrend() {
+        List<TrendPointVO> trend = new ArrayList<>();
+        LocalDate today = LocalDate.now();
+        for (int i = TREND_DAYS - 1; i >= 0; i--) {
+            TrendPointVO point = new TrendPointVO();
+            point.setDate(today.minusDays(i).toString());
+            point.setCreated(0);
+            point.setDone(0);
+            trend.add(point);
+        }
+        return trend;
+    }
+
+    private String trendNote() {
+        return "近 " + TREND_DAYS + " 天：新建 = 工作项创建事件，完成 = 拖进「完成/关闭」列的事件"
+                + "（取自活动日志；列被改名后更早的历史事件可能统计不到）";
     }
 
     private UnassignedTaskVO toUnassigned(Issue issue, Map<Long, Project> projects) {

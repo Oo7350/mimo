@@ -10,6 +10,7 @@ import com.mimo.dto.IssueDTO.IssueVO;
 import com.mimo.dto.IssueDTO.IssueLabelVO;
 import com.mimo.entity.*;
 import com.mimo.mapper.*;
+import com.mimo.util.BoardColumnRules;
 import com.mimo.util.IssueTimerUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -186,9 +187,8 @@ public class BoardService {
     }
 
     private boolean isTerminalColumn(BoardColumn column) {
-        String name = column.getName() == null ? "" : column.getName().toLowerCase();
-        return name.contains("完成") || name.contains("done") || name.contains("关闭")
-                || name.contains("closed");
+        // 口径统一在 BoardColumnRules（趋势统计也要用同一把尺子，别各写一遍）
+        return BoardColumnRules.isTerminalName(column.getName());
     }
 
     /**

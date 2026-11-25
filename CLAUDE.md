@@ -1,6 +1,7 @@
 # CLAUDE.md
 
-> **最新版本**：v2.20.0（2026-11-25）— 三件事：① **BUG-115** 管理员点进成员任务后操作被按成员逻辑拦住（读门槛放行、写门槛各写一遍只认 `team_members`），写门槛收敛到 `ProjectAccessService`，`submit()` 允许"负责人或管理员"提交，但管理员不能验收自己代提交的轮次。② **BUG-117** 把剩下 11 处"自己实现的写门槛"全收敛到 `canAccessProject / canAccessTeam / canManageProject`（系统管理员进别人团队 403、团队管理员看不到待验收、知识库注释与代码矛盾、工时删除不含系统管理员），真库双向验证 200/403；团队聊天与建删项目故意不放宽。③ **BUG-116** 剩余 106 处 <12px 小字抬到 12px + 裁切探针复核。另：`e2e/run-all.mjs` 一条命令跑 **12 套 120 条 + 3 探针**（此前文档误称 7 套），修 BUG-118（连跑时 admin-flow 挑"最后一个成员列"超时）。后端 187 项。
+> **最新版本**：v2.20.1（2026-11-25）— 关闭 KNOWN-025：全员任务流支持**服务端分页**（`memberPage` / `pageSize` / 每人 `taskLimit`）、**服务端筛选与排序**（`keyword` / `only` / `sort`）、**近 7 天趋势**（取自 `activity_logs` 的 CREATE / MOVE 事件，不拿 `updated_at` 近似）。做分页时发现原来的前端筛选分母是"当前页"，"有逾期 3"其实只数了 8 个人——一并搬到后端。计数（`openCount` / `overdueTaskCount` / `loadLevel`）永远按全部任务算，不受截断影响。新增 `util/BoardColumnRules` 收敛"终态列"判定。后端 192 项、e2e 12 套 126 条 + 3 探针。
+> **上一版本**：v2.20.0（2026-11-25）— 三件事：① **BUG-115** 管理员点进成员任务后操作被按成员逻辑拦住（读门槛放行、写门槛各写一遍只认 `team_members`），写门槛收敛到 `ProjectAccessService`，`submit()` 允许"负责人或管理员"提交，但管理员不能验收自己代提交的轮次。② **BUG-117** 把剩下 11 处"自己实现的写门槛"全收敛到 `canAccessProject / canAccessTeam / canManageProject`（系统管理员进别人团队 403、团队管理员看不到待验收、知识库注释与代码矛盾、工时删除不含系统管理员），真库双向验证 200/403；团队聊天与建删项目故意不放宽。③ **BUG-116** 剩余 106 处 <12px 小字抬到 12px + 裁切探针复核。另：`e2e/run-all.mjs` 一条命令跑 **12 套 120 条 + 3 探针**（此前文档误称 7 套），修 BUG-118（连跑时 admin-flow 挑"最后一个成员列"超时）。后端 187 项。
 > **上一版本**：v2.19.8（2026-11-24）— 管理员视角：身份徽标（`AdminBadge`：顶栏 / Hero / 成员列，头像金色描边）+ `GET /api/workbench/team` 全员任务流（系统管理员看全部团队、团队管理员只看自己管理的，每人一条 `MemberStreamVO` 带负载等级与依据，含未指派栏）+ 工作台「我的 / 全员」滑动切换 + 任务详情抽屉（`TaskDetailDrawer`，Esc 关闭不跳页）+ 看板「全员泳道」开关。修 BUG-110/111/112，并修掉用户当场抓到的 BUG-113（前端自己算管理员，漏掉旧字段兜底的团队管理员 → 判定收敛到后端 `adminScope`），登记 KNOWN-025。后端 174 项、e2e（当时文档误记为 7 套 64 条，实为 12 套）。
 > **上一版本**：v2.19.7（2026-11-24）— 暗色配色系统性修正（Element 品牌色被 `html.dark` 重置、文字色当底色用、标题写死深色、头像对比度）+ 团队在线人数落实（`/teams/{id}/presence` + WS 心跳）+ 5 条 Low 收口，并新增 `e2e/theme-audit.mjs` 与 `tools/integrity-check.sql` 两把尺子。
 >
@@ -302,7 +303,10 @@ All v2.15 AI roadmap items are implemented; see `项目功能完善计划.md` §
   界面把徽标与入口整个藏了。修复：`AccessControlService#resolveAdminScope` 返回 `SYSTEM / TEAM / NONE`，
   经 `/api/user/profile` 与登录响应的 `adminScope` 给前端，`store/user.ts` 暴露 `isManager / managerLabel`，
   三处入口只读结论。
-- **BUG-118（Low，测试）**：`admin-flow` 挑 `.member-stream` 最后一个当"有任务的成员列"，
+- **KNOWN-025 收口（v2.20.1）**：全员任务流加分页（后端切页）+ 服务端筛选排序 + 近 7 天趋势
+  （`activity_logs` 的 CREATE / MOVE 事件，不用 `updated_at` 近似）。做分页时发现前端筛选的
+  分母是"当前页"，"有逾期 3"只数了 8 个人，一并搬到后端。计数永远按全部任务算。
+  新增 `util/BoardColumnRules` 收敛"终态列"判定。- **BUG-118（Low，测试）**：`admin-flow` 挑 `.member-stream` 最后一个当"有任务的成员列"，
   而各套件注册的空闲账号排在最后 → 单独跑绿、连跑必红。改为挑带 `.flow-task` 的列；
   新增 `e2e/run-all.mjs`（12 套 120 条 + 3 探针，失败退出码 1）与 CI 配置（未在真实 runner 验证）。- **BUG-117（High）**：11 处"自己实现的写门槛"口径不一致（系统管理员进别人团队 403、团队管理员看不到待验收、
   知识库注释与代码矛盾、工时删除不含系统管理员）。收敛到 `ProjectAccessService.canAccessProject /
