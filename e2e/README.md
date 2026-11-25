@@ -3,7 +3,45 @@
 对应 `bug-log.md` **KNOWN-017**：「核心业务链路缺少端到端验证」。
 这里用真实浏览器把主链路点一遍，并对接口结果做断言——不是"页面能打开"，而是"操作真的生效"。
 
-## 覆盖范围
+## 一条命令跑全部（`run-all.mjs`）
+
+```bash
+node e2e/run-all.mjs                    # 12 套套件，约 8 分钟
+node e2e/run-all.mjs --probes           # 连 3 个探针（版面 / 布局 / 配色）一起
+node e2e/run-all.mjs --only admin-flow,review-matrix   # 只跑挑中的（改哪儿跑哪儿）
+node e2e/run-all.mjs --base http://localhost:5173 --api http://localhost:8080/api
+```
+
+- 全部通过 → 退出码 **0**；有任何一套失败 → 退出码 **1**，并打印该套输出的尾部（不用再去翻日志）。
+- 前提：后端 `:8080`、前端 `:5173` 已启动；`PLAYWRIGHT_MODULE` / `PLAYWRIGHT_BROWSERS_PATH` 指向装好的 playwright。
+- 跑完执行 `e2e/cleanup-residue.sql` 清临时账号（`run-all` 结束会提醒）。
+
+当前清单（**12 套 120 条 + 3 探针**）：
+
+| 套件 | 条数 | 覆盖 |
+|---|---|---|
+| `main-chain.mjs` | 11 | 主链路闭环 |
+| `core-flows.mjs` | 6 | 建任务/拖拽/评论/附件/验收/建 Sprint |
+| `review-matrix.mjs` | 13 | 验收权限矩阵（谁能通过/打回/提交） |
+| `next-step.mjs` | 6 | 详情页「下一步」建议 |
+| `chain-links.mjs` | 5 | 链路口径一致性 |
+| `workflow-guard.mjs` | 8 | 工作流转换守卫（含节点责任人） |
+| `admin-flow.mjs` | 20 | 管理员视角（徽标/全员流/抽屉/主题/权限/代提交） |
+| `presence.mjs` | 4 | 在线人数按会话算 |
+| `tour.mjs` | 9 | 新手引导（跳过/重播/Esc） |
+| `ai-degrade.mjs` | 3 | 未配 Key 的降级表现 |
+| `xss-markdown.mjs` | 10 | Markdown 渲染 XSS（跑仓库真实源码） |
+| `authz.mjs` | 25 | 接口级越权（外人打各读接口必须 4xx） |
+
+> **套件不是彼此独立的**：它们共用同一个开发库。曾经出现过"单独跑绿、连起来红"——
+> `admin-flow` 挑了"最后一个成员列"，而别的套件注册的空闲账号正好排在最后（BUG-118）。
+> 所以：① 选择器别假设"最后一个是什么"；② 用例崩了之后再跑，先清残留；
+> ③ 新套件尽量自造数据、自己收尾。
+
+CI：`.github/workflows/e2e.yml`（MySQL service + 起前后端 + 跑 `run-all.mjs`）。
+**如实说明**：该 workflow 没在真实 GitHub runner 上跑过，本地同一条命令两轮全绿。
+
+## 覆盖范围（`main-chain.mjs`）
 
 | # | 用例 | 断言 |
 |---|---|---|

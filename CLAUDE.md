@@ -1,6 +1,7 @@
 # CLAUDE.md
 
-> **最新版本**：v2.19.8（2026-11-24）— 管理员视角：身份徽标（`AdminBadge`：顶栏 / Hero / 成员列，头像金色描边）+ `GET /api/workbench/team` 全员任务流（系统管理员看全部团队、团队管理员只看自己管理的，每人一条 `MemberStreamVO` 带负载等级与依据，含未指派栏）+ 工作台「我的 / 全员」滑动切换 + 任务详情抽屉（`TaskDetailDrawer`，Esc 关闭不跳页）+ 看板「全员泳道」开关。修 BUG-110/111/112，并修掉用户当场抓到的 BUG-113（前端自己算管理员，漏掉旧字段兜底的团队管理员 → 判定收敛到后端 `adminScope`），登记 KNOWN-025。后端 174 项、e2e 7 套 64 条。
+> **最新版本**：v2.20.0（2026-11-25）— 三件事：① **BUG-115** 管理员点进成员任务后操作被按成员逻辑拦住（读门槛放行、写门槛各写一遍只认 `team_members`），写门槛收敛到 `ProjectAccessService`，`submit()` 允许"负责人或管理员"提交，但管理员不能验收自己代提交的轮次。② **BUG-117** 把剩下 11 处"自己实现的写门槛"全收敛到 `canAccessProject / canAccessTeam / canManageProject`（系统管理员进别人团队 403、团队管理员看不到待验收、知识库注释与代码矛盾、工时删除不含系统管理员），真库双向验证 200/403；团队聊天与建删项目故意不放宽。③ **BUG-116** 剩余 106 处 <12px 小字抬到 12px + 裁切探针复核。另：`e2e/run-all.mjs` 一条命令跑 **12 套 120 条 + 3 探针**（此前文档误称 7 套），修 BUG-118（连跑时 admin-flow 挑"最后一个成员列"超时）。后端 187 项。
+> **上一版本**：v2.19.8（2026-11-24）— 管理员视角：身份徽标（`AdminBadge`：顶栏 / Hero / 成员列，头像金色描边）+ `GET /api/workbench/team` 全员任务流（系统管理员看全部团队、团队管理员只看自己管理的，每人一条 `MemberStreamVO` 带负载等级与依据，含未指派栏）+ 工作台「我的 / 全员」滑动切换 + 任务详情抽屉（`TaskDetailDrawer`，Esc 关闭不跳页）+ 看板「全员泳道」开关。修 BUG-110/111/112，并修掉用户当场抓到的 BUG-113（前端自己算管理员，漏掉旧字段兜底的团队管理员 → 判定收敛到后端 `adminScope`），登记 KNOWN-025。后端 174 项、e2e（当时文档误记为 7 套 64 条，实为 12 套）。
 > **上一版本**：v2.19.7（2026-11-24）— 暗色配色系统性修正（Element 品牌色被 `html.dark` 重置、文字色当底色用、标题写死深色、头像对比度）+ 团队在线人数落实（`/teams/{id}/presence` + WS 心跳）+ 5 条 Low 收口，并新增 `e2e/theme-audit.mjs` 与 `tools/integrity-check.sql` 两把尺子。
 >
 > **上一版本**：v2.19.6（2026-11-24）— 工作流节点责任人（`ownerUserId`）+ `GET /workflow/transitions` 返回 `allowed/reason`，界面被挡住时点名"这一步由「张三」负责"。**版本号与条目以 `AGENTS.md` 和 `bug-log.md` 为准**（本文件原先按 v2.18.x 自增，与主干对不齐，现已同步）。
@@ -301,7 +302,9 @@ All v2.15 AI roadmap items are implemented; see `项目功能完善计划.md` §
   界面把徽标与入口整个藏了。修复：`AccessControlService#resolveAdminScope` 返回 `SYSTEM / TEAM / NONE`，
   经 `/api/user/profile` 与登录响应的 `adminScope` 给前端，`store/user.ts` 暴露 `isManager / managerLabel`，
   三处入口只读结论。
-- **BUG-117（High）**：11 处"自己实现的写门槛"口径不一致（系统管理员进别人团队 403、团队管理员看不到待验收、
+- **BUG-118（Low，测试）**：`admin-flow` 挑 `.member-stream` 最后一个当"有任务的成员列"，
+  而各套件注册的空闲账号排在最后 → 单独跑绿、连跑必红。改为挑带 `.flow-task` 的列；
+  新增 `e2e/run-all.mjs`（12 套 120 条 + 3 探针，失败退出码 1）与 CI 配置（未在真实 runner 验证）。- **BUG-117（High）**：11 处"自己实现的写门槛"口径不一致（系统管理员进别人团队 403、团队管理员看不到待验收、
   知识库注释与代码矛盾、工时删除不含系统管理员）。收敛到 `ProjectAccessService.canAccessProject /
   canAccessTeam / canManageProject`；测试 3→9 条并改用真实实现；真库双向验证 200/403。- **BUG-116（Low）**：106 处 9–11.5px 小字一次性抬到 12px（26 个文件）；逐页裁切/溢出探针确认 13 个真实路由小字 0、横向溢出 0。顺带修掉团队详情里 opacity:0 仍占 60px 宽度的删除按钮（项目名 46px → 83px）。
 - **BUG-115（High，用户当场发现）**：管理员点进成员任务的详情面板里写着「只有任务负责人（lisi）可以提交验收」。
@@ -313,7 +316,7 @@ All v2.15 AI roadmap items are implemented; see `项目功能完善计划.md` §
 - BUG-112：在线人数一次请求问两遍 `PresenceService`，单测里恒为 0 → 只调一次。
 - KNOWN-025 新登记：无分页、无历史趋势。
 
-**验证**：`mvn test` 187 项、e2e **7 套 64 条**（新增 `e2e/admin-flow.mjs` 17 条，含旧字段团队管理员、
+**验证**：`mvn test` 187 项、e2e 12 套（当时误记为 7 套 64 条；新增 `e2e/admin-flow.mjs` 17 条，含旧字段团队管理员、
 普通成员两种身份，以及亮/暗主题下新界面的对比度与横向溢出现场测量）、`vue-tsc`、`npm run build`、
 `probe-layout` 15 页 0 溢出。
 

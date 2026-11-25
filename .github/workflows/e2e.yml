@@ -1,0 +1,115 @@
+name: e2e
+
+# 端到端回归：12 套套件 + 3 个探针，入口就是 e2e/run-all.mjs（本地同一条命令）。
+#
+# 诚实声明：这份配置**没有在真实 GitHub runner 上跑过**（本机无 CI 能力），
+# 本地用同一条命令验证过全绿。首次接 CI 时请预留一次调参时间，
+# 常见坑已经写在下面的注释里。见 bug-log KNOWN-024。
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: mimo
+          MYSQL_USER: mimo
+          MYSQL_PASSWORD: mimo123
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    env:
+      # 与本地 dev-env.ps1 的变量一一对应：application.yml 里这些没有硬编码默认值
+      JWT_SECRET: mimo-ci-secret-key-please-change-in-prod-0123456789abcdef
+      JWT_EXPIRATION: "86400000"
+      MIMO_DB_USERNAME: mimo
+      MIMO_DB_PASSWORD: mimo123
+      MIMO_DB_URL: jdbc:mysql://127.0.0.1:3306/mimo?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+      PLAYWRIGHT_BROWSERS_PATH: /home/runner/.cache/ms-playwright
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # 建表脚本：本地是 application.yml 里跑 schema.sql / data.sql，这里照旧由 Spring 初始化；
+      # 若改成 Flyway 只需调整这一步，其余不变。
+      - name: 后端单元测试
+        run: mvn -B -f backend/pom.xml test
+
+      - name: 打包后端
+        run: mvn -B -f backend/pom.xml -DskipTests package
+
+      - name: 启动后端
+        run: |
+          java -jar backend/mimo-app/target/mimo-app-1.0.0-SNAPSHOT.jar > backend.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf -X POST http://localhost:8080/api/auth/login \
+                 -H 'Content-Type: application/json' \
+                 -d '{"username":"admin","password":"123456"}' > /dev/null; then
+              echo "后端就绪"; exit 0
+            fi
+            sleep 3
+          done
+          echo "后端 180 秒内未就绪"; tail -50 backend.log; exit 1
+
+      - name: 前端依赖与构建
+        run: |
+          cd frontend
+          npm ci
+          npm run build
+
+      - name: 启动前端
+        run: |
+          cd frontend
+          npx vite preview --port 5173 --strictPort > ../frontend.log 2>&1 &
+          for i in $(seq 1 40); do
+            if curl -sf http://localhost:5173/ > /dev/null; then echo "前端就绪"; exit 0; fi
+            sleep 2
+          done
+          echo "前端 80 秒内未就绪"; tail -30 ../frontend.log; exit 1
+
+      # playwright 的浏览器要单独装；本地是把 playwright 装在仓库外，
+      # CI 里用官方镜像或 npx playwright install 都行
+      - name: 安装 Playwright
+        run: |
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+
+      - name: 跑全部 e2e（失败即红）
+        run: node e2e/run-all.mjs --base http://localhost:5173 --api http://localhost:8080/api
+        env:
+          PLAYWRIGHT_MODULE: ${{ github.workspace }}/node_modules/playwright
+          NO_PROXY: localhost,127.0.0.1
+
+      - name: 失败时留存日志
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-logs
+          path: |
+            backend.log
+            frontend.log
+            e2e/xss-report.md

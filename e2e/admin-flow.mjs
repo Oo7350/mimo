@@ -338,19 +338,34 @@ await toggleTheme(adminPage); // 还原亮色，避免影响后续用例
   await adminPage.waitForSelector(".member-stream", { timeout: 20000 });
   await adminPage.waitForTimeout(1200);
 
-  await adminPage.locator(".member-stream").last().locator(".flow-task").first().click();
-  await adminPage.waitForSelector(".task-drawer__title", { timeout: 15000 });
-  await adminPage.getByRole("button", { name: /在项目里打开/ }).click();
-  await adminPage.waitForURL(/\/projects\/\d+\/board/, { timeout: 20000 });
-  await adminPage.waitForTimeout(2600);
+  // 不能取 `.member-stream` 的最后一个：那是"成员列表最后一列"，可能是刚注册的空闲成员
+  // （本套件自己就会注册 e2e-flowmember*，别的套件也会）。连续跑全套时它们排在最后，
+  // 于是这里等一个永远不出现的卡片 —— 单独跑绿、连起来红就是这么来的。
+  const streamsWithTasks = adminPage
+    .locator(".member-stream")
+    .filter({ has: adminPage.locator(".flow-task") });
+  const streamTotal = await adminPage.locator(".member-stream").count();
+  const usableStreams = await streamsWithTasks.count();
+  check("全员流里至少有一个成员带着任务卡片", usableStreams > 0, `成员列=${streamTotal} 有任务的列=${usableStreams}`);
 
-  const reviewBtn = adminPage.getByRole("button", { name: "提交验收" }).first();
-  const hasReviewBtn = (await reviewBtn.count()) > 0;
-  const blockedHint = await adminPage.evaluate(() => {
-    const text = document.body.textContent || "";
-    return /只有任务负责人（[^）]*）可以提交验收/.test(text);
-  });
-  const reviewEnabled = hasReviewBtn && !(await reviewBtn.isDisabled().catch(() => true));
+  let hasReviewBtn = false;
+  let blockedHint = false;
+  let reviewEnabled = false;
+  if (usableStreams > 0) {
+    await streamsWithTasks.last().locator(".flow-task").first().click();
+    await adminPage.waitForSelector(".task-drawer__title", { timeout: 15000 });
+    await adminPage.getByRole("button", { name: /在项目里打开/ }).click();
+    await adminPage.waitForURL(/\/projects\/\d+\/board/, { timeout: 20000 });
+    await adminPage.waitForTimeout(2600);
+
+    const reviewBtn = adminPage.getByRole("button", { name: "提交验收" }).first();
+    hasReviewBtn = (await reviewBtn.count()) > 0;
+    blockedHint = await adminPage.evaluate(() => {
+      const text = document.body.textContent || "";
+      return /只有任务负责人（[^）]*）可以提交验收/.test(text);
+    });
+    reviewEnabled = hasReviewBtn && !(await reviewBtn.isDisabled().catch(() => true));
+  }
   check(
     "管理员在别人负责的任务上不被按成员门槛拦（提交验收可点、无「只有负责人」说明）",
     reviewEnabled && !blockedHint,
