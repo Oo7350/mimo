@@ -81,7 +81,7 @@ const AcceptanceProgress = (props: { criteria: AcceptanceCriterion[] }) => {
   if (!props.criteria || props.criteria.length === 0) return null
   const done = props.criteria.filter(c => c.done).length
   const total = props.criteria.length
-  return h('span', { style: 'font-size:11px;color:var(--text-secondary)' }, `${done}/${total} AC`)
+  return h('span', { style: 'font-size: 12px;color:var(--text-secondary)' }, `${done}/${total} AC`)
 }
 
 const epicGroups = computed(() => {
@@ -128,14 +128,14 @@ onMounted(async () => {
     &--done { opacity: 0.6; }
   }
   &__story-header { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
-  &__story-key { font-size: 11px; color: var(--text-secondary); font-family: monospace; font-weight: 600; }
-  &__story-points { font-size: 11px; color: var(--text-secondary); }
+  &__story-key { font-size: 12px; color: var(--text-secondary); font-family: monospace; font-weight: 600; }
+  &__story-points { font-size: 12px; color: var(--text-secondary); }
   &__story-title { font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px; }
   &__story-meta { display: flex; align-items: center; gap: 12px; font-size: 12px; }
   &__story-role { display: flex; align-items: center; gap: 3px; color: var(--text-secondary); font-style: italic; }
   &__subtasks { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border-color-light); }
   &__subtask-list { display: flex; flex-wrap: wrap; gap: 4px; }
   &__subtask-item { font-size: 12px; }
-  &__subtask-empty { font-size: 11px; color: var(--text-placeholder); }
+  &__subtask-empty { font-size: 12px; color: var(--text-placeholder); }
 }
 </style>

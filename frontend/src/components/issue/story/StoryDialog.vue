@@ -131,7 +131,7 @@ function onAcRemove(id: string) { emit('ac-remove', id) }
     padding: 8px 12px; background: rgba(79,110,246,0.06);
     border-radius: var(--border-radius-sm); margin-bottom: 4px;
   }
-  &__title-label { font-size: 11px; color: var(--text-placeholder); margin-right: 8px; }
+  &__title-label { font-size: 12px; color: var(--text-placeholder); margin-right: 8px; }
   &__title-text { font-size: 13px; color: var(--text-primary); font-weight: 500; }
 }
 </style>

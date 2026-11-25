@@ -73,12 +73,12 @@ const acPercent = computed(() => acCount.value > 0 ? Math.round((acDone.value / 
     margin-bottom: 6px; line-height: 1.4;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  &__meta { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-secondary); margin-bottom: 4px; }
+  &__meta { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
   &__role { font-style: italic; }
   &__points { display: flex; align-items: center; gap: 2px; }
   &__progress { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
-  &__progress-text { font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
-  &__subtasks { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-secondary); margin-bottom: 4px; }
+  &__progress-text { font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
+  &__subtasks { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
   &__footer { display: flex; justify-content: space-between; align-items: center; }
   &__labels { display: flex; gap: 3px; flex-wrap: wrap; max-width: 70%; }
   &__assignee { flex-shrink: 0; }

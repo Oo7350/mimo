@@ -56,7 +56,7 @@ const badgeStyle = computed(() => {
 
   &--small {
     padding: 1px 7px;
-    font-size: 11px;
+    font-size: 12px;
     border-radius: 8px;
   }
 

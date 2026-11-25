@@ -1169,7 +1169,7 @@ onUnmounted(() => {
   }
 
   &__email {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-secondary);
   }
 }
@@ -1197,13 +1197,16 @@ onUnmounted(() => {
   border-radius: 10px;
   border: 1px solid var(--border-color);
   transition: all 0.2s;
+  /* 删除按钮改成悬停时浮在右上角：它以前只是 opacity:0，但仍占着 ~60px 宽度，
+     把项目名挤到 46px（字号抬到 12px 后省略号更明显）。改成绝对定位后宽度全给名字。 */
+  position: relative;
 
   &:hover {
     border-color: rgba(16,185,129,0.35);
     box-shadow: 0 2px 12px rgba(16,185,129,0.08);
 
     .td-project-card__arrow { color: #10b981; transform: translateX(2px); }
-    .td-project-card__del { opacity: 1; }
+    .td-project-card__del { opacity: 1; pointer-events: auto; }
   }
 
   &__main {
@@ -1212,6 +1215,8 @@ onUnmounted(() => {
     gap: 8px;
     flex: 1;
     min-width: 0;
+    /* 给右上角悬停出现的删除按钮留出位置，避免盖住项目名尾部 */
+    padding-right: 26px;
     cursor: pointer;
   }
 
@@ -1219,12 +1224,19 @@ onUnmounted(() => {
     opacity: 0;
     transition: opacity 0.2s;
     flex-shrink: 0;
+    /* 悬停才出现，所以浮在卡片右上角、不参与宽度分配；pointer-events 跟着回收，避免挡住点击 */
+    position: absolute;
+    top: 50%;
+    right: 6px;
+    transform: translateY(-50%);
+    pointer-events: none;
+    z-index: 2;
   }
 
   &__key {
     font-family: monospace;
     font-weight: 700;
-    font-size: 11px;
+    font-size: 12px;
     color: #059669;
     background: rgba(16,185,129,0.1);
     padding: 2px 7px;
@@ -1239,6 +1251,10 @@ onUnmounted(() => {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    /* 字号抬到 12px 后被右侧的 key/删除按钮挤成 46px 宽，省略号吃掉半个项目名 ——
+       flex:1 + min-width:0 让它先占满剩余宽度，实在不够再省略 */
+    flex: 1;
+    min-width: 0;
   }
 
   &__arrow {
@@ -1303,7 +1319,7 @@ onUnmounted(() => {
   }
 
   &__online {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-secondary);
   }
 }
@@ -1351,7 +1367,7 @@ onUnmounted(() => {
 // 时间分隔线
 .td-chat-divider {
   text-align: center;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-placeholder);
   padding: 8px 0;
   position: relative;
@@ -1422,7 +1438,7 @@ onUnmounted(() => {
   }
 
   &__sender {
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
     color: var(--text-secondary);
     margin-bottom: 2px;
@@ -1451,7 +1467,7 @@ onUnmounted(() => {
   &__recall-btn {
     opacity: 0;
     transition: opacity 0.2s;
-    font-size: 11px;
+    font-size: 12px;
     flex-shrink: 0;
     padding: 2px 6px;
   }
@@ -1461,7 +1477,7 @@ onUnmounted(() => {
   }
 
   &__time {
-    font-size: 10px;
+    font-size: 12px;
     color: var(--text-placeholder);
     margin-top: 2px;
     padding: 0 4px;
@@ -1515,7 +1531,7 @@ onUnmounted(() => {
   }
 
   &__label {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-secondary);
     font-weight: 600;
     margin-bottom: 4px;
@@ -1561,7 +1577,7 @@ onUnmounted(() => {
   justify-content: center;
   color: #fff;
   font-weight: 700;
-  font-size: 10px;
+  font-size: 12px;
   flex-shrink: 0;
 }
 
@@ -1614,7 +1630,7 @@ onUnmounted(() => {
     justify-content: center;
     color: #fff;
     font-weight: 700;
-    font-size: 10px;
+    font-size: 12px;
     flex-shrink: 0;
   }
 

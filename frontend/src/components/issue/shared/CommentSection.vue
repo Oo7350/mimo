@@ -125,7 +125,7 @@ function onKeydown(e: Event | KeyboardEvent) {
   &__header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;
     strong { font-size: 13px; color: var(--text-primary); }
   }
-  &__time { font-size: 11px; color: var(--text-placeholder); }
+  &__time { font-size: 12px; color: var(--text-placeholder); }
   &__content { font-size: 14px; color: var(--text-regular); white-space: pre-wrap; word-break: break-word; }
 }
 </style>

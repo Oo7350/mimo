@@ -79,7 +79,7 @@ const hovering = ref(false)
   gap: 3px;
   padding: 1px 6px;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;

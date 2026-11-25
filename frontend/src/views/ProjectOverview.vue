@@ -677,7 +677,7 @@ onMounted(() => {
 
   &__badge {
     margin-left: auto;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
     color: var(--color-primary);
     background: rgba(99,102,241,0.1);
@@ -718,9 +718,9 @@ onMounted(() => {
   &--overdue .ov-task__due { color: var(--color-danger); font-weight: 700; }
 
   &__type { font-size: 14px; flex-shrink: 0; }
-  &__key { font-size: 11px; color: var(--text-secondary); font-family: monospace; flex-shrink: 0; }
+  &__key { font-size: 12px; color: var(--text-secondary); font-family: monospace; flex-shrink: 0; }
   &__title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  &__due { font-size: 11px; color: var(--text-secondary); flex-shrink: 0; }
+  &__due { font-size: 12px; color: var(--text-secondary); flex-shrink: 0; }
 }
 
 .ov-member-list {
@@ -744,7 +744,7 @@ onMounted(() => {
     align-items: center;
     justify-content: center;
     color: #fff;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
     flex-shrink: 0;
   }
@@ -796,7 +796,7 @@ onMounted(() => {
   }
 
   &__time {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-placeholder);
     margin-top: 3px;
   }

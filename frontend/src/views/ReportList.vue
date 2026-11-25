@@ -457,7 +457,7 @@ watch(activeTab, (v) => {
   }
 }
 .stats-card__empty-sub {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-secondary);
   opacity: 0.7;
 }

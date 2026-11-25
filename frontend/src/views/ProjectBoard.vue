@@ -780,7 +780,7 @@ onMounted(async () => {
       min-width: 16px; height: 16px; padding: 0 4px;
       border-radius: 8px;
       background: var(--color-danger, #ef4444);
-      color: #fff; font-size: 10px; font-weight: 700;
+      color: #fff; font-size: 12px; font-weight: 700;
       line-height: 16px; text-align: center;
     }
   }
@@ -862,12 +862,12 @@ onMounted(async () => {
   &__swimlane-avatar {
     width: 22px; height: 22px; border-radius: 6px;
     display: flex; align-items: center; justify-content: center;
-    color: #fff; font-size: 10px; font-weight: 700; flex-shrink: 0;
+    color: #fff; font-size: 12px; font-weight: 700; flex-shrink: 0;
     background: #f7b955; color: #fff;
   }
 
   &__swimlane-count {
-    margin-left: auto; font-size: 10px; font-weight: 600;
+    margin-left: auto; font-size: 12px; font-weight: 600;
     color: var(--text-secondary);
     background: var(--bg-card); padding: 2px 7px;
     border-radius: 7px; border: 1px solid var(--border-color);
@@ -921,7 +921,7 @@ onMounted(async () => {
   &__column-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
   &__column-name { font-weight: 700; font-size: 13.5px; color: var(--text-primary); letter-spacing: -0.15px; }
   &__column-count {
-    font-size: 11px; font-weight: 700; color: var(--text-secondary);
+    font-size: 12px; font-weight: 700; color: var(--text-secondary);
     background: var(--bg-page); padding: 2px 9px;
     border-radius: 8px; border: 1px solid var(--border-color);
   }
@@ -960,7 +960,7 @@ onMounted(async () => {
     &--bug.is-active { background: var(--color-danger); border-color: var(--color-danger); }
   }
 
-  &__tab-count { font-size: 11px; opacity: 0.75; font-weight: 650; }
+  &__tab-count { font-size: 12px; opacity: 0.75; font-weight: 650; }
 
   // 缺陷全宽
   &__section--bug-full .board__columns--bugs {
@@ -971,7 +971,7 @@ onMounted(async () => {
       .board__column-header { padding: 10px 12px 8px; border-top-width: 3px; }
       .board__column-name { font-size: 12.5px; }
       .board__column-body { padding: 0 8px 8px; min-height: 45px; }
-      .board__column-empty { padding: 18px 8px; font-size: 11px; }
+      .board__column-empty { padding: 18px 8px; font-size: 12px; }
     }
   }
 
@@ -1000,7 +1000,7 @@ onMounted(async () => {
     &--bug { color: #dc2626; }
   }
 
-  &__overview-label { font-size: 11px; color: var(--text-muted); font-weight: 550; }
+  &__overview-label { font-size: 12px; color: var(--text-muted); font-weight: 550; }
   &__overview-divider { width: 1px; height: 28px; background: var(--border-color); flex-shrink: 0; }
   &__overview-link { margin-left: auto; font-weight: 700; font-size: 12.5px; }
 }

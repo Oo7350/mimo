@@ -301,6 +301,7 @@ All v2.15 AI roadmap items are implemented; see `项目功能完善计划.md` §
   界面把徽标与入口整个藏了。修复：`AccessControlService#resolveAdminScope` 返回 `SYSTEM / TEAM / NONE`，
   经 `/api/user/profile` 与登录响应的 `adminScope` 给前端，`store/user.ts` 暴露 `isManager / managerLabel`，
   三处入口只读结论。
+- **BUG-116（Low）**：106 处 9–11.5px 小字一次性抬到 12px（26 个文件）；逐页裁切/溢出探针确认 13 个真实路由小字 0、横向溢出 0。顺带修掉团队详情里 opacity:0 仍占 60px 宽度的删除按钮（项目名 46px → 83px）。
 - **BUG-115（High，用户当场发现）**：管理员点进成员任务的详情面板里写着「只有任务负责人（lisi）可以提交验收」。
   读门槛在 `ProjectAccessService`（管理员可），写门槛在两个 Service 里各写一遍、只认 `team_members` 行；
   同一服务里"验收"给管理员逃生口、"提交验收"没给。修复：写门槛委托 `ProjectAccessService`；

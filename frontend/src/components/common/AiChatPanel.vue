@@ -566,7 +566,7 @@ function renderMarkdown(text: string): string {
   right: -2px;
   min-width: 18px;
   height: 18px;
-  font-size: 11px;
+  font-size: 12px;
   background: #ef4444;
   color: white;
   border-radius: 9px;
@@ -613,7 +613,7 @@ function renderMarkdown(text: string): string {
 }
 .ai-chat-panel__notice {
   padding: 7px 12px;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.5;
   color: var(--color-warning-text, #b45309);
   background: var(--color-warning-bg, #fffbeb);
@@ -634,7 +634,7 @@ function renderMarkdown(text: string): string {
   padding: 4px 8px;
   background: transparent;
   color: var(--text-secondary, #909399);
-  font-size: 11px;
+  font-size: 12px;
   cursor: pointer;
 }
 .ai-chat-panel__mode button.active {
@@ -670,7 +670,7 @@ function renderMarkdown(text: string): string {
 }
 .ai-chat-panel__mini > span:first-child { font-weight: 600; font-size: 13px; }
 .ai-chat-panel__mini-msg {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-secondary, #94a3b8);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -733,7 +733,7 @@ function renderMarkdown(text: string): string {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   flex-shrink: 0;
 }
@@ -801,7 +801,7 @@ function renderMarkdown(text: string): string {
 }
 .ai-chat-panel__citations-title {
   color: var(--text-muted, #94a3b8);
-  font-size: 10px;
+  font-size: 12px;
 }
 .ai-chat-panel__citation {
   display: flex;
@@ -823,13 +823,13 @@ function renderMarkdown(text: string): string {
 .ai-chat-panel__citation small {
   flex: 0 0 auto;
   color: var(--text-muted, #94a3b8);
-  font-size: 10px;
+  font-size: 12px;
 }
 .ai-chat-panel__citation b {
   min-width: 0;
   overflow: hidden;
   color: #6366f1;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;

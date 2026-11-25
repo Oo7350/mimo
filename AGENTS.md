@@ -57,6 +57,7 @@ Mimo is a lightweight Trello-like project management platform for small teams. I
 | **CSS 变量按用途分层** | 见下表 | 暗色模式翻车全部来自"一个变量干两件事"（BUG-106） | 新页面必须按表选变量，选错 `theme_literals.py` 查不出、但 `theme-audit.mjs` 会报到低对比 |
 | **实心色块用 `--color-primary-solid`** | 按钮/选中态/徽标底色 | `--color-primary` 在暗色下会变亮，白字压上去不够 | 深色下实心块比亮色略暗，属刻意 |
 | **部署必须人工确认** | `deploy.ps1` 需输入 `y`，`-Force` 跳过 | 脚本会 scp 覆盖生产并重启服务 | CI 里要显式传 `-Force` |
+| **改字号必须配布局探针** | 抬字号后除了重扫对比度，还要查"是否被裁切"（`overflow:hidden` 且 `scrollHeight/scrollWidth` 超出）与页面横向溢出 | 只看"小字数量归零"会漏掉撑坏的容器；`opacity:0` 的按钮仍占布局宽度，比字号更值得修（BUG-116） | 探针要覆盖真实路由，路由兜底重定向会造成"这页没问题"的假象 |
 | **全局改字号要立刻全站重扫对比度** | 抬 `el-tag`/`mimo-nav-label` 字号到 12px 后，`theme-audit` 全站重扫揪出 4 条浮出水面的历史低对比（以前 <12px 小于阈值没被抓） | 体检阈值是按"<12px 记小字"——字号一旦跨过阈值，原本没被抓的低对比会突然全冒出来 | BUG-114 |
 | **读门槛与写门槛必须同源** | 写操作统一走 `ProjectAccessService.requireProject(...)`，与读完全一致 | 各服务自己写 `isTeamMember(...)` 会出现"能看进去、一动手就被拦"，系统管理员看别的团队时连写都进不去（BUG-115） | 新增服务不要自己判；已发现 10+ 处同款写法，逐步收敛 |
 | **前端只读后端给的 `adminScope`** | 管理范围由 `AccessControlService#resolveAdminScope` 判定，写进 `/api/user/profile` 与登录响应；前端只用它决定显示什么 | 前端看不到旧字段兜底（`team_members.role`）与其他迁移开关，自己算必然对不上后端（BUG-113） | 多一个字段要跟着判定改；新增权限来源时只改 `resolveAdminScope` 一处 |
@@ -328,6 +329,10 @@ All v2.15 AI roadmap items are implemented. Future work may replace the lexical 
   修复：判定收敛到 `AccessControlService#resolveAdminScope`（返回 `SYSTEM / TEAM / NONE`），
   通过 `/api/user/profile` 与登录响应的 `adminScope` 字段给前端，`store/user.ts` 暴露 `isManager / managerLabel`，
   工作台/顶栏/看板三处只读这个结论。
+- **BUG-116（Low）**：历史遗留的 106 处 <12px 小字（9–11.5px，26 个文件）一次性抬到 12px；
+  用裁切探针逐页验证后，13 个真实路由 **小字 0 / 横向溢出 0**。抬字号顺带暴露一个更隐蔽的问题：
+  团队详情「关联项目」的删除按钮 `opacity: 0` 但仍占 ~60px 宽度，把项目名挤到 46px ——
+  改成悬停浮层后回到 83px。教训写进 bug-log：全局改字号必须配布局探针，且探测脚本要用真实路由。
 - **BUG-115（High，用户当场发现）**：用户问"管理员点进成员的项目面板后，进行操作怎么是成员的逻辑"——
   详情面板里真的写着「只有任务负责人（lisi）可以提交验收」。两条口径打架：读门槛在
   `ProjectAccessService`（系统管理员/团队成员/团队管理员都可），写门槛却在

@@ -285,7 +285,7 @@ function executeSelected() {
   }
 
   &__kbd {
-    font-size: 11px;
+    font-size: 12px;
     padding: 2px 6px;
     border-radius: 5px;
     background: var(--bg-page);
@@ -309,7 +309,7 @@ function executeSelected() {
 
   &__group-label {
     padding: 8px 10px 4px;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
     color: var(--text-placeholder);
     text-transform: uppercase;
@@ -366,7 +366,7 @@ function executeSelected() {
   }
 
   &__item-kbd {
-    font-size: 10px;
+    font-size: 12px;
     padding: 2px 5px;
     border-radius: 4px;
     background: var(--bg-page);
@@ -379,7 +379,7 @@ function executeSelected() {
     gap: 16px;
     padding: 10px 18px;
     border-top: 1px solid var(--border-color-light);
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-placeholder);
 
     kbd {

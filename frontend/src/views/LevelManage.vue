@@ -349,7 +349,7 @@ onMounted(fetchData)
   }
 
   &__perm-tag {
-    font-size: 11.5px;
+    font-size: 12px;
     font-weight: 700;
     padding: 1px 6px;
     border-radius: 5px;
@@ -417,7 +417,7 @@ onMounted(fetchData)
   }
 
   &__email {
-    font-size: 11.5px;
+    font-size: 12px;
     color: var(--text-muted);
   }
 }

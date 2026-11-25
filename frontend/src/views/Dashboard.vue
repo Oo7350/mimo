@@ -1115,7 +1115,7 @@ onMounted(() => {
 
 .dash-next__no--alt {
   border-style: dashed;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 /* 「生成示例数据」这一条：视觉上和前三步区分开，是"另走一条路" */
@@ -1435,7 +1435,7 @@ onMounted(() => {
     padding: 1px 5px;
     border-radius: 999px;
     background: var(--bg-subtle);
-    font-size: 10px;
+    font-size: 12px;
     text-align: center;
   }
 
@@ -1481,7 +1481,7 @@ onMounted(() => {
     background: var(--bg-subtle);
     color: var(--text-muted);
     display: flex; align-items: center; justify-content: center;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 800;
     flex-shrink: 0;
   }
@@ -1524,7 +1524,7 @@ onMounted(() => {
 .week-range {
   flex-shrink: 0;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .week-range {
@@ -1552,7 +1552,7 @@ onMounted(() => {
 .dash-panel__footnote {
   margin: 8px 0 0;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.6;
 }
 
@@ -1582,7 +1582,7 @@ onMounted(() => {
 
   span {
     color: var(--text-muted);
-    font-size: 11px;
+    font-size: 12px;
   }
 
   b {
@@ -1626,14 +1626,14 @@ onMounted(() => {
 
     span {
       color: var(--text-muted);
-      font-size: 11px;
+      font-size: 12px;
     }
   }
 
   &__meta {
     margin-top: 7px;
     color: var(--text-secondary);
-    font-size: 11px;
+    font-size: 12px;
   }
 }
 

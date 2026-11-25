@@ -261,7 +261,7 @@ onMounted(refreshAll)
 }
 .delivery-summary__item small {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 .delivery-card {
   margin-bottom: 18px;
@@ -326,7 +326,7 @@ onMounted(refreshAll)
 }
 .velocity-table__row small {
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 .delivery-note {
   margin-top: 10px;
@@ -334,7 +334,7 @@ onMounted(refreshAll)
   border-radius: 8px;
   background: var(--bg-subtle);
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.55;
 }
 @media (max-width: 900px) {

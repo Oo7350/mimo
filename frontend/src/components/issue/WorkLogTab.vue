@@ -327,7 +327,7 @@ onMounted(() => load())
   letter-spacing: 0.5px;
 }
 .worklog__timer-since {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-muted);
 }
 .worklog__timer-actions {

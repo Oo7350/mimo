@@ -1041,7 +1041,7 @@ onUnmounted(() => {
 .sprint-detail__stat-value--success { color: #10b981; }
 .sprint-detail__stat-value--danger  { color: #ef4444; }
 .sprint-detail__stat-label {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-muted);
   margin-top: 2px;
 }
@@ -1106,7 +1106,7 @@ onUnmounted(() => {
   gap: 8px;
   margin-top: 5px;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 .sprint-health__actions {
   display: flex;
@@ -1135,7 +1135,7 @@ onUnmounted(() => {
 }
 .health-progress__label b {
   color: var(--text-primary);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
 }
 .health-progress__track {
@@ -1178,7 +1178,7 @@ onUnmounted(() => {
 }
 .health-metric span {
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 .health-metric b {
   color: var(--text-primary);
@@ -1244,7 +1244,7 @@ onUnmounted(() => {
   border-radius: 50%;
   background: #e0e7ff;
   color: var(--color-primary);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
 }
 .health-ai {
@@ -1291,7 +1291,7 @@ onUnmounted(() => {
 }
 .planner__summary span {
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 .planner__summary b {
   color: var(--text-primary);
@@ -1314,7 +1314,7 @@ onUnmounted(() => {
 }
 .planner__section-title span {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
 }
 .planner__risk {
@@ -1372,21 +1372,21 @@ onUnmounted(() => {
 }
 .planner-item__key {
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: 12px;
 }
 .planner-item__meta {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 .planner-item__reason {
   padding: 7px 9px;
   border-radius: 6px;
   background: #f0fdf4;
   color: #15803d;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.5;
 }
 .planner__footer {

@@ -254,7 +254,7 @@ async function handleRegister() {
   }
 
   &__strength-text {
-    font-size: 11.5px;
+    font-size: 12px;
     white-space: nowrap;
     font-weight: 600;
 

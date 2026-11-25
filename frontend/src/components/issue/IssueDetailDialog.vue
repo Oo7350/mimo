@@ -140,7 +140,7 @@
                 <el-option label="进行中 (IN_PROGRESS)" value="IN_PROGRESS" />
                 <el-option label="已完成 (CLOSED)" value="DONE" />
               </el-select>
-              <div style="color: var(--text-secondary); font-size: 11px; margin-top: 4px">
+              <div style="color: var(--text-secondary); font-size: 12px; margin-top: 4px">
                 拖拽卡片到不同列也可自动切换状态
               </div>
             </el-form-item>
@@ -1089,7 +1089,7 @@ async function handleGovernanceUpdated() {
   }
   &__attachment-info { display: flex; align-items: center; gap: 8px; }
   &__attachment-name { font-size: 13px; color: var(--text-primary); }
-  &__attachment-meta { font-size: 11px; color: var(--text-secondary); }
+  &__attachment-meta { font-size: 12px; color: var(--text-secondary); }
   &__attachment-actions { display: flex; }
 }
 .ai-priority-card {
@@ -1105,7 +1105,7 @@ async function handleGovernanceUpdated() {
   flex-wrap: wrap;
 }
 .issue-dialog__ai-polish-hint {
-  font-size: 11px; color: var(--text-muted);
+  font-size: 12px; color: var(--text-muted);
 }
 .ai-polish-preview {
   border: 1px solid var(--border-color);

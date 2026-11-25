@@ -793,7 +793,7 @@ watch(() => route.path, () => {
   }
 
   &__time {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-placeholder);
     margin-top: 5px;
   }

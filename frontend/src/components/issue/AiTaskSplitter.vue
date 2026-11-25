@@ -233,7 +233,7 @@ async function handleCreate() {
   padding-top: 2px;
 }
 .ai-splitter__item-index {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-muted);
   min-width: 18px;
   text-align: center;
@@ -254,7 +254,7 @@ async function handleCreate() {
 }
 .ai-splitter__item-dep {
   margin-top: 4px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-secondary);
   display: flex;
   align-items: center;

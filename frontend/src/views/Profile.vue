@@ -590,7 +590,7 @@ onMounted(fetchProfile)
     align-items: center; justify-content: center;
     gap: 4px;
     color: #fff;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
     opacity: 0;
     transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
@@ -619,7 +619,7 @@ onMounted(fetchProfile)
   }
 
   &__meta {
-    font-size: 11.5px;
+    font-size: 12px;
     color: var(--text-muted);
     padding-top: 12px;
     border-top: 1px solid var(--border-color-light);
@@ -686,7 +686,7 @@ onMounted(fetchProfile)
   }
 
   &__label {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-muted);
     font-weight: 550;
   }

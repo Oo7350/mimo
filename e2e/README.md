@@ -203,6 +203,28 @@ a11y 树里这些按钮会被判定为 hidden，`getByRole` 数到 0（踩过）
 第 4 条当初是**红的**：简单 broker 默认不发心跳，服务端要等 Tomcat 会话超时才认为人走了。
 给 `enableSimpleBroker` 配了 10 秒心跳 + 调度器之后才通过——所以这条用例同时是心跳配置的回归保护。
 
+## 版面探针（`probe-text.mjs`）
+
+抬字号、改间距这类"一处改、多处"的改动，除了 `theme-audit` 量对比度，还要量**有没有撑坏**：
+
+```bash
+node e2e/probe-text.mjs http://localhost:5173
+```
+
+| 指标 | 判法 | 合格线 |
+|---|---|---|
+| 小字 | `font-size < 12px` 且有文字的元素 | 0 |
+| 真裁切 | 容器 `overflow: hidden` 且 `scrollHeight/scrollWidth` 超出 2px | 0（长名字的正常省略号除外） |
+| 高度不足 | `overflow: hidden` 且 `line-height > clientHeight + 1.5` | 0 |
+| 页面横向溢出 | `documentElement.scrollWidth - clientWidth` | 0 |
+| 路由真实性 | 探测后核对 `location.pathname` | 必须与预期一致（不存在的一级路径会被兜底重定向到 `/`，会造成"这页没问题"的假象） |
+
+脚本对"小字 > 0 / 横向溢出 / 路由不符"三种情况**返回非 0**，可以直接进流水线；
+"真裁切"只打印不判失败（长名字的省略号是正常设计，需人工确认是哪一个）。
+
+最近一次结果（v2.19.9，抬高 106 处字号后）：13 个真实路由 **小字 0 / 真裁切 1（「示例项目：移动端改版」在 185px 卡片里的省略号）/ 横向溢出 0 / 路由不符 0**，
+`theme-audit` 亮暗均 **小于 12px 的文字 0 处**；`probe-layout` 15 页横向溢出 0、文字被裁 0。
+
 ## 管理员视角用例（`admin-flow.mjs`，v2.19.8，19 条）
 
 对应"管理员账号要和普通账号突出区别、能看到所有成员的任务流、点开能看细致的具体任务"。
