@@ -139,6 +139,35 @@
   重跑体检，不能只跑自己改的那几个组件。这次 theme-audit 全站重扫揪出了 4 条隐藏低对比
   （info tag / danger 实心 tag / warning 文字 tag / sprint 进行中徽标）。
 - **回归**: `theme-audit` 亮/暗两套主题 0 低对比 / 0 浅色块；小字从 54 处降到 32 处。
+### BUG-115: 管理员在成员的任务上"操作按成员逻辑"——写门槛比读门槛严 [High]
+
+- **文件**: `backend/.../service/IssueReviewService.java`、`IssueChangeRequestService.java`、
+  `frontend/src/components/issue/governance/IssueReviewPanel.vue`
+- **现象**: 用户原话："**管理员账号点击全员工作流进入成员的项目面板后，进行操作怎么是成员的逻辑？**"
+  实测（admin 打开 lisi 负责的任务）：详情面板里明写着
+  **「只有任务负责人（lisi）可以提交验收」**，管理员被当成普通成员挡住；
+  接口层同样返回 `code=403 只有任务负责人可以提交验收`。
+- **根因（两条口径打架）**:
+  1. **读门槛**在 `ProjectAccessService`：系统管理员 / 团队成员 / 团队管理员三者任一即可；
+     **写门槛**却各自实现一遍，`IssueReviewService` 与 `IssueChangeRequestService` 里都只认
+     `team_members` 有一行 —— 于是管理员"能看进去，一动手就被拦"，且系统管理员看别的团队时
+     连写都进不去。
+  2. **同一条治理链上两套规则**：同一个 `IssueReviewService` 里，「验收」分支给了管理员逃生口
+     （`isAdmin`），「提交验收」分支没给。成员休假时管理员连代提交都做不到。
+- **修复**:
+  1. 两个 Service 的 `assertProjectMember` 改为委托 `ProjectAccessService.requireProject(...)`，
+     写门槛与读门槛合成一个口径（单测用 `verify` 锁住"必须走统一入口"）。
+  2. `submit()` 抽出 `assertCanSubmit(issue, submitterId)`：负责人 **或** 管理员（系统管理员 /
+     项目负责人 / 团队管理员）都能提交，报错文案改成"只有任务负责人或管理员可以提交验收"。
+  3. 前端 `IssueReviewPanel` 的 `isAdmin` 补上 `userStore.isManager`（后端算好的 `adminScope`）——
+     旧字段兜底的团队管理员在 RBAC 里没有 `team.manage`，只看权限码会被判成普通成员（同 BUG-113）。
+- **刻意保留**: 管理员代提交后**不能自己验收**（`submitterId == userId` 直接拒），职责分离不变；
+  也就是说管理员代提交后要由报告人/另一位管理员验收。
+- **回归**: 新增单测 `IssueReviewServiceSubmitGateTest` 7 条（负责人/普通成员/系统管理员/
+  项目负责人/团队管理员/未指派两例/门槛委托）；`e2e/admin-flow.mjs` 新增 1 条
+  （从全员流点成员任务 → 在项目里打开 → 「提交验收」可点且无拦截说明），共 19 条。
+- **教训**: "能看见但动不了"是最难自证的一类缺陷 —— 读接口通、界面正常渲染，只有真去点一下才暴露。
+  **凡是 `isXxxMember()` 这类判定，只能有一个入口**；再次验证了"同一件事两处各写一遍必然对不上"。
 ### 工具补丁：`theme-audit.mjs` 对"两层叠放"控件的测量盲区（非 BUG）
 
 新加的「我的 / 全员」滑动开关，选中项的白字压在**兄弟节点**（滑动指示块）的靛蓝底色上。
@@ -2392,12 +2421,12 @@
 | 严重程度 | 数量 |
 |---------|------|
 | Critical | 6 |
-| High | 46 |
+| High | 47 |
 | Medium | 41 |
 | Low | 21 |
-| **已修复（BUG 条目）** | **114** |
+| **已修复（BUG 条目）** | **115** |
 | **已知未修复（KNOWN 条目）** | **3** |
-| **总计** | **117** |
+| **总计** | **118** |
 
 | 版本段 | BUG 条数 |
 |--------|---------|

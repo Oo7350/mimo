@@ -301,13 +301,16 @@ All v2.15 AI roadmap items are implemented; see `项目功能完善计划.md` §
   界面把徽标与入口整个藏了。修复：`AccessControlService#resolveAdminScope` 返回 `SYSTEM / TEAM / NONE`，
   经 `/api/user/profile` 与登录响应的 `adminScope` 给前端，`store/user.ts` 暴露 `isManager / managerLabel`，
   三处入口只读结论。
-- **BUG-114（Medium）**：全站字号 12px 起（小字 54→32），抬字号后浮出 4 条历史低对比 tag（info/danger/warning/sprint 徽标）逐条压深达标；新组件可点控件补 :focus-visible 键盘焦点环。
+- **BUG-115（High，用户当场发现）**：管理员点进成员任务的详情面板里写着「只有任务负责人（lisi）可以提交验收」。
+  读门槛在 `ProjectAccessService`（管理员可），写门槛在两个 Service 里各写一遍、只认 `team_members` 行；
+  同一服务里"验收"给管理员逃生口、"提交验收"没给。修复：写门槛委托 `ProjectAccessService`；
+  `submit()` 负责人**或管理员**都能提交；前端 `isAdmin` 补 `userStore.isManager`。- **BUG-114（Medium）**：全站字号 12px 起（小字 54→32），抬字号后浮出 4 条历史低对比 tag（info/danger/warning/sprint 徽标）逐条压深达标；新组件可点控件补 :focus-visible 键盘焦点环。
 - BUG-110：Element 抽屉 `close-on-press-escape` 依赖焦点，鼠标点开后 Esc 无效 → `window` 捕获监听。
 - BUG-111：统计卡标签 `--text-muted` 压 `--color-primary-lighter`，亮色 2.95:1 → 改 `--text-secondary`。
 - BUG-112：在线人数一次请求问两遍 `PresenceService`，单测里恒为 0 → 只调一次。
 - KNOWN-025 新登记：无分页、无历史趋势。
 
-**验证**：`mvn test` 174 项、e2e **7 套 64 条**（新增 `e2e/admin-flow.mjs` 17 条，含旧字段团队管理员、
+**验证**：`mvn test` 181 项、e2e **7 套 64 条**（新增 `e2e/admin-flow.mjs` 17 条，含旧字段团队管理员、
 普通成员两种身份，以及亮/暗主题下新界面的对比度与横向溢出现场测量）、`vue-tsc`、`npm run build`、
 `probe-layout` 15 页 0 溢出。
 

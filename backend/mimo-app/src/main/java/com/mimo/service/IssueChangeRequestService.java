@@ -47,6 +47,7 @@ public class IssueChangeRequestService {
     );
 
     private final IssueChangeRequestMapper issueChangeRequestMapper;
+    private final ProjectAccessService projectAccessService;
     private final IssueMapper issueMapper;
     private final ProjectMapper projectMapper;
     private final UserMapper userMapper;
@@ -223,11 +224,8 @@ public class IssueChangeRequestService {
     }
 
     private void assertProjectMember(Issue issue, Long userId) {
-        Project project = projectMapper.selectById(issue.getProjectId());
-        if (project == null) throw new BusinessException(ResultCode.PROJECT_NOT_FOUND);
-        if (!teamService.isTeamMember(project.getTeamId(), userId)) {
-            throw new BusinessException(ResultCode.FORBIDDEN, "无权操作该项目的工作项");
-        }
+        // 与"读"同一个口径：系统管理员 / 团队成员 / 团队管理员都能操作（BUG-115）
+        projectAccessService.requireProject(issue.getProjectId(), userId);
     }
 
     private void assertReviewer(Issue issue, Long userId) {

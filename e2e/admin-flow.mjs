@@ -324,6 +324,40 @@ check("详情抽屉在暗色下无低对比文本", drawerAudit.offenders.length
 await adminPage.keyboard.press("Escape");
 await toggleTheme(adminPage); // 还原亮色，避免影响后续用例
 
+// ==================== 管理员在成员任务上"能操作"（BUG-115） ====================
+//
+// 用户原话："管理员账号点击全员工作流进入成员的项目面板后，进行操作怎么是成员的逻辑？"
+// 当时详情面板里明写着「只有任务负责人（lisi）可以提交验收」——管理员被按普通成员的门槛拦了。
+// 路径：全员流点成员任务 → 抽屉 → 在项目里打开 → 看板弹窗里的「提交验收」。
+// 只验"按钮可点、不再挂那句拦截说明"，不真的点：点了会往库里写一条待验收记录。
+{
+  // 从干净页面重走一遍，避免上一段残留的弹窗遮住卡片
+  await adminPage.goto(BASE + "/", { waitUntil: "domcontentloaded" });
+  await adminPage.waitForTimeout(1500);
+  await adminPage.locator(".dash-hero__admin-entry").first().click();
+  await adminPage.waitForSelector(".member-stream", { timeout: 20000 });
+  await adminPage.waitForTimeout(1200);
+
+  await adminPage.locator(".member-stream").last().locator(".flow-task").first().click();
+  await adminPage.waitForSelector(".task-drawer__title", { timeout: 15000 });
+  await adminPage.getByRole("button", { name: /在项目里打开/ }).click();
+  await adminPage.waitForURL(/\/projects\/\d+\/board/, { timeout: 20000 });
+  await adminPage.waitForTimeout(2600);
+
+  const reviewBtn = adminPage.getByRole("button", { name: "提交验收" }).first();
+  const hasReviewBtn = (await reviewBtn.count()) > 0;
+  const blockedHint = await adminPage.evaluate(() => {
+    const text = document.body.textContent || "";
+    return /只有任务负责人（[^）]*）可以提交验收/.test(text);
+  });
+  const reviewEnabled = hasReviewBtn && !(await reviewBtn.isDisabled().catch(() => true));
+  check(
+    "管理员在别人负责的任务上不被按成员门槛拦（提交验收可点、无「只有负责人」说明）",
+    reviewEnabled && !blockedHint,
+    `按钮存在=${hasReviewBtn} 可点=${reviewEnabled} 挂拦截说明=${blockedHint}`,
+  );
+}
+
 console.log(`\n普通成员账号（清理用）：${PLAIN.username}`);
 console.log(`\n=== ${passed}/${passed + failed} 通过 ===`);
 

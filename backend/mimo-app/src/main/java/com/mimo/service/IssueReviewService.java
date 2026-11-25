@@ -49,18 +49,13 @@ public class IssueReviewService {
     private final DeliveryAnalyticsService deliveryAnalyticsService;
     private final ObjectMapper objectMapper;
     private final AccessControlService accessControlService;
+    private final ProjectAccessService projectAccessService;
 
     @Transactional
     public ReviewVO submit(Long issueId, SubmitReviewRequest request, Long submitterId) {
         Issue issue = requireIssue(issueId);
         assertProjectMember(issue, submitterId);
-        if (issue.getAssigneeId() != null && !Objects.equals(issue.getAssigneeId(), submitterId)) {
-            throw new BusinessException(ResultCode.FORBIDDEN, "只有任务负责人可以提交验收");
-        }
-        if (issue.getAssigneeId() == null && !Objects.equals(issue.getReporterId(), submitterId)
-                && !isAdmin(issue, submitterId)) {
-            throw new BusinessException(ResultCode.FORBIDDEN, "未指派任务只能由报告人或管理员提交验收");
-        }
+        assertCanSubmit(issue, submitterId);
         if (existsPending(issueId)) {
             throw new BusinessException(ResultCode.CONFLICT, "该任务已有待处理的验收申请");
         }
@@ -210,11 +205,27 @@ public class IssueReviewService {
         return issue;
     }
 
-    private void assertProjectMember(Issue issue, Long userId) {
-        Project project = projectMapper.selectById(issue.getProjectId());
-        if (project == null) throw new BusinessException(ResultCode.PROJECT_NOT_FOUND);
-        if (!teamService.isTeamMember(project.getTeamId(), userId)) {
-            throw new BusinessException(ResultCode.FORBIDDEN, "无权操作该项目的工作项");
+    /** 包级可见：单测要锁"写门槛与读门槛同一个口径" */
+    void assertProjectMember(Issue issue, Long userId) {
+        // 口径必须与"读"一致：系统管理员 / 团队成员 / 团队管理员都能操作
+        // （以前这里只认 team_members 行，系统管理员从全员任务流点进来能看却一操作就被拦）
+        projectAccessService.requireProject(issue.getProjectId(), userId);
+    }
+
+    /**
+     * 能不能提交验收：任务负责人，或管理员代为提交（成员休假/离职时得有人能把任务推完）。
+     *
+     * <p>包级可见是为了单测直接锁口径 —— 这条规则以前没有管理员逃生口，
+     * 而同一个类里的"验收"分支却有，两套口径并存就是踩坑的源头（BUG-115）。</p>
+     */
+    void assertCanSubmit(Issue issue, Long submitterId) {
+        if (issue.getAssigneeId() != null && !Objects.equals(issue.getAssigneeId(), submitterId)
+                && !isAdmin(issue, submitterId)) {
+            throw new BusinessException(ResultCode.FORBIDDEN, "只有任务负责人或管理员可以提交验收");
+        }
+        if (issue.getAssigneeId() == null && !Objects.equals(issue.getReporterId(), submitterId)
+                && !isAdmin(issue, submitterId)) {
+            throw new BusinessException(ResultCode.FORBIDDEN, "未指派任务只能由报告人或管理员提交验收");
         }
     }
 

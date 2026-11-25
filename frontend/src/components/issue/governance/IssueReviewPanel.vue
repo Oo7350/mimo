@@ -109,27 +109,36 @@ const projectOwnerId = ref<number | null>(null)
 
 const myId = computed(() => userStore.userInfo?.id)
 
-/** 和后端 IssueReviewService.isAdmin 口径一致：系统管理员 / 项目负责人 / 团队管理员 */
+/**
+ * 和后端 IssueReviewService.isAdmin 口径一致：系统管理员 / 项目负责人 / 团队管理员。
+ * v2.19.9：把 userStore.isManager（后端算好的 adminScope=SYSTEM/TEAM）也算进来——
+ * 旧字段兜底的团队管理员（team_members.role=ADMIN）在 RBAC 里没有 team.manage，
+ * 只看权限码会把他判成普通成员，于是管理员按钮被藏起来（同 BUG-113 的坑）。
+ */
 const isAdmin = computed(
   () =>
     permissionStore.isSuperAdmin ||
+    userStore.isManager ||
     permissionStore.has('team.manage') ||
     (!!myId.value && projectOwnerId.value === myId.value),
 )
 
-/** 只有任务负责人能提交；未指派时由报告人或管理员提交（后端同规则） */
+/**
+ * 能提交验收的人：任务负责人，或管理员代为提交（后端同规则）。
+ * 管理员这里必须放行——成员休假/离职时得有人能把任务推完。
+ */
 const canSubmit = computed(() => {
   const i = issue.value
   if (!i || myId.value == null) return true // 还没加载到就当能点，避免闪一下
-  if (i.assigneeId) return i.assigneeId === myId.value
+  if (i.assigneeId) return i.assigneeId === myId.value || isAdmin.value
   return i.reporterId === myId.value || isAdmin.value
 })
 
 const submitBlocker = computed(() => {
   const i = issue.value
   if (!i) return ''
-  if (!i.assigneeId) return '未指派的任务只能由报告人或项目管理员提交验收'
-  return `只有任务负责人（${i.assigneeName || '负责人'}）可以提交验收`
+  if (!i.assigneeId) return '未指派的任务只能由报告人或管理员提交验收'
+  return `只有任务负责人（${i.assigneeName || '负责人'}）或管理员可以提交验收`
 })
 
 function canReview(item: IssueReview) {
