@@ -6,7 +6,7 @@
 ## 一条命令跑全部（`run-all.mjs`）
 
 ```bash
-node e2e/run-all.mjs                    # 13 套套件，约 8 分钟
+node e2e/run-all.mjs                    # 14 套套件，约 9 分钟
 node e2e/run-all.mjs --probes           # 连 3 个探针（版面 / 布局 / 配色）一起
 node e2e/run-all.mjs --only admin-flow,review-matrix   # 只跑挑中的（改哪儿跑哪儿）
 node e2e/run-all.mjs --base http://localhost:5173 --api http://localhost:8080/api
@@ -18,7 +18,7 @@ node e2e/run-all.mjs --base http://localhost:5173 --api http://localhost:8080/ap
   `presence-source-label.mjs` 用拦截接口的方式覆盖两种口径，不依赖真实 Redis。
 - 跑完执行 `e2e/cleanup-residue.sql` 清临时账号（`run-all` 结束会提醒）。
 
-当前清单（**13 套 132 条 + 3 探针**）：
+当前清单（**14 套 142 条 + 3 探针**）：
 
 | 套件 | 条数 | 覆盖 |
 |---|---|---|
@@ -28,6 +28,7 @@ node e2e/run-all.mjs --base http://localhost:5173 --api http://localhost:8080/ap
 | `next-step.mjs` | 6 | 详情页「下一步」建议 |
 | `chain-links.mjs` | 5 | 链路口径一致性 |
 | `workflow-guard.mjs` | 8 | 工作流转换守卫（含节点责任人） |
+| `workflow-canvas.mjs` | 10 | 工作流画布：自由节点投影成列 + 拖连线 + 验收标准前提 |
 | `admin-flow.mjs` | 26 | 管理员视角（徽标/全员流/分页/筛选/趋势/抽屉/主题/权限/代提交） |
 | `presence.mjs` | 4 | 在线人数按会话算 |
 | `presence-source-label.mjs` | 6 | 在线人数的口径写在界面上（「仅本实例」/ 共享两种口径，v2.21.0） |
@@ -210,6 +211,37 @@ node e2e/workflow-guard.mjs http://localhost:5173
 > 不能用 zhangsan / lisi：开发库里他们在 `team_members` 里也是 `ROLE_ADMIN`，
 > 而"管理员永远能推进"是设计内的放行口，用他们测出来的永远是放行。
 > 注册出的账号由 `cleanup-residue.sql` 按 `e2e-%` 前缀回收。
+
+## 工作流画布（`workflow-canvas.mjs`，v2.22.0）
+
+这一版把"节点必须先是一列"拆掉了，顺带把设计器换成真画布，所以单独一套用例盯住三件事：
+画布是不是真能画、自由节点会不会真的落成列（并且**说出来**）、连线上加的前提条件是不是真管用。
+
+| # | 检查点 | 断言 |
+|---|--------|------|
+| 1 | 设计器是画布 | 编辑态出现 `[data-workflow-canvas]`，节点卡片 ≥3、连线 ≥1 |
+| 2 | 节点能拖动 | 拖把手后卡片 `boundingBox.y` 变化 > 40px |
+| 3 | 新节点可以先不绑列 | 点「新节点」→ 卡片 +1，卡片上出现「保存后自动建列」 |
+| 4 | 拖圆点能连线 | 从「已完成」的 `[data-port]` 拖到新节点 → 连线数 +1 |
+| 5 | 连线能加前提 | 点连线（`dispatchEvent('click')`，SVG 描边点不准）→ 面板含「什么情况下才能做」 |
+| 6 | 保存时自动建列并提示 | 接口返回 `createdColumns` 含新节点名，toast 写「为「…」自动创建了看板列」 |
+| 7 | 前提存下来了 | 该转换的 `prerequisites` 含 `ACCEPTANCE_DONE` |
+| 8 | 看板真的多了一列 | `GET /board/{id}` 里出现该列名，且不是跑之前的列 |
+| 9 | 没勾完验收标准拖不进「已完成」 | 提示含「验收标准还有 2 项没勾完」，`columnId` 未变 |
+| 10 | 勾完之后同样拖拽能过 | 逐条 `PUT /issues/{id}/acceptance-criteria/{acId}` 勾完 → 拖进「已完成」成功 |
+
+```bash
+node e2e/workflow-canvas.mjs http://localhost:5173
+```
+
+前置：项目 id=1 有 STORY 工作流（scrum 模板，含「进行中 → 已完成」）。用例**结束时**
+把工作流恢复成跑之前的样子、删掉自动建的列与本轮建的卡，所以可以连跑。
+唯一会留下的痕迹是工作流 `config` 里节点的 `x/y` 坐标（拖动过）与新增的 `nodeKey`——
+这两样在读出侧本来就会自动补齐，不影响行为。
+
+> 踩坑记录：连线是 SVG `path`，Playwright 点元素中心可能落在描边之外，用 `dispatchEvent('click')` 更稳；
+> 节点拖动必须抓**左上角的把手**（`[data-drag-handle]`），因为卡片里全是 input / select，
+> 整卡 `mousedown` 会被它们的 `@mousedown.stop` 吃掉。
 
 ## 验收权限矩阵（`review-matrix.mjs`）
 

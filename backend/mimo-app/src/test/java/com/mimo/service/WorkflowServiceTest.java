@@ -14,6 +14,7 @@ import com.mimo.entity.Project;
 import com.mimo.entity.User;
 import com.mimo.entity.Workflow;
 import com.mimo.mapper.BoardColumnMapper;
+import com.mimo.mapper.IssueMapper;
 import com.mimo.mapper.ProjectMapper;
 import com.mimo.mapper.TeamMemberMapper;
 import com.mimo.mapper.UserMapper;
@@ -24,6 +25,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -50,6 +52,8 @@ class WorkflowServiceTest {
     private TeamMemberMapper teamMemberMapper;
     @Mock
     private UserMapper userMapper;
+    @Mock
+    private IssueMapper issueMapper;
     @Mock
     private RoleService roleService;
 
@@ -386,6 +390,149 @@ class WorkflowServiceTest {
         verify(workflowMapper, never()).exists(any());
     }
 
+    // ===== v2.22.0：自由节点（节点是流程状态，列由它投影） =====
+
+    @Test
+    void shouldCreateBoardColumnForFreeNode() {
+        when(boardColumnMapper.selectList(any())).thenReturn(List.of(column(10L, "待办", 1)));
+        when(boardColumnMapper.selectCount(any())).thenReturn(3L);
+        when(workflowMapper.selectOne(any())).thenReturn(null);
+        when(boardColumnMapper.insert(any())).thenAnswer(inv -> {
+            BoardColumn inserted = inv.getArgument(0);
+            inserted.setId(99L);
+            return 1;
+        });
+
+        SaveWorkflowRequest request = request();
+        WorkflowNode deploy = new WorkflowNode();
+        deploy.setName("上线");
+        deploy.setColor("#67C23A");
+        deploy.setIsTerminal(true);
+        List<WorkflowNode> nodes = new ArrayList<>(request.getConfig().getNodes());
+        nodes.add(deploy);
+        request.getConfig().setNodes(nodes);
+
+        WorkflowVO vo = service().saveWorkflow(request, 9L);
+
+        // 建列不是悄悄做的：接口要把"我给你补了哪一列"带回去
+        assertThat(vo.getCreatedColumns()).containsExactly("上线");
+        WorkflowNode saved = vo.getConfig().getNodes().stream()
+                .filter(n -> "上线".equals(n.getName())).findFirst().orElseThrow();
+        assertThat(saved.getColumnId()).isEqualTo(99L);
+        assertThat(saved.getNodeKey()).isNotBlank();
+        assertThat(saved.getX()).isNotNull();
+    }
+
+    @Test
+    void shouldAssignNodeKeysAndAlignTransitionEnds() {
+        when(boardColumnMapper.selectList(any())).thenReturn(List.of());
+        when(boardColumnMapper.selectCount(any())).thenReturn(2L);
+        when(workflowMapper.selectOne(any())).thenReturn(null);
+
+        WorkflowVO vo = service().saveWorkflow(request(), 9L);
+
+        assertThat(vo.getConfig().getNodes()).allSatisfy(n -> assertThat(n.getNodeKey()).isNotBlank());
+        // 旧写法（只给 columnId）保存后两端都要能对上：画布按 key 连线，看板按 columnId 判定
+        assertThat(vo.getConfig().getTransitions().get(0).getFromNodeKey()).isEqualTo("col-10");
+        assertThat(vo.getConfig().getTransitions().get(0).getToNodeKey()).isEqualTo("col-20");
+        assertThat(vo.getConfig().getTransitions().get(0).getFromColumnId()).isEqualTo(10L);
+        assertThat(vo.getConfig().getTransitions().get(0).getToColumnId()).isEqualTo(20L);
+    }
+
+    @Test
+    void shouldRejectTransitionPointingToMissingNode() {
+        SaveWorkflowRequest request = request();
+        WorkflowTransition broken = new WorkflowTransition();
+        broken.setFromNodeKey("nope");
+        broken.setToNodeKey("col-20");
+        request.getConfig().setTransitions(List.of(broken));
+
+        assertThatThrownBy(() -> service().saveWorkflow(request, 9L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("不存在的节点");
+    }
+
+    // ===== v2.22.0：前提条件「验收标准全部勾完」 =====
+
+    @Test
+    void shouldBlockWhenAcceptanceCriteriaUnfinished() {
+        when(workflowMapper.selectOne(any())).thenReturn(workflowWithPrerequisite());
+        Issue issue = issue(10L, 20L);
+        issue.setAcceptanceCriteria(criteria(false, false));
+
+        assertThatThrownBy(() -> service().validateTransition(issue, 10L, 20L, 99L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("验收标准还有 2 项没勾完");
+    }
+
+    @Test
+    void shouldAllowWhenAcceptanceCriteriaAllDone() {
+        when(workflowMapper.selectOne(any())).thenReturn(workflowWithPrerequisite());
+        Issue issue = issue(10L, 20L);
+        issue.setAcceptanceCriteria(criteria(true, true));
+
+        assertThat(service().validateTransition(issue, 10L, 20L, 99L)).isTrue();
+    }
+
+    @Test
+    void shouldNotBlockWhenIssueHasNoAcceptanceCriteria() {
+        when(workflowMapper.selectOne(any())).thenReturn(workflowWithPrerequisite());
+        Issue issue = issue(10L, 20L);
+        issue.setAcceptanceCriteria(null);
+
+        // 一条验收标准都没写的老任务不该被这条规则锁死
+        assertThat(service().validateTransition(issue, 10L, 20L, 99L)).isTrue();
+    }
+
+    @Test
+    void shouldExplainAcceptanceCriteriaInAvailableTransitions() {
+        when(workflowMapper.selectOne(any())).thenReturn(workflowWithPrerequisite());
+        Issue issue = issue(10L, 20L);
+        issue.setAcceptanceCriteria(criteria(false, false));
+        when(issueMapper.selectById(5L)).thenReturn(issue);
+
+        List<AvailableTransitionVO> transitions =
+                service().getAvailableTransitions(7L, "STORY", 10L, 99L, 5L);
+
+        assertThat(transitions).hasSize(1);
+        assertThat(transitions.get(0).getAllowed()).isFalse();
+        assertThat(transitions.get(0).getReason()).contains("验收标准还有 2 项没勾完");
+        assertThat(transitions.get(0).getPrerequisites()).containsExactly("ACCEPTANCE_DONE");
+    }
+
+    private Workflow workflowWithPrerequisite() {
+        WorkflowTransition transition = new WorkflowTransition();
+        transition.setFromColumnId(10L);
+        transition.setToColumnId(20L);
+        transition.setConditions(List.of());
+        transition.setPrerequisites(List.of("ACCEPTANCE_DONE"));
+
+        WorkflowConfig config = new WorkflowConfig();
+        config.setTransitions(List.of(transition));
+        try {
+            Workflow wf = new Workflow();
+            wf.setId(1L);
+            wf.setProjectId(7L);
+            wf.setIssueType("STORY");
+            wf.setIsActive(1);
+            wf.setIsDefault(0);
+            wf.setConfig(JSON.writeValueAsString(config));
+            return wf;
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private String criteria(boolean... done) {
+        StringBuilder json = new StringBuilder("[");
+        for (int i = 0; i < done.length; i++) {
+            if (i > 0) json.append(',');
+            json.append("{\"id\":\"ac-").append(i).append("\",\"text\":\"第 ").append(i + 1)
+                    .append(" 条\",\"done\":").append(done[i]).append('}');
+        }
+        return json.append(']').toString();
+    }
+
     private SaveWorkflowRequest request() {
         WorkflowNode todo = new WorkflowNode();
         todo.setColumnId(10L);
@@ -415,6 +562,7 @@ class WorkflowServiceTest {
 
     private WorkflowService service() {
         return new WorkflowService(workflowMapper, boardColumnMapper, projectMapper, teamMemberMapper, userMapper,
+                issueMapper,
                 new AccessControlService(roleService, userMapper, teamMemberMapper));
     }
 

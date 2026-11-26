@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mimo.common.BusinessException;
 import com.mimo.common.ResultCode;
+import com.mimo.dto.IssueDTO;
 import com.mimo.dto.WorkflowDTO.*;
 import com.mimo.entity.BoardColumn;
 import com.mimo.entity.Issue;
@@ -12,6 +13,7 @@ import com.mimo.entity.TeamMember;
 import com.mimo.entity.User;
 import com.mimo.entity.Workflow;
 import com.mimo.mapper.BoardColumnMapper;
+import com.mimo.mapper.IssueMapper;
 import com.mimo.mapper.ProjectMapper;
 import com.mimo.mapper.TeamMemberMapper;
 import com.mimo.mapper.UserMapper;
@@ -37,8 +39,12 @@ public class WorkflowService {
     private final ProjectMapper projectMapper;
     private final TeamMemberMapper teamMemberMapper;
     private final UserMapper userMapper;
+    private final IssueMapper issueMapper;
     private final AccessControlService accessControlService;
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    /** 前提条件：验收标准必须全部勾完（v2.22.0） */
+    public static final String PREREQUISITE_ACCEPTANCE_DONE = "ACCEPTANCE_DONE";
 
     // ========== CRUD ==========
 
@@ -80,7 +86,9 @@ public class WorkflowService {
             wf.setProjectId(projectId);
             wf.setIssueType(issueType);
             wf.setName("默认工作流（自动生成）");
-            wf.setConfig(writeConfig(buildScrumTemplate(columns)));
+            WorkflowConfig template = buildScrumTemplate(columns);
+            fillNodeIdentity(template);   // 直接带上 nodeKey/坐标落库，省得每次读出再补
+            wf.setConfig(writeConfig(template));
             wf.setIsActive(1);
             wf.setIsDefault(1);
             wf.setCreatedBy(userId);
@@ -103,22 +111,29 @@ public class WorkflowService {
     /** 创建或更新工作流 */
     @Transactional
     public WorkflowVO saveWorkflow(SaveWorkflowRequest request, Long userId) {
-        // 校验节点中的 columnId 确实属于该项目
-        validateConfig(request.getProjectId(), request.getConfig());
+        WorkflowConfig config = request.getConfig();
+
+        // ① 归一化：补 nodeKey、补画布坐标、把连线的 key 与 columnId 对齐
+        normalizeConfig(config);
+        // ② 自由节点投影成看板列（节点是流程状态，列是它站的地方）
+        List<String> createdColumns = projectFreeNodes(request.getProjectId(), config);
+        // ③ 校验（列属于项目、责任人存在、至少一个终态）
+        validateConfig(request.getProjectId(), config);
 
         Workflow existing = workflowMapper.selectOne(
                 new LambdaQueryWrapper<Workflow>()
                         .eq(Workflow::getProjectId, request.getProjectId())
                         .eq(Workflow::getIssueType, request.getIssueType()));
 
-        String configJson = writeConfig(request.getConfig());
+        String configJson = writeConfig(config);
 
+        WorkflowVO vo;
         if (existing != null) {
             existing.setName(request.getName());
             existing.setConfig(configJson);
             existing.setIsActive(1);
             workflowMapper.updateById(existing);
-            return toVO(existing);
+            vo = toVO(existing);
         } else {
             Workflow wf = new Workflow();
             wf.setProjectId(request.getProjectId());
@@ -129,8 +144,124 @@ public class WorkflowService {
             wf.setIsDefault(0);
             wf.setCreatedBy(userId);
             workflowMapper.insert(wf);
-            return toVO(wf);
+            vo = toVO(wf);
         }
+        vo.setCreatedColumns(createdColumns);
+        return vo;
+    }
+
+    /**
+     * 归一化配置：给节点补稳定身份与坐标，并把连线两端的 nodeKey / columnId 互相补齐。
+     *
+     * <p>为什么要有 nodeKey：以前 node 只有 columnId，等于"节点不存在于流程里，只存在于看板上"，
+     * 所以没法先设计流程再落列。补上身份后，同一份配置既能被画布按 key 连线，也能被看板按 columnId 判定。</p>
+     */
+    private void normalizeConfig(WorkflowConfig config) {
+        if (config.getNodes() == null || config.getNodes().isEmpty()) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "工作流至少需要一个节点");
+        }
+        Set<String> usedKeys = new LinkedHashSet<>();
+        Map<Long, WorkflowNode> byColumn = new LinkedHashMap<>();
+        int index = 0;
+        for (WorkflowNode node : config.getNodes()) {
+            String key = trimToNull(node.getNodeKey());
+            if (key == null) {
+                key = node.getColumnId() != null ? "col-" + node.getColumnId() : "n-" + shortId();
+            }
+            if (!usedKeys.add(key)) {
+                throw new BusinessException(ResultCode.BAD_REQUEST, "节点标识重复：" + key);
+            }
+            node.setNodeKey(key);
+            if (node.getX() == null || node.getY() == null) {
+                // 没坐标就按顺序排一行，画布打开时不至于全叠在左上角
+                node.setX(40 + index * 200);
+                node.setY(80);
+            }
+            index++;
+            if (node.getColumnId() != null) {
+                byColumn.put(node.getColumnId(), node);
+            }
+        }
+
+        if (config.getTransitions() == null) {
+            config.setTransitions(new ArrayList<>());
+            return;
+        }
+        Map<String, WorkflowNode> byKey = new LinkedHashMap<>();
+        config.getNodes().forEach(n -> byKey.put(n.getNodeKey(), n));
+
+        for (WorkflowTransition t : config.getTransitions()) {
+            WorkflowNode from = resolveNode(t.getFromNodeKey(), t.getFromColumnId(), byKey, byColumn);
+            WorkflowNode to = resolveNode(t.getToNodeKey(), t.getToColumnId(), byKey, byColumn);
+            if (from == null || to == null) {
+                throw new BusinessException(ResultCode.BAD_REQUEST,
+                        "转换规则指向了不存在的节点（" + t.getFromNodeKey() + " → " + t.getToNodeKey() + "）");
+            }
+            t.setFromNodeKey(from.getNodeKey());
+            t.setToNodeKey(to.getNodeKey());
+            t.setFromColumnId(from.getColumnId());
+            t.setToColumnId(to.getColumnId());
+        }
+    }
+
+    /** 连线端点解析：优先 nodeKey，其次 columnId（兼容旧配置） */
+    private WorkflowNode resolveNode(String nodeKey, Long columnId,
+                                     Map<String, WorkflowNode> byKey, Map<Long, WorkflowNode> byColumn) {
+        if (trimToNull(nodeKey) != null) {
+            WorkflowNode node = byKey.get(nodeKey.trim());
+            if (node != null) return node;
+        }
+        return columnId != null ? byColumn.get(columnId) : null;
+    }
+
+    /**
+     * 自由节点投影：没有看板列的节点，保存时在项目里补一列。
+     *
+     * <p>为什么不是"允许节点没有列"：工作项的总得停在某一列上，界面才画得出来。
+     * 让节点凭空存在、看板却看不见它，等于让界面撒谎。所以这里的做法是——
+     * 你把流程画出来，缺的列我补上，然后**明确告诉你补了哪几列**。</p>
+     *
+     * @return 本次新建的列名（给前端提示用）
+     */
+    private List<String> projectFreeNodes(Long projectId, WorkflowConfig config) {
+        List<String> created = new ArrayList<>();
+        int nextSort = boardColumnMapper.selectList(
+                        new LambdaQueryWrapper<BoardColumn>().eq(BoardColumn::getProjectId, projectId))
+                .stream()
+                .map(BoardColumn::getSortOrder)
+                .filter(Objects::nonNull)
+                .max(Integer::compareTo)
+                .orElse(0) + 1;
+
+        for (WorkflowNode node : config.getNodes()) {
+            if (node.getColumnId() != null) continue;
+            String name = trimToNull(node.getName());
+            if (name == null) {
+                throw new BusinessException(ResultCode.BAD_REQUEST,
+                        "新增的节点需要填名字（它要成为看板上的一列）");
+            }
+            BoardColumn column = new BoardColumn();
+            column.setProjectId(projectId);
+            column.setName(name);
+            column.setColor(trimToNull(node.getColor()) != null ? node.getColor() : "#909399");
+            column.setSortOrder(nextSort++);
+            boardColumnMapper.insert(column);
+            node.setColumnId(column.getId());
+            created.add(name);
+            log.info("工作流节点投影为看板列: projectId={}, nodeKey={}, columnId={}, name={}",
+                    projectId, node.getNodeKey(), column.getId(), name);
+        }
+        return created;
+    }
+
+    private String shortId() {
+        return UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+    }
+
+    private String trimToNull(String value) {
+        if (value == null) return null;
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     /** 序列化工作流配置，失败时给出可读提示 */
@@ -201,6 +332,13 @@ public class WorkflowService {
                     "工作流不允许从「" + fromName + "」转换到「" + toName + "」");
         }
 
+        // 前提条件先看：它给出的原因最具体（"验收标准还有 2 项没勾完"比"你不满足条件"有用得多）
+        String unmet = checkPrerequisites(transition.getPrerequisites(), issue);
+        if (unmet != null) {
+            throw new BusinessException(ResultCode.FORBIDDEN,
+                    "还不能进入「" + getColumnName(projectId, toColumnId) + "」：" + unmet);
+        }
+
         if (transition.getConditions() != null && !transition.getConditions().isEmpty()
                 && !matchesAnyCondition(transition.getConditions(), issue, operatorId)) {
             throw new BusinessException(ResultCode.FORBIDDEN,
@@ -234,9 +372,12 @@ public class WorkflowService {
      * 界面上要么给个能点的按钮，要么直接说清原因，而不是点了再被 403。</p>
      *
      * @param operatorId 当前登录用户；null 表示不做"人"的判定（内部调用/兼容旧调用方）
+     * @param issueId    具体工作项；给了才算得出"验收标准还有几项没勾"这类前提，
+     *                   不给就只能对"谁"下结论。空值不代表允许，只是无法提前判断。
      */
     public List<AvailableTransitionVO> getAvailableTransitions(Long projectId, String issueType,
-                                                               Long currentColumnId, Long operatorId) {
+                                                               Long currentColumnId, Long operatorId,
+                                                               Long issueId) {
         WorkflowVO wf = getActiveWorkflow(projectId, issueType);
         if (wf == null) {
             // 无工作流 → 返回所有列作为可转移目标
@@ -258,6 +399,7 @@ public class WorkflowService {
 
         WorkflowNode fromNode = findNode(wf, currentColumnId);
         Long ownerId = fromNode != null ? fromNode.getOwnerUserId() : null;
+        Issue issue = issueId != null ? issueMapper.selectById(issueId) : null;
 
         return wf.getConfig().getTransitions().stream()
                 .filter(t -> Objects.equals(t.getFromColumnId(), currentColumnId))
@@ -266,10 +408,12 @@ public class WorkflowService {
                     vo.setToColumnId(t.getToColumnId());
                     vo.setToColumnName(getColumnName(projectId, t.getToColumnId()));
                     vo.setConditions(t.getConditions());
+                    vo.setPrerequisites(t.getPrerequisites());
                     vo.setFromOwnerId(ownerId);
                     vo.setFromOwnerName(ownerId != null ? displayName(ownerId) : null);
 
-                    String blocked = blockedReason(t.getConditions(), ownerId, projectId, operatorId);
+                    String blocked = blockedReason(t.getConditions(), t.getPrerequisites(),
+                            issue, ownerId, projectId, operatorId);
                     vo.setAllowed(blocked == null);
                     vo.setReason(blocked);
                     return vo;
@@ -277,21 +421,33 @@ public class WorkflowService {
                 .collect(Collectors.toList());
     }
 
+    /** 不带 issueId：只对"谁可以做"下结论 */
+    public List<AvailableTransitionVO> getAvailableTransitions(Long projectId, String issueType,
+                                                               Long currentColumnId, Long operatorId) {
+        return getAvailableTransitions(projectId, issueType, currentColumnId, operatorId, null);
+    }
+
     /** 不传 operatorId 的旧签名（内部/测试用）：只列规则，不做"人"的判定 */
     public List<AvailableTransitionVO> getAvailableTransitions(Long projectId, String issueType,
                                                                Long currentColumnId) {
-        return getAvailableTransitions(projectId, issueType, currentColumnId, null);
+        return getAvailableTransitions(projectId, issueType, currentColumnId, null, null);
     }
 
     /**
      * 这一步为什么推不动？能推（或者说不准）返回 null。
      *
-     * <p>只下"确定"的结论：责任人不是当前用户、或规则写着"仅管理员"而当前用户不是管理员。
+     * <p>只下"确定"的结论：前提条件不满足（验收标准没勾完，有 issue 时才算得出）、
+     * 责任人不是当前用户、或规则写着"仅管理员"而当前用户不是管理员。
      * 指派人 / 报告人这类条件需要具体工作项才判得准，这里不猜——真被拦下来时
      * {@link #validateTransition} 会给准确提示。</p>
      */
-    private String blockedReason(List<String> conditions, Long ownerId, Long projectId, Long operatorId) {
+    private String blockedReason(List<String> conditions, List<String> prerequisites, Issue issue,
+                                 Long ownerId, Long projectId, Long operatorId) {
         if (operatorId == null) return null;
+        if (issue != null) {
+            String unmet = checkPrerequisites(prerequisites, issue);
+            if (unmet != null) return unmet;
+        }
         if (ownerId != null && !Objects.equals(ownerId, operatorId) && !isProjectAdmin(projectId, operatorId)) {
             return "这一步由「" + displayName(ownerId) + "」负责";
         }
@@ -301,6 +457,35 @@ public class WorkflowService {
                     .allMatch(c -> "ROLE_ADMIN".equalsIgnoreCase(c.trim()));
             if (adminOnly && !isProjectAdmin(projectId, operatorId)) {
                 return "只有项目管理员能执行这一步";
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 前提条件检查：全部满足才返回 null，否则返回一句人话原因。
+     *
+     * <p>关于 {@code ACCEPTANCE_DONE} 与"没有验收标准"的处理：一条都没写的工作项**不受限制**。
+     * 否则所有不写验收标准的老任务会永远推不动，那不是严格，那是把流程变成死路。</p>
+     */
+    private String checkPrerequisites(List<String> prerequisites, Issue issue) {
+        if (prerequisites == null || prerequisites.isEmpty() || issue == null) return null;
+        for (String raw : prerequisites) {
+            String prerequisite = trimToNull(raw);
+            if (prerequisite == null) continue;
+            switch (prerequisite.toUpperCase(Locale.ROOT)) {
+                case PREREQUISITE_ACCEPTANCE_DONE: {
+                    List<IssueDTO.AcceptanceCriterion> criteria =
+                            IssueDTO.parseAcceptanceCriteria(issue.getAcceptanceCriteria());
+                    if (criteria.isEmpty()) continue;   // 没写验收标准 → 不拦
+                    long open = criteria.stream().filter(c -> !c.isDone()).count();
+                    if (open > 0) {
+                        return "验收标准还有 " + open + " 项没勾完（共 " + criteria.size() + " 项）";
+                    }
+                    break;
+                }
+                default:
+                    log.warn("忽略未知前提条件: {}", raw);
             }
         }
         return null;
@@ -390,6 +575,13 @@ public class WorkflowService {
         if (config.getNodes() == null || config.getNodes().isEmpty()) {
             throw new BusinessException(ResultCode.BAD_REQUEST, "工作流至少需要一个节点");
         }
+        // 节点是流程状态，名字必须人看得懂（它同时会成为看板列名）
+        for (WorkflowNode node : config.getNodes()) {
+            if (trimToNull(node.getName()) == null) {
+                throw new BusinessException(ResultCode.BAD_REQUEST,
+                        "工作流节点「" + node.getNodeKey() + "」还没有名字");
+            }
+        }
         // 校验所有 columnId 属于该项目
         List<Long> columnIds = config.getNodes().stream()
                 .map(WorkflowNode::getColumnId)
@@ -402,6 +594,15 @@ public class WorkflowService {
                             .in(BoardColumn::getId, columnIds));
             if (validCount != columnIds.size()) {
                 throw new BusinessException(ResultCode.BAD_REQUEST, "工作流节点包含不属于该项目的列");
+            }
+        }
+        // 一个看板列只能是一个节点的落脚点：两个节点共列，工作项就说不清在流程的哪一步
+        Set<Long> seenColumns = new LinkedHashSet<>();
+        for (WorkflowNode node : config.getNodes()) {
+            if (node.getColumnId() == null) continue;
+            if (!seenColumns.add(node.getColumnId())) {
+                throw new BusinessException(ResultCode.BAD_REQUEST,
+                        "看板列只能对应一个流程节点（「" + node.getName() + "」重复绑定了同一列）");
             }
         }
         // 节点责任人必须是个真实存在的用户：否则配错了没人能推进，还查不出为什么
@@ -451,15 +652,59 @@ public class WorkflowService {
             log.error("解析工作流配置失败, workflowId={}", wf.getId(), e);
             vo.setConfig(new WorkflowConfig());
         }
+        WorkflowConfig config = vo.getConfig();
+        if (config == null) return vo;
+
+        // 老配置（只有 columnId）在读出时就补上身份与坐标：画布不该看到"没有 key 的节点"，
+        // 否则拖连线时两边对不上，用户会以为是设计器坏了
+        fillNodeIdentity(config);
+
         // 责任人名字回填：设计器/看板都要显示"这一步谁负责"，别让前端再查一遍用户
-        if (vo.getConfig() != null && vo.getConfig().getNodes() != null) {
-            vo.getConfig().getNodes().forEach(n -> {
+        if (config.getNodes() != null) {
+            config.getNodes().forEach(n -> {
                 if (n.getOwnerUserId() != null) {
                     n.setOwnerName(displayName(n.getOwnerUserId()));
                 }
             });
         }
         return vo;
+    }
+
+    /** 只读侧归一化：补 nodeKey/坐标、对齐连线两端（不建列、不校验） */
+    private void fillNodeIdentity(WorkflowConfig config) {
+        if (config.getNodes() == null) return;
+        int index = 0;
+        Map<Long, WorkflowNode> byColumn = new LinkedHashMap<>();
+        Set<String> usedKeys = new LinkedHashSet<>();
+        for (WorkflowNode node : config.getNodes()) {
+            String key = trimToNull(node.getNodeKey());
+            if (key == null) {
+                key = node.getColumnId() != null ? "col-" + node.getColumnId() : "n-old-" + index;
+            }
+            if (!usedKeys.add(key)) {
+                key = key + "-" + index;   // 手工改过的坏数据也别让整页打不开
+            }
+            node.setNodeKey(key);
+            if (node.getX() == null) node.setX(40 + index * 200);
+            if (node.getY() == null) node.setY(80);
+            index++;
+            if (node.getColumnId() != null) byColumn.put(node.getColumnId(), node);
+        }
+        Map<String, WorkflowNode> byKey = new LinkedHashMap<>();
+        config.getNodes().forEach(n -> byKey.put(n.getNodeKey(), n));
+        if (config.getTransitions() == null) return;
+        for (WorkflowTransition t : config.getTransitions()) {
+            WorkflowNode from = resolveNode(t.getFromNodeKey(), t.getFromColumnId(), byKey, byColumn);
+            WorkflowNode to = resolveNode(t.getToNodeKey(), t.getToColumnId(), byKey, byColumn);
+            if (from != null) {
+                t.setFromNodeKey(from.getNodeKey());
+                t.setFromColumnId(from.getColumnId());
+            }
+            if (to != null) {
+                t.setToNodeKey(to.getNodeKey());
+                t.setToColumnId(to.getColumnId());
+            }
+        }
     }
 
     private String getColumnName(Long projectId, Long columnId) {

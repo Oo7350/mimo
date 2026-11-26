@@ -281,16 +281,16 @@ async function main() {
             await page.goto(`${BASE}/projects/1/workflow`, { waitUntil: "domcontentloaded" });
             await page.locator(".workflow-designer__overview").waitFor({ state: "visible", timeout: 20000 });
             await page.locator(".workflow-designer__alert button", { hasText: "编辑" }).first().click();
-            await page.locator(".workflow-designer__drop-zone").waitFor({ state: "visible", timeout: 10000 });
+            await page.locator("[data-workflow-canvas]").waitFor({ state: "visible", timeout: 10000 });
             // Element Plus 2.x 的单选 placeholder 渲染成 span.el-select__placeholder，不是 input 属性
             const ownerSelects = await page
-              .locator(".workflow-designer__drop-zone .workflow-designer__node .el-select")
+              .locator("[data-workflow-canvas] .workflow-designer__card .el-select")
               .count();
             const placeholders = await page
-              .locator(".workflow-designer__drop-zone .workflow-designer__node .el-select__placeholder")
+              .locator("[data-workflow-canvas] .workflow-designer__card .el-select__placeholder")
               .allInnerTexts();
             const nodeCount = await page
-              .locator(".workflow-designer__drop-zone .workflow-designer__node")
+              .locator("[data-workflow-canvas] .workflow-designer__card")
               .count();
             record(
               "设计器里每个节点都能指定责任人",

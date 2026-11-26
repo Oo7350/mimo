@@ -1,6 +1,7 @@
 # AGENTS.md
 
-> **最新版本**：v2.21.0（2026-11-26）— Redis 终于真的用上了（关闭 KNOWN-002）：① 查下来比记录更糟——`MimoApplication` 排除了 `RedisAutoConfiguration`，`StringRedisTemplate` 从来不存在，两处 `@Autowired(required = false)` 永远注入 null，所谓"单设备登录 Token 校验"**从未运行**，`spring.redis.*` 是一段死配置。② 在线状态抽成 `PresenceStore`（`InMemoryPresenceStore` 行为不变 / `RedisPresenceStore` 用 `mimo:presence:sess|user|online` + 90 秒 TTL + 30 秒心跳续期，心跳发现 TTL 过期会重新登记自愈），下行消息抽成 `RealtimeBridge`（`RedisRealtimeBridge` 本地投一次 + 发到 `mimo:bus:realtime`，各实例按 `origin` 丢掉自己那份，保证每个浏览器只收一次）。③ 装配靠互斥条件（`RedisReachableCondition` + 取反版）：`mimo.realtime.store=auto` 启动探一次 Redis（300ms），通就用 Redis、不通就用进程内，开发机没装 Redis 也不影响启动；`RedisAutoConfiguration` **仍然排除**，连接工厂自己建。④ 降级必须说出来：Redis 一抛异常就退回进程内并把 `shared()` 变 false，接口多下发 `presenceStore` / `presenceShared` / `presenceNote`，团队页写「2 人在线（仅本实例）」+ 说明图标——看不见"准不准"的数字，比看到一个不准的数字更糟。⑤ 单设备登录改成 `mimo.security.single-device-login`（默认关）：接上 Redis 后这段逻辑本来会突然生效，同账号多端会互踢，开发调试与 e2e 立刻全崩。⑥ 顺手修掉两个构建坑：`mvn clean package` 其实只出瘦 jar（缺 `repackage` 执行绑定，BUG-119），以及我自己的误操作——`mvn spring-boot:repackage` 在聚合工程里会把 `mimo-common` 打成 22 字节空壳、启动报 `NoClassDefFoundError`（BUG-120）。**真机双实例验证**：起 :8080 A / :8081 B 共用一个 Redis，B 上的连接出现在 A 的在线列表、A 发的团队聊天被 B 上的客户端收到、断开立即回落；再把探针实例改成 `memory` 重跑，这两条按预期不成立（`e2e/two-instance-presence.mjs`）。后端 **207 项**测试、e2e **13 套 132 条 + 3 探针**、`vue-tsc`、`npm run build` 全绿。
+> **最新版本**：v2.22.0（2026-11-26）— 工作流从"拖列进网格"变成真流程：① **节点终于有自己的身份**（`WorkflowNode.nodeKey` + `x/y`，`columnId` 变可空）。以前节点主键就是 `columnId`，等于"流程里的一步必须先是一列"，想加「上线」得先去建列，顺序是反的；现在节点是流程状态、看板列由它投影——保存时链路是 `normalizeConfig`（补身份/坐标、连线两端 key 与 columnId 互相补齐）→ `projectFreeNodes`（缺列的节点建一列并回填）→ `validateConfig`，读出时 `fillNodeIdentity` 给历史配置补身份，**config 是 JSON 所以不动表结构**。② **建列不静默**：`WorkflowVO.createdColumns` 把新建的列名带回，界面弹「为「上线」自动创建了看板列（它们原本没有落脚的地方）」；一个列只能属于一个节点（重复绑定 400）；删节点不删列（列里可能还有工作项）。③ **画布**：节点绝对定位可拖（把手在卡片左上——卡片里全是输入控件，整卡拖动会把点击吞掉，第一版就是这么错的）、SVG 贝塞尔连线 + 箭头，从右侧圆点拖到另一节点就建一条规则（也可以点圆点再点目标）。踩过一个坑：原先 `mouseup` 就清"连线中"状态，而浏览器对"按下在 A、松开在 B"会把 `click` 派发到共同祖先（画布），于是画布先清、目标 click 再执行已经晚了——表现是"拖了半天没连上"。④ **前提条件与角色条件分成两类**：`conditions`（谁可以做，任一命中）vs `prerequisites`（什么情况下才能做，全部满足），首个是 `ACCEPTANCE_DONE`；未勾完时报「还不能进入「已完成」：验收标准还有 2 项没勾完（共 2 项）」，而**一条验收标准都没写的工作项不受限制**（否则老任务永远推不动）。`GET /workflow/transitions` 增可选 `issueId`，给了才提前算得出这句话。⑤ **BUG-121**：设计器的「终态」复选框勾了不生效（看板/工作台判终态用的是 `BoardColumnRules.isTerminalName` 列名规则，`isTerminal` 只用于"至少一个终态"校验），改成只读徽标 + 说明——一个能点但不影响任何行为的控件，比没有更糟。后端 **214 项**测试（`WorkflowServiceTest` 25 → 32）、e2e 新增 `workflow-canvas.mjs` 10 条 → **14 套 142 条 + 3 探针**全绿、`workflow-guard` 8 条回归通过、`vue-tsc`、`npm run build` 全绿。
+> **上一版本**：v2.21.0（2026-11-26）— Redis 终于真的用上了（关闭 KNOWN-002）：① 查下来比记录更糟——`MimoApplication` 排除了 `RedisAutoConfiguration`，`StringRedisTemplate` 从来不存在，两处 `@Autowired(required = false)` 永远注入 null，所谓"单设备登录 Token 校验"**从未运行**，`spring.redis.*` 是一段死配置。② 在线状态抽成 `PresenceStore`（`InMemoryPresenceStore` 行为不变 / `RedisPresenceStore` 用 `mimo:presence:sess|user|online` + 90 秒 TTL + 30 秒心跳续期，心跳发现 TTL 过期会重新登记自愈），下行消息抽成 `RealtimeBridge`（`RedisRealtimeBridge` 本地投一次 + 发到 `mimo:bus:realtime`，各实例按 `origin` 丢掉自己那份，保证每个浏览器只收一次）。③ 装配靠互斥条件（`RedisReachableCondition` + 取反版）：`mimo.realtime.store=auto` 启动探一次 Redis（300ms），通就用 Redis、不通就用进程内，开发机没装 Redis 也不影响启动；`RedisAutoConfiguration` **仍然排除**，连接工厂自己建。④ 降级必须说出来：Redis 一抛异常就退回进程内并把 `shared()` 变 false，接口多下发 `presenceStore` / `presenceShared` / `presenceNote`，团队页写「2 人在线（仅本实例）」+ 说明图标——看不见"准不准"的数字，比看到一个不准的数字更糟。⑤ 单设备登录改成 `mimo.security.single-device-login`（默认关）：接上 Redis 后这段逻辑本来会突然生效，同账号多端会互踢，开发调试与 e2e 立刻全崩。⑥ 顺手修掉两个构建坑：`mvn clean package` 其实只出瘦 jar（缺 `repackage` 执行绑定，BUG-119），以及我自己的误操作——`mvn spring-boot:repackage` 在聚合工程里会把 `mimo-common` 打成 22 字节空壳、启动报 `NoClassDefFoundError`（BUG-120）。**真机双实例验证**：起 :8080 A / :8081 B 共用一个 Redis，B 上的连接出现在 A 的在线列表、A 发的团队聊天被 B 上的客户端收到、断开立即回落；再把探针实例改成 `memory` 重跑，这两条按预期不成立（`e2e/two-instance-presence.mjs`）。后端 **207 项**测试、e2e **13 套 132 条 + 3 探针**、`vue-tsc`、`npm run build` 全绿。
 > **上一版本**：v2.20.1（2026-11-25）— 全员任务流从"一次铺开所有人"变成能用的面板（关闭 KNOWN-025）：① **分页在后端**（`memberPage` / `pageSize` 默认 8 上限 30、每人 `taskLimit` 默认 6 上限 20），切页顺序是"先筛选 → 再排序 → 最后切页"，所以第 1 页永远是最该管的几个人；被截掉的任务只给计数（`taskTotal`），界面写"还有 N 项没显示（共 M 项）· 点击展开"。② **筛选/排序也搬到服务端**（`keyword` / `only` / `sort`）——这是做分页时才发现的连带 bug：以前筛选按钮上的"有逾期 3"数的是**当前页那 8 个人**，点进去可能只看到 1 个；现在筛选按钮不再显示人数，改由分页文案写"第 x/y 页 · 共 N 人（全队 M 人，已按条件筛选）"，分母永远是全队。③ **概览数字永远按全队算**，筛"空闲"不会让"未完成"变成 0。④ **近 7 天趋势**取自 `activity_logs` 的真实事件（新建 = `CREATE`，完成 = `MOVE` 且目标列是终态列），**不拿 `issues.updated_at` 近似**——项目没有完成时间字段，用更新时间冒充会在"改个标题"时虚增完成数；口径随接口下发并写在图下面。⑤ 把"终态列"判定抽成 `util/BoardColumnRules`（看板拖拽与趋势共用一处，别各写一遍）。过程中自己修掉两个错：`vo.setMembers(streams)` 残留在分页之后会把结果覆盖成全量（页码在变、数据没切），新按钮把 `--color-primary-solid` 当文字色用（暗色 2.82:1，主题审计当场抓到）；另外给 `next-step` 的首屏导航加了 45 秒超时 + 一次重试（连跑十几套后偶发超时，不是产品缺陷）。后端 **192 项**测试、e2e **12 套 126 条 + 3 探针**、`vue-tsc`、`npm run build` 全绿。
 > **上一版本**：v2.20.0（2026-11-25）— 这一版全在补"看得见但动不了"的坑，顺手把回归变成一条命令：① **BUG-115**：管理员从「全员任务流」点进成员的任务后，操作被按普通成员拦住（详情面板明写「只有任务负责人（lisi）可以提交验收」）。根因是读门槛在 `ProjectAccessService`（管理员放行）、写门槛却在治理服务里各写一遍（只认 `team_members` 有行）。现在写门槛委托统一入口，`submit()` 抽出 `assertCanSubmit`：负责人**或**管理员都能提交；管理员代提交后仍不能自己验收（职责分离）。② **BUG-117**：同族问题全量排查——发现 11 处"自己实现的写门槛"，症状包括系统管理员进别人团队打不开迭代/团队页、团队管理员看不到待验收、`WikiService` 注释写"含团队管理员"代码却没有、系统管理员删不掉别人的工时。统一收敛到 `canAccessProject / canAccessTeam / canManageProject` 三个判定；团队聊天、建改删项目、加入审批**故意**只给团队权限。真库双向验证：把 admin 从 `team_members` 删掉后 5 个接口 200、换外人账号 403。③ **BUG-116**：全站剩余 106 处 9–11.5px 小字抬到 12px，并用新写的裁切探针确认没撑坏（13 页小字 0、横向溢出 0），顺带揪出一个 `opacity:0` 但仍占 60px 宽度的删除按钮把项目名挤成 46px。④ **BUG-118 / KNOWN-024**：新增 `e2e/run-all.mjs`——一条命令跑 **12 套 120 条 + 3 探针**，失败即退出码 1；顺手发现连跑时 `admin-flow` 会因"挑最后一个成员列"（空闲账号排最后）而超时，单独跑却是绿的。也在这里更正一个长期说错的数字：仓库一直是 **12 套**，不是文档里写的 7 套。CI 配置 `.github/workflows/e2e.yml` 已写，但**没在真实 runner 上跑过**。后端 187 项测试、`vue-tsc`、`npm run build` 全绿。
 > **上一版本**：v2.19.8（2026-11-24）— 管理员终于和普通账号长得不一样了：① 顶栏 / 工作台 Hero / 成员列都有了身份徽标（`AdminBadge`，琥珀盾牌 + 金色头像描边），口径是旧 `role` 字段、RBAC `role.manage`、`team.manage` 三者任一，前端只用它决定显不显示。② 工作台的「我的任务」面板加了管理员专属的「我的 / 全员」滑动切换，切到全员就是新接口 `GET /api/workbench/team` 的**全员任务流**：系统管理员看全部团队、团队管理员只看自己管理的团队，返回每人一条 `MemberStreamVO`（负载等级 + 一句话依据 + 排好序的任务）与 `summary`（含**未指派**任务）。空闲的人也占一列——空着本身是信息；未指派单独成栏；负载标签写依据（"有 1 项逾期，未完成 5 项"）而不是只给红黄绿。③ 点任意任务卡右侧滑出**详情抽屉**（`TaskDetailDrawer`：状态/优先级/逾期天数/故事点/标签、6 个字段格、Markdown 描述、验收标准完成度、缺陷信息、子任务、在项目里打开），看完 Esc 关掉还在原位，不跳页。④ 看板给管理员加了「全员泳道」开关。另外修了一条用户当场抓到的 High：前端自己用权限码判管理员，漏掉了 `team_members.role = ROLE_ADMIN` 这条旧字段兜底，团队管理员后端放行、界面却把入口藏了（BUG-113）——现在判定收敛到后端 `AccessControlService#resolveAdminScope`，经 `adminScope` 字段给前端，顶栏 / 工作台 / 看板三处只读这个结论。顺手打磨了一轮前端观感（BUG-114）：全站字号 12px 起（小字 54→32）、抬字号后浮出水面的 4 条隐藏低对比 tag 一并修掉（info/danger/warning/sprint 徽标）、新组件所有可点控件补键盘焦点环。过程中修掉 BUG-110（Element 抽屉的 `close-on-press-escape` 依赖焦点，鼠标点开后按 Esc 没反应）、BUG-111（统计卡标签压淡紫底 2.95:1）、BUG-112（在线人数一次请求问两遍 `PresenceService`，单测里恒为 0）；新登记 KNOWN-025（全员任务流无分页/无历史趋势）。后端 187 项测试、e2e **12 套 120 条**（新增 `admin-flow.mjs` 15 条，含亮/暗两套主题下新界面的对比度与溢出实测）、`vue-tsc`、`npm run build`、`probe-layout` 全绿。
@@ -18,8 +19,8 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 Mimo is a lightweight Trello-like project management platform for small teams. It supports team collaboration, kanban task tracking, and progress visualization.
 
-- **Version**: v2.21.0 — Redis 真的用起来了：跨实例在线状态与实时广播 (2026-11-26)
-- **Previous**: v2.20.1 — 全员任务流：分页 + 服务端筛选 + 7 天趋势 (2026-11-25)
+- **Version**: v2.22.0 — 工作流：自由节点 + 画布连线 + 验收标准前提条件 (2026-11-26)
+- **Previous**: v2.21.0 — Redis 真的用起来了：跨实例在线状态与实时广播 (2026-11-26)
 - **GitHub**: https://github.com/Oo7350/mimo
 - **API docs**: `接口文档.md` (70+ endpoints, Chinese)
 - **User manual**: `操作手册.md` (Chinese)
@@ -69,6 +70,9 @@ Mimo is a lightweight Trello-like project management platform for small teams. I
 | **筛选项的分母必须是被统计的全体** | 筛选/排序/分页一律放服务端；数字写清"筛出 N / 全队 M" | 前端筛当前页会得出"有逾期 3 人"而实际全队 12 人的假数字（v2.20.1 之前就是这样） | 但前端筛选无需请求、更快；代价是它只能看见一页 |
 | **趋势从事件算，不从"最后更新时间"猜** | 完成数 = `activity_logs` 里 MOVE 到终态列的事件；口径随接口下发并展示 | 用 `issues.updated_at` 近似时，改个标题、改个标签都会虚增"完成数" | 事件表写得更慢；但数字能被解释 |
 | **看板列语义只有一处** | `util/BoardColumnRules#isTerminalName`，拖拽门禁与趋势统计都调它 | 抄两份的判断迟早不一致（BUG-115/117 就是这个病根） | 多一个类；好处是改口径只改一处 |
+| **工作流节点有独立身份，看板列由它投影** | `WorkflowNode.nodeKey` 是稳定身份，`columnId` 可空；保存时缺列的节点自动建列并回填，`createdColumns` 把列名带回界面 | 以前节点主键就是 `columnId`，等于"流程里的一步必须先是一列"，加「上线」得先建列（顺序反了）；而不让节点凭空存在又是必须的——工作项总得停在某列，界面才画得出来 | 保存会多出列（界面上必须明说建了哪一列）；删节点不删列，要删列去看板删 |
+| **"谁可以做"与"什么情况下"分成两类条件** | `conditions`（`ASSIGNEE`/`REPORTER`/`ROLE_ADMIN`，任一命中）与 `prerequisites`（`ACCEPTANCE_DONE`，全部满足）分开存 | 混在一个 OR 列表里，"仅管理员"就会绕过"验收标准没勾完"，等于没配 | 前提条件对"没写验收标准"的工作项不生效，这是故意留的口子 |
+| **拦人时给数字，不给形容词** | 验收标准没勾完报 `验收标准还有 2 项没勾完（共 2 项）`；责任人挡住时点名 | "条件不满足"这种话用户没法行动，只能挨个试 | 需要 `issueId` 才提前算得出，所以 `/workflow/transitions` 加了可选参数 |
 | **"我跑过 N 套"不等于"仓库有 N 套"** | 收口前先 `ls e2e`；新套件必须登记进 `run-all.mjs` 的清单 | 手敲命令会漏：文档写 7 套、实际 12 套，漏掉的 5 套一直绿但没人看（BUG-118） | 共享真实库的用例有顺序依赖，选择器别假设"最后一个是什么" |
 | **访问判定只写一次** | 用 `ProjectAccessService` 的 `canAccessProject` / `canAccessTeam` / `canManageProject`，调用点只保留自己的错误文案 | 同一判断题在 11 个地方各写一遍，每次漏一个角色：管理员"能看不能动"、团队管理员看不到待验收、注释与代码矛盾（BUG-115 + BUG-117） | 团队聊天与建/删项目属于**故意**只给团队权限，别一刀切放宽；关键判定别用 mock 测 |
 | **读门槛与写门槛必须同源** | 写操作统一走 `ProjectAccessService.requireProject(...)`，与读完全一致 | 各服务自己写 `isTeamMember(...)` 会出现"能看进去、一动手就被拦"，系统管理员看别的团队时连写都进不去（BUG-115） | 新增服务不要自己判；已发现 10+ 处同款写法，逐步收敛 |
@@ -174,7 +178,7 @@ npm run build        # Type-check (vue-tsc) + production build to dist/
 
 ```bash
 PLAYWRIGHT_BROWSERS_PATH=<浏览器目录> PLAYWRIGHT_MODULE=<playwright 包目录> NO_PROXY=localhost,127.0.0.1 \
-  node e2e/run-all.mjs                 # 13 套 132 条，约 8 分钟；--probes 连探针一起；--only x,y 只跑几套
+  node e2e/run-all.mjs                 # 14 套 142 条，约 9 分钟；--probes 连探针一起；--only x,y 只跑几套
 node e2e/two-instance-presence.mjs   # 双实例验证（需两个后端共用同一 Redis）；--local 跑进程内基线
 node e2e/presence-source-label.mjs   # 在线人数"口径"文案（已并入 run-all 清单）
 ```
@@ -344,6 +348,26 @@ All v2.15 AI roadmap items are implemented. Future work may replace the lexical 
   多实例部署需要共享 Redis，否则在线人数与实时消息各算各的（接口会如实下发 `presenceShared=false`，界面写「仅本实例」）。
 
 ## Version History
+
+### v2.22.0 — 工作流：自由节点 + 画布连线 + 「验收标准勾完才能完成」(2026-11-26)
+
+- **起因**：计划书里挂了很久的「脱离看板列的自由节点」。以前 `WorkflowNode` 的主键就是 `columnId`，
+  等于"流程里的一步必须先是一列"——想加「上线」步骤得先去建列，顺序是反的。
+- **节点身份**：`WorkflowNode` 增 `nodeKey` / `x` / `y`，`columnId` 变可空。
+  保存链路 `normalizeConfig`（补身份/坐标、连线两端 key 与 columnId 互相补齐）→
+  `projectFreeNodes`（缺列节点建列并回填）→ `validateConfig`；读出时 `fillNodeIdentity`
+  给历史配置补身份，**不动表结构**（config 是 JSON）。
+- **不静默建列**：`WorkflowVO.createdColumns` 带回新建的列名，界面提示"为「上线」自动创建了看板列"。
+  一个列只能属于一个节点（重复绑定 400）；删节点不删列（列里可能有工作项）。
+- **画布**：节点绝对定位可拖（把手在卡片左上，因为卡片里全是输入控件）、SVG 贝塞尔连线 + 箭头，
+  从右侧圆点拖到另一节点 = 建一条规则（也可点圆点再点目标）。点连线弹出条件面板。
+- **前提条件**：`WorkflowTransition.prerequisites` 与 `conditions` 分开——
+  前者"什么情况下"（**必须全部满足**），后者"谁"（**任一命中**）。首个取值 `ACCEPTANCE_DONE`，
+  未勾完时拒绝并报`验收标准还有 2 项没勾完（共 2 项）`；**没写验收标准的工作项不受限制**。
+  `GET /workflow/transitions` 增可选 `issueId`，给了才提前算得出这条提示。
+- **BUG-121**：设计器的「终态」复选框勾了不生效（看板/工作台判终态用列名规则），改成只读徽标 + 说明。
+- 后端 **214 项**单测（`WorkflowServiceTest` 25 → 32）；e2e 新增 `workflow-canvas.mjs` 10 条，
+  **14 套 142 条 + 3 探针**全绿；`workflow-guard` 8 条回归通过（选择器改到 `[data-workflow-canvas]`）。
 
 ### v2.21.0 — Redis 真的用起来了：跨实例在线状态与实时广播（关闭 KNOWN-002）(2026-11-26)
 

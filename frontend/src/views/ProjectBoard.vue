@@ -566,7 +566,8 @@ function columnToStatus(colName: string): string {
  */
 async function whereCanIGo(issue: any): Promise<{ ok: boolean; text: string }> {
   try {
-    const res = await getAvailableTransitions(projectId, issue.type || "TASK", issue.columnId)
+    // 带上 issueId：后端才能算出"验收标准还有几项没勾完"这类前提（v2.22.0）
+    const res = await getAvailableTransitions(projectId, issue.type || "TASK", issue.columnId, issue.id)
     const list = res?.data || []
     if (list.length === 0) return { ok: false, text: "没有可去的地方，需要项目管理员调整工作流" }
     // v2.19.6：后端会告诉我们"这一步由谁负责"，被责任人挡住时说清是谁，别让用户反复试

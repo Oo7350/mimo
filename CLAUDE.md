@@ -1,6 +1,7 @@
 # CLAUDE.md
 
-> **最新版本**：v2.21.0（2026-11-26）— 关闭 KNOWN-002：Redis 真的用起来了。原记录说"仅用于单设备登录"，实际 `MimoApplication` 排除了 `RedisAutoConfiguration`，`StringRedisTemplate` 从未存在、那段校验从未运行。现在：① 在线状态抽 `PresenceStore`（`InMemoryPresenceStore` / `RedisPresenceStore`，键 `mimo:presence:sess|user|online`，TTL 90 秒 + 30 秒心跳续期，心跳会重新登记已过期会话）；② 下行消息抽 `RealtimeBridge`（`RedisRealtimeBridge` 本地投一次 + 发 `mimo:bus:realtime`，各实例按 `origin` 丢自己那份，保证每个浏览器只收一次）；③ `mimo.realtime.store=auto` 启动探 Redis，连不上就用进程内（开发机不用装），降级时接口 `presenceShared=false` + 界面写「N 人在线（仅本实例）」；④ 单设备登录改由 `mimo.security.single-device-login` 控制（默认关，否则同账号多端互踢会打断开发与 e2e）；⑤ 修 BUG-119（`mvn clean package` 只出瘦 jar，补 `repackage` 执行绑定）与 BUG-120（`spring-boot:repackage` 在聚合工程里把 `mimo-common` 打成空壳）。真机双实例验证（:8080 / :8081 共用 Redis）+ `--local` 反向对照。后端 207 项、e2e 13 套 132 条 + 3 探针。
+> **最新版本**：v2.22.0（2026-11-26）— 工作流从「拖列进网格」变成真流程。① **节点有了独立身份**：`WorkflowNode.nodeKey`（+ 画布坐标 `x/y`），`columnId` 变可空——以前节点主键就是列 id，等于"流程里的一步必须先是一列"，加个「上线」得先去建列；现在**节点是流程状态、看板列由它投影**：保存时 `normalizeConfig`（补身份/坐标、连线两端 key 与 columnId 互相补齐）→ `projectFreeNodes`（缺列节点建列并回填）→ `validateConfig`，读出时 `fillNodeIdentity` 给历史配置补身份（config 是 JSON，不动表结构）。**建列不静默**：`createdColumns` 把列名带回，界面弹「为「上线」自动创建了看板列」；一个列只能属于一个节点；删节点不删列。② **设计器换成画布**：拖节点摆位（把手在卡片左上，卡片里全是输入控件）、从右侧圆点拖到另一节点建一条规则（也可点圆点再点目标）、点连线加条件。③ **两类条件分开**：`conditions`（谁可以做，任一命中）vs `prerequisites`（什么情况下才能做，全部满足）；首个前提 `ACCEPTANCE_DONE`，未勾完报「还不能进入「已完成」：验收标准还有 2 项没勾完（共 2 项）」，而**一条验收标准都没写的工作项不受限制**（否则老任务永远推不动）；`GET /workflow/transitions` 增可选 `issueId` 才提前算得出这句话。④ **BUG-121**：设计器的「终态」复选框勾了不生效（看板/工作台判终态用的是 `BoardColumnRules.isTerminalName`），改成只读徽标 + 说明——能点但不影响行为的控件比没有更糟。后端 214 项、e2e 14 套 142 条 + 3 探针。
+> **上一版本**：v2.21.0（2026-11-26）— 关闭 KNOWN-002：Redis 真的用起来了。原记录说"仅用于单设备登录"，实际 `MimoApplication` 排除了 `RedisAutoConfiguration`，`StringRedisTemplate` 从未存在、那段校验从未运行。现在：① 在线状态抽 `PresenceStore`（`InMemoryPresenceStore` / `RedisPresenceStore`，键 `mimo:presence:sess|user|online`，TTL 90 秒 + 30 秒心跳续期，心跳会重新登记已过期会话）；② 下行消息抽 `RealtimeBridge`（`RedisRealtimeBridge` 本地投一次 + 发 `mimo:bus:realtime`，各实例按 `origin` 丢自己那份，保证每个浏览器只收一次）；③ `mimo.realtime.store=auto` 启动探 Redis，连不上就用进程内（开发机不用装），降级时接口 `presenceShared=false` + 界面写「N 人在线（仅本实例）」；④ 单设备登录改由 `mimo.security.single-device-login` 控制（默认关，否则同账号多端互踢会打断开发与 e2e）；⑤ 修 BUG-119（`mvn clean package` 只出瘦 jar，补 `repackage` 执行绑定）与 BUG-120（`spring-boot:repackage` 在聚合工程里把 `mimo-common` 打成空壳）。真机双实例验证（:8080 / :8081 共用 Redis）+ `--local` 反向对照。后端 207 项、e2e 13 套 132 条 + 3 探针。
 > **上一版本**：v2.20.1（2026-11-25）— 关闭 KNOWN-025：全员任务流支持**服务端分页**（`memberPage` / `pageSize` / 每人 `taskLimit`）、**服务端筛选与排序**（`keyword` / `only` / `sort`）、**近 7 天趋势**（取自 `activity_logs` 的 CREATE / MOVE 事件，不拿 `updated_at` 近似）。做分页时发现原来的前端筛选分母是"当前页"，"有逾期 3"其实只数了 8 个人——一并搬到后端。计数（`openCount` / `overdueTaskCount` / `loadLevel`）永远按全部任务算，不受截断影响。新增 `util/BoardColumnRules` 收敛"终态列"判定。后端 192 项、e2e 12 套 126 条 + 3 探针。
 > **上一版本**：v2.20.0（2026-11-25）— 三件事：① **BUG-115** 管理员点进成员任务后操作被按成员逻辑拦住（读门槛放行、写门槛各写一遍只认 `team_members`），写门槛收敛到 `ProjectAccessService`，`submit()` 允许"负责人或管理员"提交，但管理员不能验收自己代提交的轮次。② **BUG-117** 把剩下 11 处"自己实现的写门槛"全收敛到 `canAccessProject / canAccessTeam / canManageProject`（系统管理员进别人团队 403、团队管理员看不到待验收、知识库注释与代码矛盾、工时删除不含系统管理员），真库双向验证 200/403；团队聊天与建删项目故意不放宽。③ **BUG-116** 剩余 106 处 <12px 小字抬到 12px + 裁切探针复核。另：`e2e/run-all.mjs` 一条命令跑 **12 套 120 条 + 3 探针**（此前文档误称 7 套），修 BUG-118（连跑时 admin-flow 挑"最后一个成员列"超时）。后端 187 项。
 > **上一版本**：v2.19.8（2026-11-24）— 管理员视角：身份徽标（`AdminBadge`：顶栏 / Hero / 成员列，头像金色描边）+ `GET /api/workbench/team` 全员任务流（系统管理员看全部团队、团队管理员只看自己管理的，每人一条 `MemberStreamVO` 带负载等级与依据，含未指派栏）+ 工作台「我的 / 全员」滑动切换 + 任务详情抽屉（`TaskDetailDrawer`，Esc 关闭不跳页）+ 看板「全员泳道」开关。修 BUG-110/111/112，并修掉用户当场抓到的 BUG-113（前端自己算管理员，漏掉旧字段兜底的团队管理员 → 判定收敛到后端 `adminScope`），登记 KNOWN-025。后端 174 项、e2e（当时文档误记为 7 套 64 条，实为 12 套）。
@@ -16,8 +17,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Mimo is a lightweight Trello-like project management platform for small teams. It supports team collaboration, kanban task tracking, and progress visualization.
 
-- **Version**: v2.21.0 — Redis 真的用起来了：跨实例在线状态与实时广播 (2026-11-26)
-- **Previous**: v2.20.1 — 全员任务流：分页 + 服务端筛选 + 7 天趋势 (2026-11-25)
+- **Version**: v2.22.0 — 工作流：自由节点 + 画布连线 + 验收标准前提条件 (2026-11-26)
+- **Previous**: v2.21.0 — Redis 真的用起来了：跨实例在线状态与实时广播 (2026-11-26)
 - **GitHub**: https://github.com/Oo7350/mimo
 - **API docs**: `接口文档.md` (70+ endpoints, Chinese)
 - **User manual**: `操作手册.md` (Chinese)
@@ -241,7 +242,11 @@ Single backend + RBAC with two roles: `ROLE_ADMIN` (team/project admin) and `ROL
 
 ### Redis unused
 
-`spring-boot-starter-data-redis` is declared and Redis is in Docker Compose, but no service code uses Redis. WebSocket uses in-memory broker (not Redis-backed) — for multi-instance deployment, switch to Redis message broker.
+~~`spring-boot-starter-data-redis` is declared and Redis is in Docker Compose, but no service code uses Redis.~~
+**已解决（v2.21.0）**：`PresenceStore` / `RealtimeBridge` 两个抽象各有一个 Redis 实现，多实例下在线状态
+与实时消息都通；`mimo.realtime.store=auto` 启动探一次 Redis，连不上就用进程内并在界面上写明
+「N 人在线（仅本实例）」。注意 `RedisAutoConfiguration` **仍然被排除**，连接工厂由
+`RealtimeRedisConfig` 按 `mimo.realtime.*` 自己建（原因见 `MimoApplication` 的 javadoc）。
 
 ### Upload directory
 
@@ -277,6 +282,40 @@ All v2.15 AI roadmap items are implemented; see `项目功能完善计划.md` §
 - **Board Sync Flow**: Drag → `PUT /api/board/issue/move` → backend updates issue + logs + WebSocket broadcast → all board subscribers receive event → optimistic UI update
 
 ## Version History
+
+### v2.22.0 — 工作流：自由节点 + 画布连线 + 「验收标准勾完才能完成」(2026-11-26)
+
+计划书里挂了很久的「脱离看板列的自由节点」。以前 `WorkflowNode` 的主键就是 `columnId`，
+等于"流程里的一步必须先是一列"——想加个「上线」步骤得先去建列，顺序是反的。
+
+**后端**
+- `WorkflowNode` 增 `nodeKey`（稳定身份）/ `x` / `y`（画布坐标），`columnId` 变**可空**。
+- `saveWorkflow` 三步：`normalizeConfig`（补身份/坐标、把连线两端的 nodeKey 与 columnId 互相补齐）
+  → `projectFreeNodes`（**缺列的节点建一列并回填**、收集新建列名）→ `validateConfig`。
+  顺序不能反：不先投影就校验，自由节点永远是"没有列"的非法状态。
+- 读出侧 `fillNodeIdentity`：历史配置（只有 columnId）自动补身份与坐标，**不动表结构**（config 是 JSON）。
+- `WorkflowVO.createdColumns` 带回新建的列名 —— 建列不静默，界面要说出来。
+- 校验新增：节点名不能为空、一个看板列只能对应一个节点（重复绑定 400）、连线指向不存在的节点 400。
+- `WorkflowTransition.prerequisites`（**全部满足**）与 `conditions`（**任一命中**）分开：
+  首个取值 `ACCEPTANCE_DONE`，`checkPrerequisites` 解析 `acceptanceCriteria`；
+  **没写验收标准的工作项不受限制**（否则老任务永远推不动）。
+- `GET /api/workflow/transitions` 增可选 `issueId`：给了才提前算得出"还差几项"。
+- 单测 `WorkflowServiceTest` 25 → **32 项**，后端合计 **214 项**。
+
+**前端**
+- `WorkflowDesigner.vue` 重写为画布：节点绝对定位可拖（**把手在卡片左上**，卡片里全是输入控件，
+  整卡 mousedown 会被它们吞掉）、SVG 贝塞尔连线 + 箭头、从右侧圆点拖到另一个节点建规则
+  （也可点圆点再点目标）。点连线 → 面板两栏：「谁可以做（任一）」「什么情况下才能做（全部）」。
+- 修一个自己写出来的坑：原先 `mouseup` 就清"连线中"状态，而"按下在 A、松开在 B"时浏览器
+  把 `click` 派发到共同祖先（画布），于是画布先清、目标 click 再执行已经晚了 → 拖不出线。
+  改成 `mouseup` 只结束拖动、点空白才放弃连线。
+- **BUG-121**：删掉「终态」复选框（勾了不生效——看板判终态用 `BoardColumnRules.isTerminalName`），
+  改成只读徽标 + 说明；保存时按同一口径回填 `isTerminal`。
+- 看板拖拽被拦时调用 `/workflow/transitions` 会带上 `issueId`，于是提示能说清"还差几项"。
+
+**验证**
+- 新 e2e `e2e/workflow-canvas.mjs` 10 条；`workflow-guard` 8 条回归（选择器改到 `[data-workflow-canvas]`）；
+  全量 `run-all.mjs --probes` → **14 套 142 条 + 3 探针全绿**。
 
 ### v2.19.8 — 管理员视角：身份徽标 + 全员任务流 + 任务详情抽屉 (2026-11-24)
 

@@ -72,16 +72,22 @@ public class WorkflowController {
         return Result.success(workflowService.applyTemplate(projectId, issueType, templateName, userId));
     }
 
-    /** 获取当前状态下的可用转换（带上"你现在能不能走这一步 / 卡在谁那里"） */
+    /**
+     * 获取当前状态下的可用转换（带上"你现在能不能走这一步 / 卡在谁那里"）
+     *
+     * @param issueId 可选：给了才能判断"验收标准还有几项没勾完"这类前提，
+     *                不给就只能对"谁可以做"下结论（老调用方仍然能用）
+     */
     @GetMapping("/transitions")
     public Result<List<AvailableTransitionVO>> getAvailableTransitions(
             @RequestParam Long projectId,
             @RequestParam String issueType,
             @RequestParam Long columnId,
+            @RequestParam(required = false) Long issueId,
             Authentication auth) {
         assertTeamMember(projectId, auth);
         return Result.success(workflowService.getAvailableTransitions(
-                projectId, issueType, columnId, getLongPrincipal(auth)));
+                projectId, issueType, columnId, getLongPrincipal(auth), issueId));
     }
 
     // ---- helpers ----
