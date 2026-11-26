@@ -62,6 +62,12 @@ public class SprintPlanningDTO {
         private Integer totalRecommendedPoints;
         private Boolean aiAvailable;
         private String summary;
+        /**
+         * 候选为空时的原因（v2.22.1），有候选时为 null。三种原因的下一步完全不同，前端据此给出路：
+         * NO_ISSUES = 项目还没有工作项 / ALL_DONE = 全都做完了 /
+         * ALL_SCHEDULED = 未完成的都排进迭代了 / NOTHING_PLANNABLE = 兜底。
+         */
+        private String emptyReason;
         private List<String> risks;
         private List<CandidateIssueVO> candidates;
         private List<RecommendedTaskVO> recommendedTasks;

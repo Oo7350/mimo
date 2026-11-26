@@ -6,7 +6,7 @@
 ## 一条命令跑全部（`run-all.mjs`）
 
 ```bash
-node e2e/run-all.mjs                    # 14 套套件，约 9 分钟
+node e2e/run-all.mjs                    # 15 套套件，约 10 分钟
 node e2e/run-all.mjs --probes           # 连 3 个探针（版面 / 布局 / 配色）一起
 node e2e/run-all.mjs --only admin-flow,review-matrix   # 只跑挑中的（改哪儿跑哪儿）
 node e2e/run-all.mjs --base http://localhost:5173 --api http://localhost:8080/api
@@ -18,7 +18,7 @@ node e2e/run-all.mjs --base http://localhost:5173 --api http://localhost:8080/ap
   `presence-source-label.mjs` 用拦截接口的方式覆盖两种口径，不依赖真实 Redis。
 - 跑完执行 `e2e/cleanup-residue.sql` 清临时账号（`run-all` 结束会提醒）。
 
-当前清单（**14 套 142 条 + 3 探针**）：
+当前清单（**15 套 148 条 + 3 探针**）：
 
 | 套件 | 条数 | 覆盖 |
 |---|---|---|
@@ -29,6 +29,7 @@ node e2e/run-all.mjs --base http://localhost:5173 --api http://localhost:8080/ap
 | `chain-links.mjs` | 5 | 链路口径一致性 |
 | `workflow-guard.mjs` | 8 | 工作流转换守卫（含节点责任人） |
 | `workflow-canvas.mjs` | 10 | 工作流画布：自由节点投影成列 + 拖连线 + 验收标准前提 |
+| `sprint-plan-empty.mjs` | 6 | 迭代规划的空态说清三种原因并给出路（v2.22.1，BUG-122） |
 | `admin-flow.mjs` | 26 | 管理员视角（徽标/全员流/分页/筛选/趋势/抽屉/主题/权限/代提交） |
 | `presence.mjs` | 4 | 在线人数按会话算 |
 | `presence-source-label.mjs` | 6 | 在线人数的口径写在界面上（「仅本实例」/ 共享两种口径，v2.21.0） |
@@ -243,6 +244,29 @@ node e2e/workflow-canvas.mjs http://localhost:5173
 > 节点拖动必须抓**左上角的把手**（`[data-drag-handle]`），因为卡片里全是 input / select，
 > 整卡 `mousedown` 会被它们的 `@mousedown.stop` 吃掉。
 
+## 迭代规划的空态（`sprint-plan-empty.mjs`，v2.22.1）
+
+对应 `bug-log.md` **BUG-122**：AI 规划面板里候选为空只有一句写死的「Backlog 暂无可规划工作项」，
+但"空"有三种原因、下一步完全不同。这套用例证明接口分得清、界面也说得出：
+
+| # | 检查点 | 断言 |
+|---|--------|------|
+| 1 | 空项目 | `emptyReason=NO_ISSUES`，`summary` 含「还没有任何工作项」，`risks` 指路去建 |
+| 2 | 有候选时不误报 | 建 2 项后 `emptyReason` 缺省（Jackson `NON_NULL` 不下发），候选 2 项 |
+| 3 | 都排进迭代了 | `apply-plan` 之后 `emptyReason=ALL_SCHEDULED`，出路是「先把手上的迭代做完」 |
+| 4 | 全做完了 | 全部标记 `DONE` 后 `emptyReason=ALL_DONE`，出路是「先建下一批工作项」 |
+| 5 | 界面说原因 + 下一步 | `[data-plan-empty]` 里同时出现后端算出的原因与「下一步：…」 |
+| 6 | 空态有出路按钮 | 「去项目看板建工作项」可见可点 |
+
+```bash
+node e2e/sprint-plan-empty.mjs http://localhost:5173
+```
+
+用例自己建项目 + 迭代 + 卡（名字带 `e2e空态项目{stamp}` 前缀），跑完删项目。
+
+> 断言里有个坑：`emptyReason` 为 null 时 Jackson 直接不下发（`NON_NULL`），
+> 所以"没有原因"的判断要写成 `(emptyReason ?? null) === null`，不能写 `=== null`。
+
 ## 验收权限矩阵（`review-matrix.mjs`）
 
 验收这件事的规则是**按角色分**的，主线用例只证明了"一个人能走完一遍"，所以单独有一份矩阵。
@@ -279,13 +303,20 @@ a11y 树里这些按钮会被判定为 hidden，`getByRole` 数到 0（踩过）
 
 | # | 检查点 | 断言 |
 |---|--------|------|
-| 1 | 浏览器连着 WebSocket 时算在线 | `GET /api/teams/1/presence` 的 `onlineCount >= 1` |
+| 1 | 浏览器连着 WebSocket 时算在线 | 开页后 `onlineCount` **比基线多 1**（基线 = 开页前的人数） |
 | 2 | 不会超过成员总数 | `onlineCount <= totalMembers` |
 | 3 | 文案两个数都在 | 页面出现「N 人在线 · M 位成员」 |
-| 4 | 关掉页面会掉线 | 关浏览器后最多等 40 秒，`onlineCount` 回落到 0（正常关闭走 DISCONNECT 帧，实测 0.1 秒；被杀进程只能等心跳，最迟一个 10 秒周期 + 调度延迟） |
+| 4 | 关掉页面会掉线 | 关浏览器后最多等 40 秒，`onlineCount` **回到开页前的水位**（正常关闭走 DISCONNECT 帧，实测 0.1 秒；被杀进程只能等心跳，最迟一个 10 秒周期 + 调度延迟） |
 
 第 4 条当初是**红的**：简单 broker 默认不发心跳，服务端要等 Tomcat 会话超时才认为人走了。
 给 `enableSimpleBroker` 配了 10 秒心跳 + 调度器之后才通过——所以这条用例同时是心跳配置的回归保护。
+
+> **v2.22.1 修掉了这套用例的两个脆点**（都不改产品行为）：
+> ① 原先断言「关页后 `onlineCount === 0`」，但开发机上常有人真开着页面，永远等不到 0；
+> ② 改成"比基线多 1"也不行——在线人数按**人**去重，默认用 admin 登录时，本机若已有
+> 一个 admin 会话，再开一页人数根本不变（这一版就因此红过一次）。
+> 现在改用**现场注册的独立账号**（`e2e-presence{stamp}`，`ROLE_MEMBER` 入队 1），
+> 它开页前一定不在线，于是"开页 +1、关页回到原水位"无歧义；账号由 `cleanup-residue.sql` 回收。
 
 ## 在线口径文案（`presence-source-label.mjs`，v2.21.0）
 

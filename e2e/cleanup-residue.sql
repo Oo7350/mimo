@@ -29,7 +29,10 @@ INSERT INTO tmp_projects
 SELECT id FROM projects
 WHERE owner_id IN (SELECT id FROM tmp_users)
    OR name LIKE '链路项目%'
-   OR name LIKE 'e2e项目%';
+   OR name LIKE 'e2e项目%'
+   -- v2.22.1：各套用例自建的项目统一带 e2e 前缀（e2e空态项目… 等），
+   -- 逻辑删除的行也要物理清掉，否则表里越积越多、看起来像"没残留"
+   OR name LIKE 'e2e%';
 
 -- ---------- 3. 要删的 issue ----------
 DROP TABLE IF EXISTS tmp_issues;
@@ -125,6 +128,9 @@ SELECT (SELECT COUNT(*) FROM users)    AS users,
        (SELECT COUNT(*) FROM projects) AS projects,
        (SELECT COUNT(*) FROM issues WHERE deleted = 0) AS issues_live,
        (SELECT COUNT(*) FROM issues WHERE title LIKE 'E2E任务%') AS leftover_e2e,
+       -- v2.22.1：项目这一层也要有数。e2e 删项目走的是逻辑删除（deleted=1），
+       -- 行还留在表里；只数 issue 会得到"0 残留"的假干净。
+       (SELECT COUNT(*) FROM projects WHERE name LIKE 'e2e%') AS leftover_e2e_projects,
        (SELECT COUNT(*) FROM notifications WHERE related_type = 'ISSUE'
           AND related_id NOT IN (SELECT id FROM issues)) AS orphan_notifications,
        (SELECT COUNT(*) FROM burndown_snapshots

@@ -379,11 +379,17 @@
             Backlog 候选
             <span>{{ planData.candidates.length }} 项</span>
           </div>
-          <el-empty
-            v-if="!planData.candidates.length"
-            description="Backlog 暂无可规划工作项"
-            :image-size="60"
-          />
+          <!-- 候选为空有三种原因，下一步完全不同：说清是哪一种，并给出路（BUG-122） -->
+          <div v-if="!planData.candidates.length" class="planner__empty" data-plan-empty>
+            <el-empty :description="planData.summary" :image-size="60">
+              <div class="planner__empty-hint" data-plan-empty-reason>
+                下一步：{{ planData.risks[0] || '检查一下项目里的工作项' }}
+              </div>
+              <el-button type="primary" plain size="small" @click="goMakeIssues">
+                去项目看板建工作项
+              </el-button>
+            </el-empty>
+          </div>
           <el-checkbox-group v-else v-model="selectedIssueIds" class="planner__list">
             <el-checkbox
               v-for="candidate in planData.candidates"
@@ -451,7 +457,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, FormInstance, FormRules } from 'element-plus'
 import {
   ArrowLeft, Plus, Tickets, CircleCheck, Aim, DataLine, MagicStick,
@@ -472,6 +478,7 @@ import { avatarGradient } from '@/utils/color'
 import { useWebSocket } from '@/composables/useWebSocket'
 
 const route = useRoute()
+const router = useRouter()
 const projectId = Number(route.params.id)
 
 const loading = ref(true)
@@ -774,6 +781,12 @@ async function openSprintPlanner(sprint: SprintVO) {
   selectedIssueIds.value = []
   planDrawerVisible.value = true
   await generatePlan()
+}
+
+/** 空态里的出路：候选为空时最该做的是去项目看板建/看工作项（BUG-122） */
+function goMakeIssues() {
+  planDrawerVisible.value = false
+  router.push(`/projects/${projectId}/board`)
 }
 
 async function generatePlan() {
@@ -1316,6 +1329,15 @@ onUnmounted(() => {
   color: var(--text-muted);
   font-size: 12px;
   font-weight: 500;
+}
+.planner__empty {
+  padding: 4px 0 8px;
+}
+.planner__empty-hint {
+  margin: -4px 0 10px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
 }
 .planner__risk {
   display: flex;

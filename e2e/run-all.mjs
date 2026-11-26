@@ -46,6 +46,7 @@ const SUITES = [
   { file: "chain-links.mjs", name: "链路口径", arg: BASE, kind: "suite" },
   { file: "workflow-guard.mjs", name: "工作流守卫", arg: BASE, kind: "suite" },
   { file: "workflow-canvas.mjs", name: "工作流画布", arg: BASE, kind: "suite" },
+  { file: "sprint-plan-empty.mjs", name: "迭代空态", arg: BASE, kind: "suite" },
   { file: "admin-flow.mjs", name: "管理员视角", arg: BASE, kind: "suite" },
   { file: "presence.mjs", name: "在线状态", arg: BASE, kind: "suite" },
   // 在线人数的"口径"是否写在界面上（KNOWN-002）：用拦截接口覆盖"仅本实例/跨实例"两种口径

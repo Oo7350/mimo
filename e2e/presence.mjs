@@ -4,9 +4,12 @@
  * 这条针对的是一句曾经撒谎的文案：
  *   以前 `onlineCount = members.length`，写的是「N 位成员」却在"在线"位置显示，等于编数字。
  * 现在 /api/teams/{id}/presence 返回真实在线数，这里断言：
- *   1. 打开页面（WebSocket 连上）后，接口里 onlineCount ≥ 1
+ *   1. 打开页面（WebSocket 连上）后，在线人数比开页前多（这一页真的被算进去）
  *   2. 页面上那行字是"N 人在线 · M 位成员"，两个数都在
- *   3. 断开页面后，在线数回落到 0（不留下假在线）
+ *   3. 断开页面后，在线数回落到开页前的水位（不留下假在线）
+ *
+ * 注意第 3 条比的是**基线**而不是 0：开发机上常有人真开着页面（自己边改边看），
+ * 写死等 0 只会让用例变脆——那不是产品留了假在线，是别人的正常会话。
  *
  * 跑法：node e2e/presence.mjs http://localhost:5173
  */
@@ -16,6 +19,7 @@ const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
 
 const BASE = process.argv[2] || "http://localhost:5173";
+const API_BASE = process.env.MIMO_API || "http://localhost:8080/api";
 const ADMIN = { username: "admin", password: "123456" };
 const TEAM_ID = 1;
 
@@ -28,6 +32,62 @@ function check(name, ok, detail) {
   else failed++;
 }
 
+/**
+ * 先量一个基线：不连 WebSocket 的纯接口调用，看看**别人**有多少人在线。
+ *
+ * 这里踩过两个坑（都不是产品问题）：
+ *   1. 原来断言写死「关页后 onlineCount === 0」，但开发机上常有人真开着页面，永远回不到 0；
+ *   2. 换成"比基线多 1"也不行——在线人数是按**人**去重的（同一账号开两个标签页只算一人），
+ *      而我们默认用 admin 登录，如果本机已经有一个 admin 会话，再开一页人数根本不变。
+ * 所以这一套改用**现场注册的独立账号**：它不开页时为 0，开页 +1，关页回到原水位，无歧义。
+ */
+const STAMP = Date.now().toString().slice(-6);
+const PROBE_USER = `e2e-presence${STAMP}`;
+
+const apiLogin = async (creds) => {
+  const r = await fetch(`${API_BASE}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(creds),
+  });
+  const j = await r.json();
+  return j?.data?.token;
+};
+const readPresenceNode = async () => {
+  const token = await apiLogin(ADMIN);
+  const r = await fetch(`${API_BASE}/teams/${TEAM_ID}/presence`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const j = await r.json();
+  return j.data;
+};
+
+// 注册一个纯成员账号并入队，专门用来"开一个页面、关掉、看人数"（cleanup-residue.sql 按 e2e-% 回收）
+{
+  const reg = await fetch(`${API_BASE}/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: PROBE_USER, password: "123456", email: `${PROBE_USER}@example.com` }),
+  }).then((r) => r.json());
+  if (reg?.code !== 200) throw new Error("注册探针账号失败: " + JSON.stringify(reg).slice(0, 160));
+  const adminToken = await apiLogin(ADMIN);
+  const found = await fetch(`${API_BASE}/user/search?keyword=${encodeURIComponent(PROBE_USER)}`, {
+    headers: { Authorization: `Bearer ${adminToken}` },
+  }).then((r) => r.json());
+  const probeId = (found?.data || []).find((u) => u.username === PROBE_USER)?.id;
+  if (!probeId) throw new Error("找不到刚注册的探针账号");
+  const invite = await fetch(`${API_BASE}/teams/invite`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` },
+    body: JSON.stringify({ teamId: TEAM_ID, userId: probeId, role: "ROLE_MEMBER" }),
+  }).then((r) => r.json());
+  if (invite?.code !== 200) throw new Error("探针账号入队失败: " + JSON.stringify(invite).slice(0, 160));
+}
+
+const baseline = await readPresenceNode();
+const baselineCount = baseline?.onlineCount ?? 0;
+console.log(`基线：开页面前已有 ${baselineCount} 人在线（别人的会话不算我们漏的）`);
+
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
 await context.addInitScript(() => {
@@ -38,8 +98,9 @@ const page = await context.newPage();
 page.setDefaultTimeout(25000);
 
 await page.goto(`${BASE}/login`, { waitUntil: "domcontentloaded" });
-await page.getByPlaceholder("请输入用户名").fill(ADMIN.username);
-await page.getByPlaceholder("请输入密码").fill(ADMIN.password);
+// 用探针账号登录：它在开页前一定不在线，所以"开页 +1、关页回原样"是无歧义的
+await page.getByPlaceholder("请输入用户名").fill(PROBE_USER);
+await page.getByPlaceholder("请输入密码").fill("123456");
 await page.getByRole("button", { name: /登\s*录/ }).click();
 await page.waitForURL((u) => !u.pathname.startsWith("/login"), { timeout: 20000 });
 
@@ -57,9 +118,9 @@ const apiPresence = async () => {
 
 const withSocket = await apiPresence();
 check(
-  "浏览器连着 WebSocket 时，在线人数至少 1",
-  (withSocket?.onlineCount ?? 0) >= 1,
-  `onlineCount=${withSocket?.onlineCount}, totalMembers=${withSocket?.totalMembers}`
+  "浏览器连着 WebSocket 时，在线人数比开页前多（这一页真的被算进去了）",
+  (withSocket?.onlineCount ?? 0) >= 1 && (withSocket?.onlineCount ?? 0) > baselineCount,
+  `onlineCount=${withSocket?.onlineCount}（基线 ${baselineCount}）, totalMembers=${withSocket?.totalMembers}`
 );
 
 check(
@@ -111,17 +172,19 @@ const readAfter = async () => p2.evaluate(async () => {
 // 所以这里先做一次"优雅离开"（导航到 about:blank，让前端主动断开），再最多等 40 秒。
 await p2.waitForTimeout(500);
 const startedAt = Date.now();
+const openPeak = withSocket?.onlineCount ?? 1;
 let after = null;
 for (let i = 0; i < 20; i++) {
   after = await readAfter();
-  if ((after?.onlineCount ?? 1) === 0) break;
+  // 回到基线就算数：开发机上可能还有别人的会话在线，硬等 0 是等不到的
+  if ((after?.onlineCount ?? openPeak) <= baselineCount) break;
   await p2.waitForTimeout(2000);
 }
 const elapsed = Math.round((Date.now() - startedAt) / 100) / 10;
 check(
-  "关掉页面后在线人数回落，不留假在线",
-  (after?.onlineCount ?? 1) === 0,
-  `onlineCount=${after?.onlineCount}，耗时 ${elapsed}s（心跳周期 10s）`
+  "关掉页面后在线人数回落到开页前的水位，不留假在线",
+  (after?.onlineCount ?? openPeak + 1) <= baselineCount && openPeak > baselineCount,
+  `开页时 ${openPeak} 人 → 关页后 ${after?.onlineCount} 人（基线 ${baselineCount}），耗时 ${elapsed}s`
 );
 
 await ctx2.close();

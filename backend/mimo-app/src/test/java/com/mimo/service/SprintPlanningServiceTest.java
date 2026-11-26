@@ -95,7 +95,7 @@ class SprintPlanningServiceTest {
     }
 
     @Test
-    void shouldReturnEmptyPlanWhenBacklogHasNoCandidates() {
+    void shouldReturnEmptyPlanWhenProjectHasNoIssues() {
         when(projectMapper.selectById(7L)).thenReturn(project());
         when(teamService.isTeamMember(3L, 9L)).thenReturn(true);
         when(issueMapper.selectList(any())).thenReturn(List.of());
@@ -107,10 +107,67 @@ class SprintPlanningServiceTest {
 
         assertThat(plan.getCandidates()).isEmpty();
         assertThat(plan.getRecommendedTasks()).isEmpty();
-        assertThat(plan.getSummary()).contains("没有");
-        assertThat(plan.getRisks()).anyMatch(risk -> risk.contains("请先创建"));
+        // 项目里一项都没有：说清"没有东西"，并指路去建（BUG-122）
+        assertThat(plan.getEmptyReason()).isEqualTo("NO_ISSUES");
+        assertThat(plan.getSummary()).contains("还没有任何工作项");
+        assertThat(plan.getRisks()).anyMatch(risk -> risk.contains("先在项目看板里建"));
         assertThat(plan.getCapacityPoints()).isEqualTo(20);
         verify(aiService, never()).chatWithQuota(anyLong(), any());
+    }
+
+    @Test
+    void shouldExplainWhenEveryOpenIssueIsAlreadyScheduled() {
+        when(projectMapper.selectById(7L)).thenReturn(project());
+        when(teamService.isTeamMember(3L, 9L)).thenReturn(true);
+        // 两项都排进了 20 号迭代，Backlog 里没有剩下的
+        when(issueMapper.selectList(any())).thenReturn(List.of(
+                issue(1L, "A", "HIGH", 2, 20L),
+                issue(2L, "B", "LOW", 3, 20L)));
+        VelocityVO velocity = new VelocityVO();
+        velocity.setAverageCompletedPoints(20.0);
+        when(deliveryAnalyticsService.getVelocity(7L, 6)).thenReturn(velocity);
+
+        SprintPlanVO plan = service().suggestPlan(7L, null, null, 9L);
+
+        assertThat(plan.getCandidates()).isEmpty();
+        assertThat(plan.getEmptyReason()).isEqualTo("ALL_SCHEDULED");
+        assertThat(plan.getSummary()).contains("都已经排进迭代");
+        assertThat(plan.getRisks()).anyMatch(risk -> risk.contains("先把手上的迭代做完"));
+    }
+
+    @Test
+    void shouldExplainWhenEveryIssueIsDone() {
+        when(projectMapper.selectById(7L)).thenReturn(project());
+        when(teamService.isTeamMember(3L, 9L)).thenReturn(true);
+        Issue done = issue(1L, "A", "HIGH", 2, null);
+        done.setStatus("DONE");
+        when(issueMapper.selectList(any())).thenReturn(List.of(done));
+        VelocityVO velocity = new VelocityVO();
+        velocity.setAverageCompletedPoints(20.0);
+        when(deliveryAnalyticsService.getVelocity(7L, 6)).thenReturn(velocity);
+
+        SprintPlanVO plan = service().suggestPlan(7L, null, null, 9L);
+
+        assertThat(plan.getCandidates()).isEmpty();
+        assertThat(plan.getEmptyReason()).isEqualTo("ALL_DONE");
+        assertThat(plan.getSummary()).contains("都已全部完成");
+        assertThat(plan.getRisks()).anyMatch(risk -> risk.contains("先建下一批工作项"));
+    }
+
+    @Test
+    void shouldNotSetEmptyReasonWhenCandidatesExist() {
+        when(projectMapper.selectById(7L)).thenReturn(project());
+        when(teamService.isTeamMember(3L, 9L)).thenReturn(true);
+        when(issueMapper.selectList(any())).thenReturn(List.of(issue(1L, "A", "HIGH", 2, null)));
+        VelocityVO velocity = new VelocityVO();
+        velocity.setAverageCompletedPoints(20.0);
+        when(deliveryAnalyticsService.getVelocity(7L, 6)).thenReturn(velocity);
+        when(aiService.chatWithQuota(anyLong(), any())).thenReturn(AiChatResponse.error("offline"));
+
+        SprintPlanVO plan = service().suggestPlan(7L, null, 3, 9L);
+
+        assertThat(plan.getCandidates()).isNotEmpty();
+        assertThat(plan.getEmptyReason()).isNull();
     }
 
     @Test

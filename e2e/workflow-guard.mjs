@@ -65,7 +65,20 @@ async function newPage(browser, creds = ADMIN) {
   });
   const page = await context.newPage();
   page.setDefaultTimeout(20000);
-  await page.goto(`${BASE}/login`, { waitUntil: "domcontentloaded" });
+  // 连跑十几套时，Vite 重新编译首屏偶发超过 20 秒（后端刚重启时更明显）。
+  // 这是环境抖动不是产品问题：重试一次，别让整套用例 0 条检查点就红掉。
+  let lastError = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      await page.goto(`${BASE}/login`, { waitUntil: "domcontentloaded", timeout: 45000 });
+      lastError = null;
+      break;
+    } catch (e) {
+      lastError = e;
+      await page.waitForTimeout(1500);
+    }
+  }
+  if (lastError) throw lastError;
   await page.getByPlaceholder("请输入用户名").fill(creds.username);
   await page.getByPlaceholder("请输入密码").fill(creds.password);
   await page.getByRole("button", { name: /登\s*录/ }).click();

@@ -101,12 +101,35 @@ public class SprintPlanningService {
         List<RecommendedTaskVO> recommended;
         boolean aiAvailable;
         String summary;
+        String emptyReason = null;
         List<String> risks = new ArrayList<>();
         if (candidates.isEmpty()) {
             recommended = List.of();
             aiAvailable = false;
-            summary = "当前 Backlog 没有可加入 Sprint 的工作项。";
-            risks.add("请先创建或拆分 Backlog 工作项");
+            // 候选为空有三种完全不同的原因，一句话打发用户等于让他自己去猜（BUG-122）。
+            long completed = allIssues.stream().filter(this::isCompleted).count();
+            long scheduledOpen = allIssues.stream()
+                    .filter(issue -> issue.getSprintId() != null)
+                    .filter(issue -> !isCompleted(issue)).count();
+            if (allIssues.isEmpty()) {
+                emptyReason = "NO_ISSUES";
+                summary = "这个项目还没有任何工作项，所以没有东西可以排进迭代。";
+                risks.add("先在项目看板里建几个需求或任务，再回来规划");
+            } else if (completed == allIssues.size()) {
+                emptyReason = "ALL_DONE";
+                summary = "项目里的 " + allIssues.size() + " 项工作项都已全部完成。";
+                risks.add("要规划新迭代，先建下一批工作项（可以对已完成的做拆分或复制）");
+            } else if (scheduledOpen > 0) {
+                emptyReason = "ALL_SCHEDULED";
+                summary = "未完成的 " + scheduledOpen + " 项工作项都已经排进迭代了，Backlog 里没有剩下的。";
+                risks.add("先把手上的迭代做完，或者去 Backlog 拆分新的工作项");
+            } else {
+                // 兜底：既不是"没东西"，也不是"全完成/全排期"（例如剩下的都被判为关闭类缺陷）
+                emptyReason = "NOTHING_PLANNABLE";
+                summary = "共 " + allIssues.size() + " 项工作项（已完成 " + completed
+                        + " 项、已排期 " + scheduledOpen + " 项），没有可以新加入迭代的。";
+                risks.add("检查一下未排期的工作项是否都已是关闭状态，或先建新的工作项");
+            }
         } else {
             AiSelection selection = requestAiSelection(candidates, capacity, historical, userId);
             if (selection == null) {
@@ -155,6 +178,7 @@ public class SprintPlanningService {
                 .mapToInt(Integer::intValue).sum());
         vo.setAiAvailable(aiAvailable);
         vo.setSummary(summary);
+        vo.setEmptyReason(emptyReason);
         vo.setRisks(risks);
         vo.setCandidates(candidates);
         vo.setRecommendedTasks(recommended);

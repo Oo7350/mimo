@@ -89,6 +89,8 @@ export interface SprintPlanVO {
   totalRecommendedPoints: number
   aiAvailable: boolean
   summary: string
+  /** 候选为空时的原因（v2.22.1）：NO_ISSUES / ALL_DONE / ALL_SCHEDULED / NOTHING_PLANNABLE；有候选时为 null */
+  emptyReason?: string | null
   risks: string[]
   candidates: SprintPlanCandidate[]
   recommendedTasks: SprintPlanTask[]
