@@ -1,6 +1,7 @@
 # CLAUDE.md
 
-> **最新版本**：v2.22.1（2026-11-26）— 迭代规划的空态说清原因（BUG-122）+ 计划书两条过时备注改成实话。① AI 规划面板里候选为空只有一句写死的「Backlog 暂无可规划工作项」，而候选为空有**三种**原因、下一步完全不同（项目没工作项 → 去建；未完成的都排进迭代了 → 去干活；全做完了 → 建下一批）——后端本来就算出了 summary/risks，是前端空态把它们盖掉了。现在 SprintPlanVO 增 emptyReason（NO_ISSUES/ALL_DONE/ALL_SCHEDULED/NOTHING_PLANNABLE），summary 按原因写具体数字，界面显示原因 +「下一步」+「去项目看板建工作项」按钮；有候选时不下发（NON_NULL）。② 计划书里「仍未做：Wiki 历史版本/差异」其实 v2.13.7/2.13.8 已完成，「仍未做：字号体系收敛（100+ 处 10–11px）」实测 **0 处**（BUG-116 那轮全抬到 12px）——两条就地改成"已做 + 版本号"。③ 顺手给 workflow-guard 的登录页导航加重试（连跑时 Vite 重编译首屏偶发 >20s，会让整套 0 条检查点就红掉）。后端 217 项、e2e 15 套 148 条 + 3 探针。
+> **最新版本**：v2.22.2（2026-11-26）— 全新环境从零到绿（把 KNOWN-024 压到只剩"Linux 环境差异"）：原计划是改 CI 的 YAML，改成**先在本机把 CI 的步骤原样演一遍**（独立空 MySQL 实例、空库、同一条命令），结果第一个 30 秒就红了——而且不是 YAML 的问题，是**仓库建不出数据库**：① **BUG-123**：基础建表脚本 `db/init.sql`（18 张表）**从没被任何程序执行过**（`MigrationRunner` 只扫 `db/migration/V*.sql`，它唯一出现在一条路径还写错的手工命令里），空库启动后只有 23 张表、`users/teams/projects/issues` 全缺，任何接口都失败。修法：搬到 `db/migration/V0__init.sql`（排序最前、只有 DDL、`IF NOT EXISTS`），测试账号与演示团队拆成 `db/seed-demo.sql` 需显式执行，`application.yml` 的 `url` 改成 `${MIMO_DB_URL:…}`（以前写死，CI 里那行环境变量形同虚设）。② **BUG-124**：建表与空库引导都是 `ApplicationRunner` 且**没写顺序**，空库上引导抢前面查表 → 启动崩；现在 `@Order(HIGHEST/LOWEST)` 写死并加单测断言。③ **BUG-125**：空库无账号而 CI 第一步就要登录 → 新增显式开启的 `mimo.bootstrap.admin-username/password`（默认关，只配用户名不配密码也拒绝），建号时同时写旧字段与 RBAC `SUPER_ADMIN GLOBAL`，先查后插避免撞 `user_levels` 唯一键。**结果**：零起点环境自动建 38 张表 → 灌种子 → 建项目 → e2e **15 套 148 条 + 3 探针全绿**；workflow 改用 `vite` dev server（`preview` 不配代理，页面 `/api` 全 404）+ `docker exec` 灌种子 + 建表自检 + 预热前端编译 + pin `playwright@1.65.1`。顺手修两条"用例假设本机脏数据"：`admin-flow` 需要 zhangsan 是旧字段团队管理员（种子补 `ROLE_ADMIN` + 纠正 UPDATE）、`presence` 判总人数连跑必飘（改成判自己的 id 在不在名单里）。后端 **225 项**。
+> **上一版本**：v2.22.1（2026-11-26）— 迭代规划的空态说清原因（BUG-122）+ 计划书两条过时备注改成实话。① AI 规划面板里候选为空只有一句写死的「Backlog 暂无可规划工作项」，而候选为空有**三种**原因、下一步完全不同（项目没工作项 → 去建；未完成的都排进迭代了 → 去干活；全做完了 → 建下一批）——后端本来就算出了 summary/risks，是前端空态把它们盖掉了。现在 SprintPlanVO 增 emptyReason（NO_ISSUES/ALL_DONE/ALL_SCHEDULED/NOTHING_PLANNABLE），summary 按原因写具体数字，界面显示原因 +「下一步」+「去项目看板建工作项」按钮；有候选时不下发（NON_NULL）。② 计划书里「仍未做：Wiki 历史版本/差异」其实 v2.13.7/2.13.8 已完成，「仍未做：字号体系收敛（100+ 处 10–11px）」实测 **0 处**（BUG-116 那轮全抬到 12px）——两条就地改成"已做 + 版本号"。③ 顺手给 workflow-guard 的登录页导航加重试（连跑时 Vite 重编译首屏偶发 >20s，会让整套 0 条检查点就红掉）。后端 217 项、e2e 15 套 148 条 + 3 探针。
 > **上一版本**：v2.22.0（2026-11-26）— 工作流从「拖列进网格」变成真流程：① 节点有了独立身份 `nodeKey`（+ 画布坐标 `x/y`），`columnId` 变可空——以前节点主键就是列 id，等于"流程里的一步必须先是一列"，加「上线」得先建列；现在**节点是流程状态、看板列由它投影**（保存时 `normalizeConfig` → `projectFreeNodes` 补列并回填 → `validateConfig`，读出时 `fillNodeIdentity` 兼容历史配置；`createdColumns` 把新建列名带回界面弹提示，不静默建列）。② 设计器换成画布：拖节点摆位（把手在卡片左上，卡片里全是输入控件）、从右侧圆点拖到另一节点建一条规则、点连线加条件。③ **两类条件分开**：`conditions`（谁可以做，任一命中）与 `prerequisites`（什么情况下，全部满足）；首个前提 `ACCEPTANCE_DONE`，未勾完报「验收标准还有 2 项没勾完（共 2 项）」，而没写验收标准的工作项不受限制。④ **BUG-121**：设计器的「终态」复选框勾了不生效（看板判终态用 `BoardColumnRules.isTerminalName`），改成只读徽标 + 说明。后端 214 项、e2e 14 套 142 条 + 3 探针。
 > **上一版本**：v2.21.0（2026-11-26）— 关闭 KNOWN-002：Redis 真的用起来了。原记录说"仅用于单设备登录"，实际 `MimoApplication` 排除了 `RedisAutoConfiguration`，`StringRedisTemplate` 从未存在、那段校验从未运行。现在：① 在线状态抽 `PresenceStore`（`InMemoryPresenceStore` / `RedisPresenceStore`，键 `mimo:presence:sess|user|online`，TTL 90 秒 + 30 秒心跳续期，心跳会重新登记已过期会话）；② 下行消息抽 `RealtimeBridge`（`RedisRealtimeBridge` 本地投一次 + 发 `mimo:bus:realtime`，各实例按 `origin` 丢自己那份，保证每个浏览器只收一次）；③ `mimo.realtime.store=auto` 启动探 Redis，连不上就用进程内（开发机不用装），降级时接口 `presenceShared=false` + 界面写「N 人在线（仅本实例）」；④ 单设备登录改由 `mimo.security.single-device-login` 控制（默认关，否则同账号多端互踢会打断开发与 e2e）；⑤ 修 BUG-119（`mvn clean package` 只出瘦 jar，补 `repackage` 执行绑定）与 BUG-120（`spring-boot:repackage` 在聚合工程里把 `mimo-common` 打成空壳）。真机双实例验证（:8080 / :8081 共用 Redis）+ `--local` 反向对照。后端 207 项、e2e 13 套 132 条 + 3 探针。
 > **上一版本**：v2.20.1（2026-11-25）— 关闭 KNOWN-025：全员任务流支持**服务端分页**（`memberPage` / `pageSize` / 每人 `taskLimit`）、**服务端筛选与排序**（`keyword` / `only` / `sort`）、**近 7 天趋势**（取自 `activity_logs` 的 CREATE / MOVE 事件，不拿 `updated_at` 近似）。做分页时发现原来的前端筛选分母是"当前页"，"有逾期 3"其实只数了 8 个人——一并搬到后端。计数（`openCount` / `overdueTaskCount` / `loadLevel`）永远按全部任务算，不受截断影响。新增 `util/BoardColumnRules` 收敛"终态列"判定。后端 192 项、e2e 12 套 126 条 + 3 探针。
@@ -18,8 +19,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Mimo is a lightweight Trello-like project management platform for small teams. It supports team collaboration, kanban task tracking, and progress visualization.
 
-- **Version**: v2.22.1 — 迭代规划空态说清原因 + 计划书过时备注改成实话 (2026-11-26)
-- **Previous**: v2.22.0 — 工作流：自由节点 + 画布连线 + 验收标准前提条件 (2026-11-26)
+- **Version**: v2.22.2 — 全新环境从零到绿：空库自建表 + 启动顺序 + 空库引导（BUG-123~125）(2026-11-26)
+- **Previous**: v2.22.1 — 迭代规划空态说清原因 + 计划书过时备注改成实话 (2026-11-26)
 - **GitHub**: https://github.com/Oo7350/mimo
 - **API docs**: `接口文档.md` (70+ endpoints, Chinese)
 - **User manual**: `操作手册.md` (Chinese)
@@ -142,17 +143,21 @@ vuedraggable 不吃 `locator.dragTo`）见 `e2e/README.md`。
 
 ### Database
 
-New tables must be created manually since Docker is not available:
+**空库不用手工建表**：后端启动时 `MigrationRunner` 按序执行 `db/migration/V*.sql`，
+第一环 `V0__init.sql` 就是基础 18 张表（`IF NOT EXISTS`，老库跑一遍是空操作）。
+v2.22.2 之前这个文件叫 `db/init.sql` 且**从没被程序执行过**（BUG-123）。
 
 ```bash
-mysql -u root -p"336699" mimo < backend/src/main/resources/db/init.sql
+# 起后端即可（空库自建 38 张表）
+java -jar backend/mimo-app/target/mimo-app-1.0.0-SNAPSHOT.jar
+
+# 只有要演示账号/团队时才灌种子（含默认口令，生产别跑）
+mysql -u mimo -p mimo < backend/mimo-app/src/main/resources/db/seed-demo.sql
 ```
 
-Or create individual tables:
-```sql
-CREATE TABLE IF NOT EXISTS comments (...);
-CREATE TABLE IF NOT EXISTS notifications (...);
-```
+演示账号 `admin` / `zhangsan` / `lisi`，密码均 `123456`。**zhangsan 是"旧字段兜底的团队管理员"**
+（`users.role=ROLE_MEMBER`、RBAC 无角色，但 `team_members.role=ROLE_ADMIN`），`admin-flow` 用例盯这个落差。
+空库想直接有管理员：配 `MIMO_BOOTSTRAP_ADMIN_USERNAME` + `MIMO_BOOTSTRAP_ADMIN_PASSWORD` 启动一次。
 
 ## Architecture
 
@@ -200,7 +205,7 @@ Single backend + RBAC with two roles: `ROLE_ADMIN` (team/project admin) and `ROL
 
 21 MySQL tables (InnoDB, utf8mb4): `users`, `teams`, `team_members`, `projects`, `project_members`, `board_columns`, `issues`, `issue_labels`, `attachments`, `sprints`, `burndown_snapshots`, `reports`, `activity_logs`, `comments`, `notifications`, `chat_messages`, **`approval_requests`**, **`user_levels`**, **`wiki_pages`**, **`wiki_versions`**, **`wiki_attachments`**.
 
-- Schema at `backend/src/main/resources/db/init.sql`
+- Schema at `backend/mimo-app/src/main/resources/db/migration/V0__init.sql`（迁移链第一环，启动时自动执行）
 - Seed data: 3 users (admin/zhangsan/lisi, password `123456`), 1 team, 3 team members
 - Soft delete via MyBatis-Plus `@TableLogic` on `deleted` column (users, teams, projects, issues)
 
@@ -283,6 +288,42 @@ All v2.15 AI roadmap items are implemented; see `项目功能完善计划.md` §
 - **Board Sync Flow**: Drag → `PUT /api/board/issue/move` → backend updates issue + logs + WebSocket broadcast → all board subscribers receive event → optimistic UI update
 
 ## Version History
+
+### v2.22.2 — 全新环境从零到绿（BUG-123~125）(2026-11-26)
+
+起点是想收口 KNOWN-024（"CI 没在真实 runner 上跑过"）。原本打算改 YAML，改成**先在本机把
+CI 的步骤原样执行一遍**：起一个独立的空 MySQL 实例、空库、按 workflow 里的命令一步步走。
+第一个 30 秒就红了。
+
+**BUG-123（High）**：空库启动后只有 23 张表，`users / teams / projects / issues` 一个都没有。
+根因：基础建表脚本 `resources/db/init.sql` **从来没被任何程序执行过**——`MigrationRunner`
+只扫 `db/migration/V*.sql`，它唯一的引用是 `AGENTS.md` 里一条路径还写错的手工命令。
+本机库是几个月前手工灌的，所以谁都没再验过"从零建库"。
+修：`init.sql` → `db/migration/V0__init.sql`（排序最前、只有 DDL、`CREATE TABLE IF NOT EXISTS`）；
+测试账号与演示团队拆成 `db/seed-demo.sql`（显式执行——建表该自动，"默认口令账号"不该）；
+`application.yml` 的 `url` 改成 `${MIMO_DB_URL:…}`（此前写死，CI 里那行环境变量是句废话）。
+
+**BUG-124（High）**：修完建表，空库启动直接崩 `Table 'mimo.users' doesn't exist`。
+建表与空库引导都实现 `ApplicationRunner` 且**没标 `@Order`**，顺序取决于扫描顺序，
+实际是引导先跑。修：`@Order(HIGHEST_PRECEDENCE)` / `@Order(LOWEST_PRECEDENCE)`，
+并加单测直接断言两个值——老库上这个错误永远看不见。
+
+**BUG-125（High）**：表建好了，`admin/123456` 仍然 401——库里没有账号。修：新增
+`mimo.bootstrap.admin-username/password`（`AdminBootstrap`，默认留空=不动手，只配用户名
+不配密码也拒绝），建号时同时写旧字段 `users.role=ROLE_ADMIN` 与 RBAC
+`user_roles(SUPER_ADMIN, GLOBAL)`（只写一半会得到"能进后台、某些按钮一点就 403"的半截管理员）；
+先查后插，避免撞 `user_levels` 唯一键（V5 迁移给 1/2/3 号用户预埋了铭牌，引导出来正好是 1 号）。
+
+**顺带**：workflow 改用 `vite` dev server（`vite preview` 不配代理，页面里 `/api` 请求全 404）；
+`MIMO_REALTIME_STORE=memory` 写死（CI 没 Redis，别指望 auto 探测可复现）；加"建表结果自检"
+（表数 < 30 就红）与"预热前端编译"（别把冷启动算进用例超时）；playwright 装在仓库外并 pin 版本。
+两条"用例假设本机脏数据"也修了：`admin-flow` 依赖 zhangsan 历史上被手工加过的 DEVELOPER
+全局角色（种子补 `team_members.role=ROLE_ADMIN` + 纠正 UPDATE）；`presence` 判总人数在连跑时
+必然飘（前面套件的会话正在心跳超时下线），改成判"自己的 id 在不在 `onlineUserIds` 里"。
+
+**验证**：零起点环境（空库）→ 自动 38 张表 → 灌种子 → 建项目 → e2e **15 套 148 条 + 3 探针全绿**；
+`seed-demo.sql` 连跑两遍幂等；后端 **225 项**（新增 `AdminBootstrapTest` 8 条）。
+KNOWN-024 仍挂着，但只剩"Linux/runner 环境差异"这一层。
 
 ### v2.22.1 — 迭代规划的空态说清原因（BUG-122）+ 计划书两条过时备注改成实话 (2026-11-26)
 

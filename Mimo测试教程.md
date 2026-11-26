@@ -636,9 +636,9 @@ net start MySQL80
 ### Q3：API 测试返回 401？
 
 ```bash
-# 检查数据库 seed 数据是否存在
-# 确保 backend/src/main/resources/db/init.sql 已执行
-mysql -u root -p"336699" mimo < backend/src/main/resources/db/init.sql
+# 表结构由后端启动时自动建（db/migration/V0__init.sql 起），不用手工灌 SQL
+# 401 通常是"库里没有账号"：灌一遍演示账号（admin/zhangsan/lisi，密码 123456）
+mysql -u mimo -p mimo < backend/mimo-app/src/main/resources/db/seed-demo.sql
 ```
 
 ### Q4：测试用例间数据相互影响？

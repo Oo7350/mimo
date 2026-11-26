@@ -63,6 +63,7 @@ const readPresenceNode = async () => {
 };
 
 // 注册一个纯成员账号并入队，专门用来"开一个页面、关掉、看人数"（cleanup-residue.sql 按 e2e-% 回收）
+let probeId = null;
 {
   const reg = await fetch(`${API_BASE}/auth/register`, {
     method: "POST",
@@ -74,7 +75,7 @@ const readPresenceNode = async () => {
   const found = await fetch(`${API_BASE}/user/search?keyword=${encodeURIComponent(PROBE_USER)}`, {
     headers: { Authorization: `Bearer ${adminToken}` },
   }).then((r) => r.json());
-  const probeId = (found?.data || []).find((u) => u.username === PROBE_USER)?.id;
+  probeId = (found?.data || []).find((u) => u.username === PROBE_USER)?.id;
   if (!probeId) throw new Error("找不到刚注册的探针账号");
   const invite = await fetch(`${API_BASE}/teams/invite`, {
     method: "POST",
@@ -116,11 +117,21 @@ const apiPresence = async () => {
   return res.data;
 };
 
-const withSocket = await apiPresence();
+// 等 WebSocket 真连上：不信固定 3 秒，直接等自己的 id 出现在在线名单里（最多 25 秒）。
+// 连跑十几套时前端首屏编译会明显变慢，写死等待要么白等、要么假红。
+let withSocket = await apiPresence();
+const connectStartedAt = Date.now();
+for (let i = 0; i < 25; i++) {
+  if ((withSocket?.onlineUserIds || []).includes(probeId)) break;
+  await page.waitForTimeout(1000);
+  withSocket = await apiPresence();
+}
+const connectMs = Date.now() - connectStartedAt;
+const onlineIds = withSocket?.onlineUserIds || [];
 check(
-  "浏览器连着 WebSocket 时，在线人数比开页前多（这一页真的被算进去了）",
-  (withSocket?.onlineCount ?? 0) >= 1 && (withSocket?.onlineCount ?? 0) > baselineCount,
-  `onlineCount=${withSocket?.onlineCount}（基线 ${baselineCount}）, totalMembers=${withSocket?.totalMembers}`
+  "浏览器连着 WebSocket 时，这一页真的被算进在线名单",
+  onlineIds.includes(probeId),
+  `ids=${JSON.stringify(onlineIds)}（自己=${probeId}，基线 ${baselineCount} 人）, 连上耗时 ${connectMs}ms`
 );
 
 check(
@@ -170,23 +181,25 @@ const readAfter = async () => p2.evaluate(async () => {
 // 服务端发现断开有两条路：浏览器正常关闭 SockJS 会发 DISCONNECT 帧（快），
 // 进程被杀/网络断只能等心跳超时（慢，最迟一个心跳周期 10 秒 + 调度延迟）。
 // 所以这里先做一次"优雅离开"（导航到 about:blank，让前端主动断开），再最多等 40 秒。
+//
+// 判定用"自己的 id 是否还在名单里"，不比总人数：连跑十几套时，
+// 前面那些套件的浏览器会话正在陆续超时下线，总数会一边加一边减
+// ——比总数就会得到"我加了一人、别人掉了一人、总数没变"的假红（v2.22.2 真踩过）。
 await p2.waitForTimeout(500);
 const startedAt = Date.now();
-const openPeak = withSocket?.onlineCount ?? 1;
+const openIds = withSocket?.onlineUserIds || [];
 let after = null;
 for (let i = 0; i < 20; i++) {
   after = await readAfter();
-  // 回到基线就算数：开发机上可能还有别人的会话在线，硬等 0 是等不到的
-  if ((after?.onlineCount ?? openPeak) <= baselineCount) break;
+  if (!(after?.onlineUserIds || []).includes(probeId)) break;
   await p2.waitForTimeout(2000);
 }
 const elapsed = Math.round((Date.now() - startedAt) / 100) / 10;
 check(
-  "关掉页面后在线人数回落到开页前的水位，不留假在线",
-  (after?.onlineCount ?? openPeak + 1) <= baselineCount && openPeak > baselineCount,
-  `开页时 ${openPeak} 人 → 关页后 ${after?.onlineCount} 人（基线 ${baselineCount}），耗时 ${elapsed}s`
+  "关掉页面后自己从在线名单里消失，不留假在线",
+  openIds.includes(probeId) && !(after?.onlineUserIds || []).includes(probeId),
+  `ids=${JSON.stringify(after?.onlineUserIds)}（自己=${probeId} 已离开），耗时 ${elapsed}s（心跳周期 10s）`
 );
-
 await ctx2.close();
 await probe.close();
 

@@ -1,10 +1,18 @@
 name: e2e
 
-# 端到端回归：12 套套件 + 3 个探针，入口就是 e2e/run-all.mjs（本地同一条命令）。
+# 端到端回归：15 套套件 + 3 个探针，入口就是 e2e/run-all.mjs（本地同一条命令）。
 #
-# 诚实声明：这份配置**没有在真实 GitHub runner 上跑过**（本机无 CI 能力），
-# 本地用同一条命令验证过全绿。首次接 CI 时请预留一次调参时间，
-# 常见坑已经写在下面的注释里。见 bug-log KNOWN-024。
+# 诚实声明（v2.22.2 更新）：
+# - 这份配置**仍然没有在真实 GitHub runner 上跑过**，见 bug-log KNOWN-024。
+# - 但"从零到绿"这条链路已经在本机**真的演过一遍**：全新空库（独立 MySQL 实例）
+#   → 后端启动 → 看它自己建表 → 灌演示数据 → 建项目 → 全量 e2e 全绿。
+#   每一步的命令和下面写的完全一致，所以剩下的风险只有"Linux/runner 环境差异"。
+#
+# 这轮演练照出三个真问题（都已修，见 bug-log BUG-123）：
+#   1. 基础建表脚本 init.sql **从来没被执行过**——空库上一张表都建不出来；
+#   2. 顺序没定：空库上第一个启动期 Runner 抢在建表前面查表，直接崩；
+#   3. 空库没有任何账号，而 CI 第一步就要 admin/123456 登录。
+# 所以下面的步骤顺序是"踩过坑之后"的顺序，别随意调换。
 
 on:
   push:
@@ -12,10 +20,15 @@ on:
   pull_request:
   workflow_dispatch:
 
+concurrency:
+  # 同一分支连续推送时取消旧的那次，省 runner 也省得两份数据库互相干扰
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 45
 
     services:
       mysql:
@@ -33,13 +46,20 @@ jobs:
           --health-retries=20
 
     env:
-      # 与本地 dev-env.ps1 的变量一一对应：application.yml 里这些没有硬编码默认值
+      # 与本地 dev-env.ps1 一一对应。注意 MIMO_DB_URL 到 v2.22.2 才真正被 application.yml 读取，
+      # 在此之前这行是句废话（硬编码 localhost:3306/mimo）。
       JWT_SECRET: mimo-ci-secret-key-please-change-in-prod-0123456789abcdef
       JWT_EXPIRATION: "86400000"
+      MIMO_DB_URL: jdbc:mysql://127.0.0.1:3306/mimo?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
       MIMO_DB_USERNAME: mimo
       MIMO_DB_PASSWORD: mimo123
-      MIMO_DB_URL: jdbc:mysql://127.0.0.1:3306/mimo?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+      # CI 没有 Redis：显式写 memory，别指望 auto 探测给出可复现的结果
+      MIMO_REALTIME_STORE: memory
+      # 空库引导：迁移只建表不建账号，CI 第一步就要登录，所以这里显式开一个管理员
+      MIMO_BOOTSTRAP_ADMIN_USERNAME: admin
+      MIMO_BOOTSTRAP_ADMIN_PASSWORD: "123456"
       PLAYWRIGHT_BROWSERS_PATH: /home/runner/.cache/ms-playwright
+      NO_PROXY: localhost,127.0.0.1
 
     steps:
       - uses: actions/checkout@v4
@@ -54,14 +74,14 @@ jobs:
         with:
           node-version: "20"
 
-      # 建表脚本：本地是 application.yml 里跑 schema.sql / data.sql，这里照旧由 Spring 初始化；
-      # 若改成 Flyway 只需调整这一步，其余不变。
       - name: 后端单元测试
         run: mvn -B -f backend/pom.xml test
 
       - name: 打包后端
         run: mvn -B -f backend/pom.xml -DskipTests package
 
+      # 空库首次启动 = 建表（db/migration/V0__init.sql 起）+ 引导管理员。
+      # 就绪判断用登录接口：它需要 users 表 + 管理员同时存在，比只看端口实在。
       - name: 启动后端
         run: |
           java -jar backend/mimo-app/target/mimo-app-1.0.0-SNAPSHOT.jar > backend.log 2>&1 &
@@ -73,36 +93,68 @@ jobs:
             fi
             sleep 3
           done
-          echo "后端 180 秒内未就绪"; tail -50 backend.log; exit 1
+          echo "后端 180 秒内未就绪"; tail -80 backend.log; exit 1
 
-      - name: 前端依赖与构建
+      - name: 建表结果自检
+        run: |
+          tables=$(docker exec -i ${{ job.services.mysql.id }} \
+            mysql -umimo -pmimo123 -N -B mimo \
+            -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='mimo'")
+          echo "已建表 ${tables} 张"
+          # 38 是 v2.22.2 的实测值；少一半说明迁移链断在中间，早点红比跑完 15 套才发现好
+          if [ "$tables" -lt 30 ]; then
+            echo "::error::只建出 ${tables} 张表，迁移链可能没跑完整"
+            exit 1
+          fi
+
+      # 演示账号（admin / zhangsan / lisi + 团队 1）。种子放在单独文件里而不是建表脚本里，
+      # 就是为了不让"默认口令"跟着 DDL 自动进生产库。
+      - name: 灌演示账号
+        run: |
+          docker exec -i ${{ job.services.mysql.id }} \
+            mysql -umimo -pmimo123 --default-character-set=utf8mb4 mimo \
+            < backend/mimo-app/src/main/resources/db/seed-demo.sql
+
+      # e2e 全家假定「团队 1 + 项目 1 + 三列看板」，这里用真实接口把它们建出来（幂等）
+      - name: 预热项目
+        run: node e2e/seed-fresh-db.mjs
+
+      - name: 前端依赖、类型检查与构建
         run: |
           cd frontend
           npm ci
           npm run build
 
+      # 用 dev server 而不是 vite preview：e2e 里的页面请求走 vite 的 /api 代理，
+      # preview 不配 proxy 会全部 404。本地验证的也是 dev。
       - name: 启动前端
         run: |
           cd frontend
-          npx vite preview --port 5173 --strictPort > ../frontend.log 2>&1 &
-          for i in $(seq 1 40); do
-            if curl -sf http://localhost:5173/ > /dev/null; then echo "前端就绪"; exit 0; fi
+          npx vite --port 5173 --strictPort > ../frontend.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:5173/ > /dev/null; then
+              echo "前端就绪"; exit 0
+            fi
             sleep 2
           done
-          echo "前端 80 秒内未就绪"; tail -30 ../frontend.log; exit 1
+          echo "前端 120 秒内未就绪"; tail -40 ../frontend.log; exit 1
 
-      # playwright 的浏览器要单独装；本地是把 playwright 装在仓库外，
-      # CI 里用官方镜像或 npx playwright install 都行
+      # 预热一次入口模块：Vite 首次编译要比后续请求慢，别把冷启动算到第一个用例的 20 秒超时里
+      - name: 预热前端编译
+        run: |
+          curl -sf http://localhost:5173/src/main.ts > /dev/null && echo "入口模块已编译"
+
       - name: 安装 Playwright
         run: |
-          npm install --no-save playwright
+          mkdir -p "$RUNNER_TEMP/pw"
+          cd "$RUNNER_TEMP/pw"
+          npm init -y > /dev/null
+          npm i playwright@1.65.1
           npx playwright install --with-deps chromium
+          echo "PLAYWRIGHT_MODULE=$RUNNER_TEMP/pw/node_modules/playwright" >> "$GITHUB_ENV"
 
       - name: 跑全部 e2e（失败即红）
-        run: node e2e/run-all.mjs --base http://localhost:5173 --api http://localhost:8080/api
-        env:
-          PLAYWRIGHT_MODULE: ${{ github.workspace }}/node_modules/playwright
-          NO_PROXY: localhost,127.0.0.1
+        run: node e2e/run-all.mjs --probes --base http://localhost:5173 --api http://localhost:8080/api
 
       - name: 失败时留存日志
         if: failure()
@@ -113,3 +165,4 @@ jobs:
             backend.log
             frontend.log
             e2e/xss-report.md
+          if-no-files-found: ignore

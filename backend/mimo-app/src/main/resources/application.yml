@@ -7,7 +7,9 @@ spring:
 
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://localhost:3306/mimo?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    # MIMO_DB_URL 让"同一个 jar 连不同库"成为可能（CI 服务容器 / 本机预演用的独立库）。
+    # 以前这里写死 localhost:3306/mimo，CI 里配的 MIMO_DB_URL 其实是句废话（v2.22.2 修正）。
+    url: ${MIMO_DB_URL:jdbc:mysql://localhost:3306/mimo?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true}
     username: ${MIMO_DB_USERNAME:mimo}
     password: ${MIMO_DB_PASSWORD:}
 
@@ -80,6 +82,15 @@ mimo:
     # 单设备登录：默认关。打开后同一账号在别处登录会踢掉旧 Token。
     # 关着是因为开发调试和 e2e 会用同一账号开多个浏览器上下文，开了会互相踢。
     single-device-login: ${MIMO_SINGLE_DEVICE_LOGIN:false}
+
+  # ---- 空库引导（CI / 全新环境专用，默认关）----
+  # 迁移只建表 + 插权限角色，不插任何用户；而 CI 第一步就要 admin/123456 登录。
+  # 想在新库上跑起来，显式给个用户名（密码留空会拒绝，绝不猜默认口令）。
+  # 生产环境不要开：这是一条"默认口令"通道。
+  bootstrap:
+    admin-username: ${MIMO_BOOTSTRAP_ADMIN_USERNAME:}
+    admin-password: ${MIMO_BOOTSTRAP_ADMIN_PASSWORD:}
+    admin-email: ${MIMO_BOOTSTRAP_ADMIN_EMAIL:admin@mimo.local}
 
 ai:
   provider: ${AI_PROVIDER:deepseek}

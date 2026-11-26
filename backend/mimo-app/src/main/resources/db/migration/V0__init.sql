@@ -1,8 +1,18 @@
+-- Mimo 敏捷项目管理平台 — 基础表结构（v2.22.2 起由 MigrationRunner 自动执行）
+--
+-- 这个文件原来是 resources/db/init.sql，**从来没有被程序执行过**：MigrationRunner 只扫
+-- db/migration/V*.sql，而 init.sql 只出现在文档的一条手工命令里（路径还是旧的）。
+-- 结果：任何全新数据库都建不出表，CI 第一次跑必然倒在这一步（BUG-123 / KNOWN-024）。
+--
+-- 现在它是迁移链的第一环（V0 排序最前），`CREATE TABLE IF NOT EXISTS` 保证幂等：
+-- 老库跑一遍是空操作，空库跑一遍就把表建全。
+--
+-- 这里**只有 DDL**。测试账号与演示团队在 db/seed-demo.sql 里，需要显式执行——
+-- 别把"默认口令"焊进建表脚本里。
+--
+-- 字符集: utf8mb4, 引擎: InnoDB
 -- Mimo 敏捷项目管理平台 - 初始化 DDL
 -- 字符集: utf8mb4, 引擎: InnoDB
-
-CREATE DATABASE IF NOT EXISTS `mimo` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE `mimo`;
 
 -- ============================================================
 -- 1. 用户表
@@ -239,23 +249,6 @@ CREATE TABLE IF NOT EXISTS `burndown_snapshots` (
     UNIQUE KEY `uk_sprint_date` (`sprint_id`, `snapshot_date`),
     INDEX `idx_sprint` (`sprint_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='燃尽图每日快照表';
-
--- ============================================================
--- 种子数据 (测试账号)
--- ============================================================
--- 密码均为 123456，BCrypt 加密
-INSERT INTO `users` (`username`, `password`, `email`, `role`) VALUES
-('admin',  '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', 'admin@mimo.dev', 'ROLE_ADMIN'),
-('zhangsan', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', 'zhangsan@mimo.dev', 'ROLE_MEMBER'),
-('lisi',   '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', 'lisi@mimo.dev',   'ROLE_MEMBER');
-
-INSERT INTO `teams` (`name`, `description`, `owner_id`) VALUES
-('Mimo开发团队', 'Mimo产品研发核心团队', 1);
-
-INSERT INTO `team_members` (`team_id`, `user_id`, `role`) VALUES
-(1, 1, 'ROLE_ADMIN'),
-(1, 2, 'ROLE_MEMBER'),
-(1, 3, 'ROLE_MEMBER');
 
 -- 14. 任务评论表
 CREATE TABLE IF NOT EXISTS `comments` (

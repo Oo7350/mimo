@@ -3,6 +3,8 @@ package com.mimo.config;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
@@ -22,9 +24,15 @@ import java.util.stream.Collectors;
  * 启动时扫描 classpath:db/migration/V*.sql，按字典序执行。
  * 关键特性：脚本内按 ';' 切分单条语句独立执行，单条失败（如 duplicate column）跳过该条继续，
  * 保证幂等重跑不会因为某条语句重复执行而把整批回滚掉。
+ *
+ * <p>{@code @Order(HIGHEST_PRECEDENCE)}：建表必须最先跑。其它启动期逻辑（{@link AdminBootstrap}）
+ * 会立刻查表；两个 {@code ApplicationRunner} 都不标顺序时，谁先跑是"看扫描顺序"，
+ * 空库上就撞过一次——第一个查表的 Runner 抢在建表前面，直接
+ * {@code Table 'mimo.users' doesn't exist} 把启动搞崩（v2.22.2，见 bug-log BUG-123）。</p>
  */
 @Component
 @Slf4j
+@Order(Ordered.HIGHEST_PRECEDENCE)
 public class MigrationRunner implements ApplicationRunner {
 
     private final DataSource dataSource;

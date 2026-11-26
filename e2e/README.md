@@ -54,6 +54,38 @@ node e2e/two-instance-presence.mjs --local    # 反向对照：探针实例用 M
 > 所以：① 选择器别假设"最后一个是什么"；② 用例崩了之后再跑，先清残留；
 > ③ 新套件尽量自造数据、自己收尾。
 
+### 全新环境预热（`seed-fresh-db.mjs`，v2.22.2）
+
+e2e 全家都假定「团队 1 + 项目 1 + 三列看板（待办/进行中/已完成）」。本机库是几个月长出来的，
+空库上直接跑会从第一步就红——所以 CI 与任何新环境先跑这个：
+
+```bash
+# 前提：后端已启动（空库会自动建表），且已灌过演示账号
+mysql -u mimo -p mimo < backend/mimo-app/src/main/resources/db/seed-demo.sql
+node e2e/seed-fresh-db.mjs          # MIMO_API=http://127.0.0.1:8080/api 可改地址
+```
+
+它全程走真实 HTTP 接口、不碰 SQL，幂等：管理员能登录（由后端 `MIMO_BOOTSTRAP_ADMIN_*`
+在启动时创建）→ 团队取第一个或建一个 → 项目取第一个或建一个 → 踩出看板列与 STORY 工作流，
+最后打印 `teamId` / `projectId` 供和用例里的硬编码对账。
+
+> 团队 id 不是 1 时它会**明确警告**：那种库不是"干净库"，用例里的 `teamId=1` 会对不上，
+> 要用干净库或者改用例——别默默改数字。
+
+### 把 CI 的步骤在本机演一遍（v2.22.2 的做法，建议照抄）
+
+`.github/workflows/e2e.yml` 长期"写了但没跑过"。演练方式不是读 YAML，而是**按它的命令在本机执行**：
+
+1. 起一个独立的空 MySQL 实例（别用开发库）：`mysqld --initialize-insecure --datadir=<新目录>`，
+   起了之后按 docker-entrypoint 的方式建库建号（`mimo` / `mimo123`）；
+2. 用 `MIMO_DB_URL` 指过去、`MIMO_REALTIME_STORE=memory`、`MIMO_BOOTSTRAP_ADMIN_*` 打开空库引导，起后端；
+3. 确认它**自己**建出 38 张表（少一半就是迁移链断了）、`admin/123456` 能登录；
+4. 灌 `seed-demo.sql` → `node e2e/seed-fresh-db.mjs` → `node e2e/run-all.mjs --probes`。
+
+这一轮演练第一天就撞出三个必崩的坑（建表脚本从没执行 / 启动期 Runner 顺序未定 / 空库没账号，
+BUG-123~125）。所以：**改 CI 配置时，先把里面的命令在本机跑一遍**，
+"看起来对的 YAML"和"能跑的 YAML"是两件事。
+
 CI：`.github/workflows/e2e.yml`（MySQL service + 起前后端 + 跑 `run-all.mjs`）。
 **如实说明**：该 workflow 没在真实 GitHub runner 上跑过，本地同一条命令两轮全绿。
 
@@ -311,12 +343,16 @@ a11y 树里这些按钮会被判定为 hidden，`getByRole` 数到 0（踩过）
 第 4 条当初是**红的**：简单 broker 默认不发心跳，服务端要等 Tomcat 会话超时才认为人走了。
 给 `enableSimpleBroker` 配了 10 秒心跳 + 调度器之后才通过——所以这条用例同时是心跳配置的回归保护。
 
-> **v2.22.1 修掉了这套用例的两个脆点**（都不改产品行为）：
+> **v2.22.1 / v2.22.2 修掉了这套用例的三个脆点**（都不改产品行为）：
 > ① 原先断言「关页后 `onlineCount === 0`」，但开发机上常有人真开着页面，永远等不到 0；
 > ② 改成"比基线多 1"也不行——在线人数按**人**去重，默认用 admin 登录时，本机若已有
-> 一个 admin 会话，再开一页人数根本不变（这一版就因此红过一次）。
+> 一个 admin 会话，再开一页人数根本不变（v2.22.1 就因此红过一次）；
+> ③ v2.22.2 连跑时又红：判**总人数**在连跑场景下必然飘——前面十几套的浏览器会话正在陆续
+> 心跳超时下线，"我加一人、别人掉一人"总数不变。
 > 现在改用**现场注册的独立账号**（`e2e-presence{stamp}`，`ROLE_MEMBER` 入队 1），
-> 它开页前一定不在线，于是"开页 +1、关页回到原水位"无歧义；账号由 `cleanup-residue.sql` 回收。
+> 并且判的是**自己的 id 在不在 `onlineUserIds` 里**：开页必须出现、关页必须消失。
+> 固定 `waitForTimeout(3000)` 也换成"等自己的 id 出现（最多 25 秒）"，慢机器不再假红。
+> 账号由 `cleanup-residue.sql` 回收。
 
 ## 在线口径文案（`presence-source-label.mjs`，v2.21.0）
 

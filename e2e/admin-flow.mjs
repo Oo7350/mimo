@@ -421,21 +421,121 @@ await toggleTheme(adminPage); // 还原亮色，避免影响后续用例
     // 这里按接口给的状态挑一张"本来就允许提交验收"的卡（进行中、非缺陷型）。
     const candidates = apiData.members
       .flatMap((member) => member.tasks.map((task) => ({ ...task, owner: member.username })))
-      .filter((task) => task.status === "IN_PROGRESS" && task.type !== "BUG");
-    const target = candidates.find((task) => task.projectId) || null;
+      .filter((task) => task.status === "IN_PROGRESS" && task.type !== "BUG" && task.projectId);
+
+    // 还要满足两条，否则测的不是这件事（v2.22.2 真踩过这两条，白红了一次）：
+    //   ① 必须是**别人**负责的卡——自己负责的卡"能提交"是理所当然，验不出"管理员代提交"；
+    //   ② 必须**还没提交过验收**——已经验收通过的卡按设计就没有「提交验收」按钮，
+    //      而看板接口给的 status 仍是 IN_PROGRESS，光看它筛不出来。
+    const reviewsOf = async (issueId) => {
+      const token = await adminPage.evaluate(() => localStorage.getItem("token"));
+      const list = await adminPage.evaluate(
+        async ([t, id]) => {
+          const r = await fetch(`/api/issues/${id}/reviews`, { headers: { Authorization: `Bearer ${t}` } });
+          const j = await r.json().catch(() => ({}));
+          return j?.data || [];
+        },
+        [token, issueId],
+      );
+      return list || [];
+    };
+    const adminName = ADMIN.username;
+    let target = null;
+    for (const candidate of candidates) {
+      if (candidate.owner === adminName) continue;
+      const reviews = await reviewsOf(candidate.id);
+      if (reviews.length === 0) {
+        target = candidate;
+        break;
+      }
+    }
+    if (!target && candidates.length) {
+      console.log(`  候选 ${candidates.length} 张，但没有「别人负责且未提交验收」的卡，跳过点击`);
+    }
+
+    if (!target) {
+      // 库里没有合适候选时**自己造一张**：靠"碰巧有数据"的用例换台机器就红（BUG-118 的老毛病）。
+      // 造完直接走看板深链（`?issue=` 自动开弹窗），效果与「在项目里打开」一致——
+      // 抽屉那一步上面已经单独验过了，这里要验的是"管理员在别人的卡上不被成员门槛拦"。
+      const anyTask = apiData.members.flatMap((m) => m.tasks).find((t) => t.projectId);
+      const projectId = candidates[0]?.projectId || anyTask?.projectId;
+      const token = await adminPage.evaluate(() => localStorage.getItem("token"));
+      const call = async (method, path, body) =>
+        adminPage.evaluate(
+          async ([t, m, p, b]) => {
+            const r = await fetch(`/api${p}`, {
+              method: m,
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${t}` },
+              body: b ? JSON.stringify(b) : undefined,
+            });
+            const j = await r.json().catch(() => ({}));
+            return j?.data ?? null;
+          },
+          [token, method, path, body],
+        );
+      const found = await adminPage.evaluate(
+        async ([t, kw]) => {
+          const r = await fetch(`/api/user/search?keyword=${encodeURIComponent(kw)}`, {
+            headers: { Authorization: `Bearer ${t}` },
+          });
+          const j = await r.json().catch(() => ({}));
+          return (j?.data || []).find((u) => u.username === kw) || null;
+        },
+        [token, TEAM_ADMIN.username],
+      );
+      if (projectId && found?.id) {
+        const created = await call("POST", "/issues", {
+          projectId,
+          title: `代提交验证 ${Date.now().toString().slice(-5)}`,
+          type: "TASK",
+          priority: "MEDIUM",
+          assigneeId: found.id,
+        });
+        if (created?.id) {
+          await call("PUT", "/issues", { id: created.id, status: "IN_PROGRESS" });
+          await adminPage.goto(`${BASE}/projects/${projectId}/board?issue=${created.id}`, {
+            waitUntil: "domcontentloaded",
+          });
+          await adminPage
+            .locator(".el-dialog")
+            .first()
+            .waitFor({ state: "visible", timeout: 20000 })
+            .catch(() => {});
+          await adminPage.waitForTimeout(400);
+          target = {
+            id: created.id,
+            issueKey: created.issueKey,
+            owner: TEAM_ADMIN.username,
+            status: "IN_PROGRESS",
+            projectId,
+            selfCreated: true,
+          };
+          console.log(`  自造候选：${created.issueKey}（${TEAM_ADMIN.username} 负责，进行中，未提交验收）`);
+        }
+      }
+    }
 
     if (!target) {
       check("能找到一张「进行中、非缺陷」的卡来验代提交", false, "接口里没有符合条件的任务，跳过点击");
     } else {
-      await adminPage
-        .locator(".flow-task")
-        .filter({ hasText: target.issueKey })
-        .first()
-        .click();
-      await adminPage.waitForSelector(".task-drawer__title", { timeout: 15000 });
-      await adminPage.getByRole("button", { name: /在项目里打开/ }).click();
-      await adminPage.waitForURL(/\/projects\/\d+\/board/, { timeout: 20000 });
-      await adminPage.waitForTimeout(2600);
+      if (!target.selfCreated) {
+        await adminPage
+          .locator(".flow-task")
+          .filter({ hasText: target.issueKey })
+          .first()
+          .click();
+        await adminPage.waitForSelector(".task-drawer__title", { timeout: 15000 });
+        await adminPage.getByRole("button", { name: /在项目里打开/ }).click();
+        await adminPage.waitForURL(/\/projects\/\d+\/board/, { timeout: 20000 });
+        // 别用固定等待：看板是深链 `?issue=<id>` 自动开弹窗，而弹窗要等 fetchBoard() 回来才开
+        // （项目大、图多时会超过 3 秒）。等"对话框可见"比猜毫秒数稳，慢机器不再假红。
+        await adminPage
+          .locator(".el-dialog")
+          .first()
+          .waitFor({ state: "visible", timeout: 20000 })
+          .catch(() => {});
+        await adminPage.waitForTimeout(400);
+      }
 
       const reviewBtn = adminPage.getByRole("button", { name: "提交验收" }).first();
       hasReviewBtn = (await reviewBtn.count()) > 0;
@@ -445,14 +545,21 @@ await toggleTheme(adminPage); // 还原亮色，避免影响后续用例
       });
       reviewEnabled = hasReviewBtn && !(await reviewBtn.isDisabled().catch(() => true));
       if (!hasReviewBtn) {
-        // 失败时把现场说清楚：这块看板上到底有哪些按钮、弹窗开了没有
-        const buttons = await adminPage.evaluate(() =>
-          Array.from(document.querySelectorAll("button"))
+        // 失败时把现场说清楚：URL 带了深链没有、弹窗开没开、这块看板上有哪些按钮
+        const scene = await adminPage.evaluate(() => {
+          const buttons = Array.from(document.querySelectorAll("button"))
             .map((el) => (el.textContent || "").trim())
-            .filter((text) => text && text.length <= 12)
-            .slice(0, 18),
+            .filter((text) => text && text.length <= 12);
+          return {
+            url: location.href,
+            dialogs: document.querySelectorAll(".el-dialog").length,
+            buttons: buttons.slice(0, 18),
+          };
+        });
+        console.log(
+          `  现场：${target.issueKey}（${target.owner}）状态=${target.status} url=${scene.url} ` +
+            `弹窗=${scene.dialogs} 按钮=${scene.buttons.join("/")}`,
         );
-        console.log(`  现场：${target.issueKey}（${target.owner}）状态=${target.status} 按钮=${buttons.join("/")}`);
       }
     }
   }
