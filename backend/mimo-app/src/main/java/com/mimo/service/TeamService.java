@@ -104,8 +104,9 @@ public class TeamService {
     /**
      * 团队在线情况：真实 WebSocket 在线人数 + 成员总数。
      *
-     * 计数口径见 PresenceService：只算本实例、按 userId 去重。
-     * 别把 onlineCount 当"活跃用户数"用——它只表示"现在开着页面的人"。
+     * 计数口径见 PresenceService：按 userId 去重；存储可能是 Redis（跨实例共享）
+     * 也可能是进程内（只算本实例）。**界面上必须把这层区别写出来**，
+     * 否则多实例部署时"1 人在线"会被读成"其他人都下线了"（KNOWN-002）。
      */
     public TeamPresenceVO getPresence(Long teamId) {
         List<TeamMember> members = teamMemberMapper.selectList(
@@ -119,6 +120,12 @@ public class TeamService {
         vo.setTotalMembers(userIds.size());
         vo.setOnlineUserIds(new ArrayList<>(presenceService.filterOnline(userIds)));
         vo.setOnlineCount(vo.getOnlineUserIds().size());
+        boolean shared = presenceService.sharedAcrossInstances();
+        vo.setPresenceStore(presenceService.storeName());
+        vo.setPresenceShared(shared);
+        vo.setPresenceNote(shared
+                ? "在线状态由 Redis 共享，多实例部署下同样准确"
+                : "在线状态只统计本实例，多实例部署时其他人的在线情况可能看不到");
         return vo;
     }
 

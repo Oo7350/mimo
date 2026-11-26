@@ -68,7 +68,7 @@ playwright install chromium
 测试前需确保前后端都在运行：
 
 ```bash
-# 终端1：启动后端（确保 MySQL + Redis 已运行）
+# 终端1：启动后端（确保 MySQL 已运行；Redis 可选——装了就用它共享在线状态，没装自动退回进程内）
 cd backend
 set JAVA_HOME=D:\Java\jdk-21
 mvn spring-boot:run

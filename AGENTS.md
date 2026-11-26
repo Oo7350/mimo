@@ -1,6 +1,7 @@
 # AGENTS.md
 
-> **最新版本**：v2.20.1（2026-11-25）— 全员任务流从"一次铺开所有人"变成能用的面板（关闭 KNOWN-025）：① **分页在后端**（`memberPage` / `pageSize` 默认 8 上限 30、每人 `taskLimit` 默认 6 上限 20），切页顺序是"先筛选 → 再排序 → 最后切页"，所以第 1 页永远是最该管的几个人；被截掉的任务只给计数（`taskTotal`），界面写"还有 N 项没显示（共 M 项）· 点击展开"。② **筛选/排序也搬到服务端**（`keyword` / `only` / `sort`）——这是做分页时才发现的连带 bug：以前筛选按钮上的"有逾期 3"数的是**当前页那 8 个人**，点进去可能只看到 1 个；现在筛选按钮不再显示人数，改由分页文案写"第 x/y 页 · 共 N 人（全队 M 人，已按条件筛选）"，分母永远是全队。③ **概览数字永远按全队算**，筛"空闲"不会让"未完成"变成 0。④ **近 7 天趋势**取自 `activity_logs` 的真实事件（新建 = `CREATE`，完成 = `MOVE` 且目标列是终态列），**不拿 `issues.updated_at` 近似**——项目没有完成时间字段，用更新时间冒充会在"改个标题"时虚增完成数；口径随接口下发并写在图下面。⑤ 把"终态列"判定抽成 `util/BoardColumnRules`（看板拖拽与趋势共用一处，别各写一遍）。过程中自己修掉两个错：`vo.setMembers(streams)` 残留在分页之后会把结果覆盖成全量（页码在变、数据没切），新按钮把 `--color-primary-solid` 当文字色用（暗色 2.82:1，主题审计当场抓到）；另外给 `next-step` 的首屏导航加了 45 秒超时 + 一次重试（连跑十几套后偶发超时，不是产品缺陷）。后端 **192 项**测试、e2e **12 套 126 条 + 3 探针**、`vue-tsc`、`npm run build` 全绿。
+> **最新版本**：v2.21.0（2026-11-26）— Redis 终于真的用上了（关闭 KNOWN-002）：① 查下来比记录更糟——`MimoApplication` 排除了 `RedisAutoConfiguration`，`StringRedisTemplate` 从来不存在，两处 `@Autowired(required = false)` 永远注入 null，所谓"单设备登录 Token 校验"**从未运行**，`spring.redis.*` 是一段死配置。② 在线状态抽成 `PresenceStore`（`InMemoryPresenceStore` 行为不变 / `RedisPresenceStore` 用 `mimo:presence:sess|user|online` + 90 秒 TTL + 30 秒心跳续期，心跳发现 TTL 过期会重新登记自愈），下行消息抽成 `RealtimeBridge`（`RedisRealtimeBridge` 本地投一次 + 发到 `mimo:bus:realtime`，各实例按 `origin` 丢掉自己那份，保证每个浏览器只收一次）。③ 装配靠互斥条件（`RedisReachableCondition` + 取反版）：`mimo.realtime.store=auto` 启动探一次 Redis（300ms），通就用 Redis、不通就用进程内，开发机没装 Redis 也不影响启动；`RedisAutoConfiguration` **仍然排除**，连接工厂自己建。④ 降级必须说出来：Redis 一抛异常就退回进程内并把 `shared()` 变 false，接口多下发 `presenceStore` / `presenceShared` / `presenceNote`，团队页写「2 人在线（仅本实例）」+ 说明图标——看不见"准不准"的数字，比看到一个不准的数字更糟。⑤ 单设备登录改成 `mimo.security.single-device-login`（默认关）：接上 Redis 后这段逻辑本来会突然生效，同账号多端会互踢，开发调试与 e2e 立刻全崩。⑥ 顺手修掉两个构建坑：`mvn clean package` 其实只出瘦 jar（缺 `repackage` 执行绑定，BUG-119），以及我自己的误操作——`mvn spring-boot:repackage` 在聚合工程里会把 `mimo-common` 打成 22 字节空壳、启动报 `NoClassDefFoundError`（BUG-120）。**真机双实例验证**：起 :8080 A / :8081 B 共用一个 Redis，B 上的连接出现在 A 的在线列表、A 发的团队聊天被 B 上的客户端收到、断开立即回落；再把探针实例改成 `memory` 重跑，这两条按预期不成立（`e2e/two-instance-presence.mjs`）。后端 **207 项**测试、e2e **13 套 132 条 + 3 探针**、`vue-tsc`、`npm run build` 全绿。
+> **上一版本**：v2.20.1（2026-11-25）— 全员任务流从"一次铺开所有人"变成能用的面板（关闭 KNOWN-025）：① **分页在后端**（`memberPage` / `pageSize` 默认 8 上限 30、每人 `taskLimit` 默认 6 上限 20），切页顺序是"先筛选 → 再排序 → 最后切页"，所以第 1 页永远是最该管的几个人；被截掉的任务只给计数（`taskTotal`），界面写"还有 N 项没显示（共 M 项）· 点击展开"。② **筛选/排序也搬到服务端**（`keyword` / `only` / `sort`）——这是做分页时才发现的连带 bug：以前筛选按钮上的"有逾期 3"数的是**当前页那 8 个人**，点进去可能只看到 1 个；现在筛选按钮不再显示人数，改由分页文案写"第 x/y 页 · 共 N 人（全队 M 人，已按条件筛选）"，分母永远是全队。③ **概览数字永远按全队算**，筛"空闲"不会让"未完成"变成 0。④ **近 7 天趋势**取自 `activity_logs` 的真实事件（新建 = `CREATE`，完成 = `MOVE` 且目标列是终态列），**不拿 `issues.updated_at` 近似**——项目没有完成时间字段，用更新时间冒充会在"改个标题"时虚增完成数；口径随接口下发并写在图下面。⑤ 把"终态列"判定抽成 `util/BoardColumnRules`（看板拖拽与趋势共用一处，别各写一遍）。过程中自己修掉两个错：`vo.setMembers(streams)` 残留在分页之后会把结果覆盖成全量（页码在变、数据没切），新按钮把 `--color-primary-solid` 当文字色用（暗色 2.82:1，主题审计当场抓到）；另外给 `next-step` 的首屏导航加了 45 秒超时 + 一次重试（连跑十几套后偶发超时，不是产品缺陷）。后端 **192 项**测试、e2e **12 套 126 条 + 3 探针**、`vue-tsc`、`npm run build` 全绿。
 > **上一版本**：v2.20.0（2026-11-25）— 这一版全在补"看得见但动不了"的坑，顺手把回归变成一条命令：① **BUG-115**：管理员从「全员任务流」点进成员的任务后，操作被按普通成员拦住（详情面板明写「只有任务负责人（lisi）可以提交验收」）。根因是读门槛在 `ProjectAccessService`（管理员放行）、写门槛却在治理服务里各写一遍（只认 `team_members` 有行）。现在写门槛委托统一入口，`submit()` 抽出 `assertCanSubmit`：负责人**或**管理员都能提交；管理员代提交后仍不能自己验收（职责分离）。② **BUG-117**：同族问题全量排查——发现 11 处"自己实现的写门槛"，症状包括系统管理员进别人团队打不开迭代/团队页、团队管理员看不到待验收、`WikiService` 注释写"含团队管理员"代码却没有、系统管理员删不掉别人的工时。统一收敛到 `canAccessProject / canAccessTeam / canManageProject` 三个判定；团队聊天、建改删项目、加入审批**故意**只给团队权限。真库双向验证：把 admin 从 `team_members` 删掉后 5 个接口 200、换外人账号 403。③ **BUG-116**：全站剩余 106 处 9–11.5px 小字抬到 12px，并用新写的裁切探针确认没撑坏（13 页小字 0、横向溢出 0），顺带揪出一个 `opacity:0` 但仍占 60px 宽度的删除按钮把项目名挤成 46px。④ **BUG-118 / KNOWN-024**：新增 `e2e/run-all.mjs`——一条命令跑 **12 套 120 条 + 3 探针**，失败即退出码 1；顺手发现连跑时 `admin-flow` 会因"挑最后一个成员列"（空闲账号排最后）而超时，单独跑却是绿的。也在这里更正一个长期说错的数字：仓库一直是 **12 套**，不是文档里写的 7 套。CI 配置 `.github/workflows/e2e.yml` 已写，但**没在真实 runner 上跑过**。后端 187 项测试、`vue-tsc`、`npm run build` 全绿。
 > **上一版本**：v2.19.8（2026-11-24）— 管理员终于和普通账号长得不一样了：① 顶栏 / 工作台 Hero / 成员列都有了身份徽标（`AdminBadge`，琥珀盾牌 + 金色头像描边），口径是旧 `role` 字段、RBAC `role.manage`、`team.manage` 三者任一，前端只用它决定显不显示。② 工作台的「我的任务」面板加了管理员专属的「我的 / 全员」滑动切换，切到全员就是新接口 `GET /api/workbench/team` 的**全员任务流**：系统管理员看全部团队、团队管理员只看自己管理的团队，返回每人一条 `MemberStreamVO`（负载等级 + 一句话依据 + 排好序的任务）与 `summary`（含**未指派**任务）。空闲的人也占一列——空着本身是信息；未指派单独成栏；负载标签写依据（"有 1 项逾期，未完成 5 项"）而不是只给红黄绿。③ 点任意任务卡右侧滑出**详情抽屉**（`TaskDetailDrawer`：状态/优先级/逾期天数/故事点/标签、6 个字段格、Markdown 描述、验收标准完成度、缺陷信息、子任务、在项目里打开），看完 Esc 关掉还在原位，不跳页。④ 看板给管理员加了「全员泳道」开关。另外修了一条用户当场抓到的 High：前端自己用权限码判管理员，漏掉了 `team_members.role = ROLE_ADMIN` 这条旧字段兜底，团队管理员后端放行、界面却把入口藏了（BUG-113）——现在判定收敛到后端 `AccessControlService#resolveAdminScope`，经 `adminScope` 字段给前端，顶栏 / 工作台 / 看板三处只读这个结论。顺手打磨了一轮前端观感（BUG-114）：全站字号 12px 起（小字 54→32）、抬字号后浮出水面的 4 条隐藏低对比 tag 一并修掉（info/danger/warning/sprint 徽标）、新组件所有可点控件补键盘焦点环。过程中修掉 BUG-110（Element 抽屉的 `close-on-press-escape` 依赖焦点，鼠标点开后按 Esc 没反应）、BUG-111（统计卡标签压淡紫底 2.95:1）、BUG-112（在线人数一次请求问两遍 `PresenceService`，单测里恒为 0）；新登记 KNOWN-025（全员任务流无分页/无历史趋势）。后端 187 项测试、e2e **12 套 120 条**（新增 `admin-flow.mjs` 15 条，含亮/暗两套主题下新界面的对比度与溢出实测）、`vue-tsc`、`npm run build`、`probe-layout` 全绿。
 > **上一版本**：v2.19.7（2026-11-24）— 暗色模式的颜色逻辑修好了、界面不再编数字：① 暗色主题下 Element 的 `html.dark` 会把 `--el-color-primary` 重置成默认蓝 `#409EFF`，品牌靛蓝被顶掉；同时多处把 `--text-primary`（暗色下近白）当实心块底色、页面标题写死 `#0f172a`，实测白字压白块只有 1.05:1、标题 1.09:1 直接看不见。现在统一走 `--color-primary-solid` / `--bg-subtle` / `--text-*` 语义变量，暗色实测 `浅色块 0 / 低对比 0`。② 团队页的"在线人数"原来取成员总数，现在 `PresenceService` 按 WebSocket 会话算真实在线，新接口 `GET /api/teams/{id}/presence`，并给简单 broker 加了 10 秒心跳（否则关页面后在线数会虚高）。③ 收口 5 条 Low（在线人数 / 部署脚本确认 / 硬编码颜色 / 无外键改体检工具 / e2e 残留），新增两把尺子：`e2e/theme-audit.mjs` 量配色、`tools/integrity-check.sql` 量孤儿数据（它顺手扫出 BUG-104）。后端 167 项测试、e2e 5 套 47 条断言、`vue-tsc` 与 `npm run build` 全绿。
@@ -17,8 +18,8 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 Mimo is a lightweight Trello-like project management platform for small teams. It supports team collaboration, kanban task tracking, and progress visualization.
 
-- **Version**: v2.19.8 — 管理员视角：身份徽标 + 全员任务流 + 任务详情抽屉 (2026-11-24)
-- **Previous**: v2.19.7 — 暗色配色系统性修正 + 在线人数落实 + Low 收口 (2026-11-24)
+- **Version**: v2.21.0 — Redis 真的用起来了：跨实例在线状态与实时广播 (2026-11-26)
+- **Previous**: v2.20.1 — 全员任务流：分页 + 服务端筛选 + 7 天趋势 (2026-11-25)
 - **GitHub**: https://github.com/Oo7350/mimo
 - **API docs**: `接口文档.md` (70+ endpoints, Chinese)
 - **User manual**: `操作手册.md` (Chinese)
@@ -54,7 +55,11 @@ Mimo is a lightweight Trello-like project management platform for small teams. I
 | 决定 | 具体做法 | 为什么 | 代价 / 边界 |
 |---|---|---|---|
 | **不建数据库外键** | 只有 `announcements/issues/projects/teams/users/user_email_accounts` 走逻辑删除（`deleted`），其余物理删除；引用关系由应用层保证 | MyBatis-Plus 逻辑删除与外键约束冲突：删项目会撞一串 FK 错误 | 可能出现孤儿行 → 用 `tools/integrity-check.sql` 体检（本轮 BUG-104 就是它扫出来的） |
-| **WebSocket 用内存简单 broker** | `enableSimpleBroker` + STOMP，无 Redis 中继 | 单人开发、单实例部署，省一套中间件 | 多实例时消息与在线状态都不通（KNOWN-002 保持未关闭）；在线人数只代表本实例 |
+| **消息出口只有一个类** | 所有下行消息走 `WebSocketService` → `RealtimeBridge`（`LocalRealtimeBridge` / `RedisRealtimeBridge`），业务代码不直接碰 `SimpMessagingTemplate` | 改造 KNOWN-002 时只要换这一层，20 个调用点一个都不用改；也才可能"每个浏览器只收一次" | 新消息必须走这个出口，绕过它就等于只发本实例 |
+| **Redis 是可选能力，连不上不影响启动** | `mimo.realtime.store=auto` 时启动探一次 Redis（300ms）：通就用 Redis，不通就用进程内；`RedisAutoConfiguration` **仍然排除**，连接工厂自己建 | 多实例共享是可选增强，不该让"没装 Redis 的开发机"起不来；自己建工厂也顺手避免 Spring Data Redis 仓库自动配置去要一个 `redisTemplate` bean | 两套实现要各自维护；`RealtimeRedisConfig` / `RealtimeLocalConfig` 靠互斥条件装配（`RedisReachableCondition` + 取反版） |
+| **降级要说出来，不能悄悄少算** | Redis 一抛异常就把自己标记 degraded、退回进程内表，`shared()` 变 false，接口 `presenceShared=false` + `presenceNote` 一句话，界面写「N 人在线（仅本实例）」 | "界面上的数字看不出准不准"是本项目反复修的同一个病（KNOWN-013 / KNOWN-025）；宁可少算并说明，也不要展示一个看起来全站实际只有本机的数字 | 降级后在线表只算本实例，要恢复到共享得等 Redis 回来并重连 |
+| **在线状态用 TTL + 心跳而不是"断线即删"** | Redis 里 `sess:{sessionId}` / `user:{userId}` 存活 90 秒，本实例每 30 秒续期一次；心跳发现 TTL 已过期会**重新登记**（自愈） | 进程被杀、网络闪断时收不到 DISCONNECT，只靠删除会让在线人数只涨不跌 | 刚断线的一小段时间可能仍算在线（最长一个 TTL 周期），比永久多算一个人强 |
+| **单设备登录默认关** | `mimo.security.single-device-login=false`；打开后同账号在别处登录会踢掉旧 Token | 这段逻辑过去靠"`StringRedisTemplate` 永远是 null"静默跳过；接上 Redis 后它会突然生效，而开发调试与 e2e 都用同一账号开多个浏览器上下文，一开就互踢 | 想用单设备登录要显式打开，并接受 e2e 需要改造（每套用独立账号） |
 | **在线人数按"人"去重** | `PresenceService` 用 `userId` 维度聚合，多标签页只算一人 | 显示"3 人在线"结果其中一人开了三个页签，是骗人 | 不代表"活跃度"，只代表"连着"；断线最迟一个心跳周期（10s）才掉 |
 | **CSS 变量按用途分层** | 见下表 | 暗色模式翻车全部来自"一个变量干两件事"（BUG-106） | 新页面必须按表选变量，选错 `theme_literals.py` 查不出、但 `theme-audit.mjs` 会报到低对比 |
 | **实心色块用 `--color-primary-solid`** | 按钮/选中态/徽标底色 | `--color-primary` 在暗色下会变亮，白字压上去不够 | 深色下实心块比亮色略暗，属刻意 |
@@ -169,7 +174,9 @@ npm run build        # Type-check (vue-tsc) + production build to dist/
 
 ```bash
 PLAYWRIGHT_BROWSERS_PATH=<浏览器目录> PLAYWRIGHT_MODULE=<playwright 包目录> NO_PROXY=localhost,127.0.0.1 \
-  node e2e/run-all.mjs                 # 12 套 120 条，约 8 分钟；--probes 连探针一起；--only x,y 只跑几套
+  node e2e/run-all.mjs                 # 13 套 132 条，约 8 分钟；--probes 连探针一起；--only x,y 只跑几套
+node e2e/two-instance-presence.mjs   # 双实例验证（需两个后端共用同一 Redis）；--local 跑进程内基线
+node e2e/presence-source-label.mjs   # 在线人数"口径"文案（已并入 run-all 清单）
 ```
 
 全部通过退出码 0，任何一套失败退出码 1 并打印该套输出尾部。跑完执行 `e2e/cleanup-residue.sql`。
@@ -322,14 +329,59 @@ All v2.15 AI roadmap items are implemented. Future work may replace the lexical 
 
 - **Endpoint**: `/api/ws` (SockJS, with HTTP fallback)
 - **Auth**: JWT Bearer token in STOMP CONNECT frame's `Authorization` header, validated by `WebSocketAuthInterceptor`
-- **Broker**: Simple in-memory broker (`/topic` for broadcast, `/queue` for user-specific)
+- **Broker**: Simple broker (`/topic` for broadcast, `/queue` for user-specific)。消息分发走 `WebSocketService` → `RealtimeBridge`：
+  `LocalRealtimeBridge` 只投本进程，`RedisRealtimeBridge` 本地投一次 + 发到 Redis 频道 `mimo:bus:realtime`，
+  各实例收到后再投给自己的连接，**消息里带 `origin` 把自己发的那份丢掉**（否则本机用户会收到两遍）。
+- **Online presence**: `PresenceService` → `PresenceStore`（`InMemoryPresenceStore` / `RedisPresenceStore`）。
+  Redis 键：`mimo:presence:sess:{sessionId}`（TTL 90s）、`mimo:presence:user:{userId}`（SET，TTL 90s）、
+  `mimo:presence:online`（SET 索引，读取时顺手清死键）；本实例每 30 秒心跳续期一次。
 - **Topics**:
   - `/topic/notifications/{userId}` — personal notification push
   - `/topic/board/{projectId}` — board sync events (ISSUE_MOVED/CREATED/DELETED)
   - `/topic/team-chat/{teamId}` — team group chat messages (CHAT_MESSAGE event)
 - **Board Sync Flow**: Drag → `PUT /api/board/issue/move` → backend updates issue + logs + WebSocket broadcast → all board subscribers receive event → optimistic UI update
+- **Deployment note**: 单实例部署什么都不用配（默认 `auto`，探不到 Redis 就用进程内实现）；
+  多实例部署需要共享 Redis，否则在线人数与实时消息各算各的（接口会如实下发 `presenceShared=false`，界面写「仅本实例」）。
 
 ## Version History
+
+### v2.21.0 — Redis 真的用起来了：跨实例在线状态与实时广播（关闭 KNOWN-002）(2026-11-26)
+
+- **起因（比记录更糟）**：KNOWN-002 写着"Redis 已引入但没实际使用"。实际是
+  `MimoApplication` 排除了 `RedisAutoConfiguration` → `StringRedisTemplate` bean 从未存在 →
+  `JwtAuthenticationFilter` / `UserService` 里两处 `@Autowired(required = false)` 恒为 null →
+  "单设备登录校验"从未运行；`spring.redis.*` 是一段死配置。
+- **在线状态**：新增 `service/PresenceStore`（接口）、`InMemoryPresenceStore`（原逻辑原样搬迁）、
+  `RedisPresenceStore`。`PresenceService` 只负责"记住本实例持有哪些会话"+"30 秒心跳续期"，
+  读写全部委托给 store，`TeamService` / `WorkbenchService` 的调用点一行没改。
+  - Redis 键：`mimo:presence:sess:{sessionId}`（userId，TTL 90s）、
+    `mimo:presence:user:{userId}`（SET sessionId，TTL 90s）、`mimo:presence:online`（SET userId 索引）。
+  - `touch(Map<String,Long>)` 收"会话 → 用户"映射：TTL 过期但人还在时重新登记（自愈），
+    避免"人还挂着却被判离线"。
+  - 读取时顺手清理索引里的死键（用户集合已过期的条目），不让它越积越多。
+- **实时广播**：新增 `service/RealtimeBridge`、`LocalRealtimeBridge`、`RedisRealtimeBridge`。
+  `WebSocketService` 三个方法（通知 / 看板 / 团队聊天）改为走 bridge，业务调用点不变。
+  跨实例消息形如 `{origin, destination, payload}`，发到频道 `mimo:bus:realtime`；
+  各实例收到后按 `origin` 丢掉自己发的那份（否则本机用户会看到两遍）。
+  payload 用 Spring 的 `ObjectMapper` 序列化，日期格式与本地投递一致。
+- **装配**：`config/RedisReachableCondition`（`auto` 探测 300ms / `memory` 强制进程内 /
+  `redis` 强制 Redis）+ `RedisUnreachableCondition`（取反），
+  `RealtimeRedisConfig` / `RealtimeLocalConfig` 两套互斥配置。连接工厂自己建
+  （`LettuceConnectionFactory`，命令超时 500ms），`RedisAutoConfiguration` **仍然排除**。
+  **不启用 `@ConditionalOnMissingBean`**：它取决于配置类解析顺序，顺序一变就是"两套 bean 都在"。
+- **降级**：`RedisPresenceStore` 任何 RuntimeException（连不上 / 超时）→ 标记 degraded →
+  之后读写走进程内表，`shared()` 变 false；`RedisRealtimeBridge` 发布失败同理（本地投递仍成功）。
+  接口 `GET /teams/{id}/presence` 新增 `presenceStore` / `presenceShared` / `presenceNote`，
+  团队页写「N 人在线（仅本实例）」+ 说明图标。
+- **单设备登录显式化**：新增 `mimo.security.single-device-login`（默认 `false`）。
+  没有这个开关的话，接上 Redis 会让同账号多端互踢——开发调试与 e2e 立刻全崩。
+- **构建坑（BUG-119 / BUG-120）**：`mimo-app/pom.xml` 补 `repackage` 执行绑定，
+  `mvn clean package -DskipTests` 现在真的产出 69MB 可运行 jar；同时记一笔误操作教训——
+  `mvn spring-boot:repackage` 在聚合工程里会打到每个模块，把 `mimo-common` 变成 22 字节空壳。
+- **验证**：`PresenceServiceTest` 9 项、`RedisPresenceStoreTest` 7 项、`RedisRealtimeBridgeTest` 5 项
+  （共 21 项新/改，后端 207 项全绿）；`e2e/two-instance-presence.mjs` 双实例真机 5/5
+  （另有 `--local` 反向对照）；`e2e/presence-source-label.mjs` 6/6（已并入 `run-all.mjs`）；
+  全量 `run-all.mjs --probes` → 13 套 132 条 + 3 探针全绿。
 
 ### v2.19.8 — 管理员视角：身份徽标 + 全员任务流 + 任务详情抽屉 (2026-11-24)
 

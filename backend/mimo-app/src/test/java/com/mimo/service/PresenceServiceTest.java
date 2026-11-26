@@ -3,7 +3,10 @@ package com.mimo.service;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -87,5 +90,94 @@ class PresenceServiceTest {
         assertThat(presence.onlineUserIds()).isEqualTo(Set.of());
         // 拿没连过的人去问，也不该冒出假的在线状态
         assertThat(presence.filterOnline(List.of(42L))).isEmpty();
+    }
+
+    // ---------------------------------------------------------------- v2.21.0（KNOWN-002）
+
+    @Test
+    @DisplayName("默认装配是进程内存储，并且如实说自己不跨实例")
+    void defaultStoreIsMemoryAndSaysSo() {
+        assertThat(presence.storeName()).isEqualTo("MEMORY");
+        assertThat(presence.sharedAcrossInstances()).isFalse();
+    }
+
+    @Test
+    @DisplayName("在线读写都转到 store 上，并记住本实例持有哪些会话")
+    void delegatesToStoreAndTracksLocalSessions() {
+        RecordingStore store = new RecordingStore();
+        PresenceService service = new PresenceService(store);
+
+        service.connect("s1", 100L);
+        service.connect("s2", 100L);
+        service.disconnect("s1");
+        service.touchAll();
+
+        assertThat(store.connected).containsExactly("s1", "s2");
+        assertThat(store.disconnected).containsExactly("s1");
+        // 心跳只续期本实例还持有的会话：s1 已经断开，不该再出现在续期名单里
+        assertThat(store.lastTouch).containsOnlyKeys("s2");
+        assertThat(service.localSessionCount()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("没有本地会话时心跳不打扰 store（空跑不打 Redis）")
+    void touchWithoutSessionsDoesNothing() {
+        RecordingStore store = new RecordingStore();
+        PresenceService service = new PresenceService(store);
+
+        service.touchAll();
+
+        assertThat(store.touchCalls).isZero();
+    }
+
+    /** 只记录调用的假存储，用来验证 PresenceService 把活派给了 store */
+    private static class RecordingStore implements PresenceStore {
+        final List<String> connected = new ArrayList<>();
+        final List<String> disconnected = new ArrayList<>();
+        final Set<String> online = new HashSet<>();
+        Map<String, Long> lastTouch = Map.of();
+        int touchCalls;
+
+        @Override
+        public String name() {
+            return "FAKE";
+        }
+
+        @Override
+        public boolean shared() {
+            return true;
+        }
+
+        @Override
+        public void connect(String sessionId, Long userId) {
+            connected.add(sessionId);
+            online.add(String.valueOf(userId));
+        }
+
+        @Override
+        public void disconnect(String sessionId) {
+            disconnected.add(sessionId);
+        }
+
+        @Override
+        public void touch(Map<String, Long> sessionToUser) {
+            touchCalls++;
+            lastTouch = sessionToUser;
+        }
+
+        @Override
+        public Set<Long> onlineUserIds() {
+            return Set.of();
+        }
+
+        @Override
+        public boolean isOnline(Long userId) {
+            return online.contains(String.valueOf(userId));
+        }
+
+        @Override
+        public int onlineUserCount() {
+            return online.size();
+        }
     }
 }

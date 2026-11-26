@@ -6,7 +6,7 @@
 ## 一条命令跑全部（`run-all.mjs`）
 
 ```bash
-node e2e/run-all.mjs                    # 12 套套件，约 8 分钟
+node e2e/run-all.mjs                    # 13 套套件，约 8 分钟
 node e2e/run-all.mjs --probes           # 连 3 个探针（版面 / 布局 / 配色）一起
 node e2e/run-all.mjs --only admin-flow,review-matrix   # 只跑挑中的（改哪儿跑哪儿）
 node e2e/run-all.mjs --base http://localhost:5173 --api http://localhost:8080/api
@@ -14,9 +14,11 @@ node e2e/run-all.mjs --base http://localhost:5173 --api http://localhost:8080/ap
 
 - 全部通过 → 退出码 **0**；有任何一套失败 → 退出码 **1**，并打印该套输出的尾部（不用再去翻日志）。
 - 前提：后端 `:8080`、前端 `:5173` 已启动；`PLAYWRIGHT_MODULE` / `PLAYWRIGHT_BROWSERS_PATH` 指向装好的 playwright。
+- **Redis 不是前提**：后端不带 Redis 也能跑（在线状态退回进程内实现），
+  `presence-source-label.mjs` 用拦截接口的方式覆盖两种口径，不依赖真实 Redis。
 - 跑完执行 `e2e/cleanup-residue.sql` 清临时账号（`run-all` 结束会提醒）。
 
-当前清单（**12 套 126 条 + 3 探针**）：
+当前清单（**13 套 132 条 + 3 探针**）：
 
 | 套件 | 条数 | 覆盖 |
 |---|---|---|
@@ -28,10 +30,22 @@ node e2e/run-all.mjs --base http://localhost:5173 --api http://localhost:8080/ap
 | `workflow-guard.mjs` | 8 | 工作流转换守卫（含节点责任人） |
 | `admin-flow.mjs` | 26 | 管理员视角（徽标/全员流/分页/筛选/趋势/抽屉/主题/权限/代提交） |
 | `presence.mjs` | 4 | 在线人数按会话算 |
+| `presence-source-label.mjs` | 6 | 在线人数的口径写在界面上（「仅本实例」/ 共享两种口径，v2.21.0） |
 | `tour.mjs` | 9 | 新手引导（跳过/重播/Esc） |
 | `ai-degrade.mjs` | 3 | 未配 Key 的降级表现 |
 | `xss-markdown.mjs` | 10 | Markdown 渲染 XSS（跑仓库真实源码） |
 | `authz.mjs` | 25 | 接口级越权（外人打各读接口必须 4xx） |
+
+**不进 `run-all` 的验证（需要两台后端）**
+
+```bash
+node e2e/two-instance-presence.mjs            # A:8080 / B:8081 共用一个 Redis
+node e2e/two-instance-presence.mjs --local    # 反向对照：探针实例用 MIMO_REALTIME_STORE=memory
+```
+
+`two-instance-presence.mjs` 用 STOMP 客户端连 B 实例，然后问 A 实例的
+`/teams/{id}/presence`、通过 A 发团队聊天，验证"跨实例在线"与"跨实例广播"；
+`--local` 模式把 A 换成进程内实现，同样的两项**应当不成立**——用来证明测的是真共享。
 
 > **套件不是彼此独立的**：它们共用同一个开发库。曾经出现过"单独跑绿、连起来红"——
 > `admin-flow` 挑了"最后一个成员列"，而别的套件注册的空闲账号正好排在最后（BUG-118）。
@@ -240,6 +254,30 @@ a11y 树里这些按钮会被判定为 hidden，`getByRole` 数到 0（踩过）
 
 第 4 条当初是**红的**：简单 broker 默认不发心跳，服务端要等 Tomcat 会话超时才认为人走了。
 给 `enableSimpleBroker` 配了 10 秒心跳 + 调度器之后才通过——所以这条用例同时是心跳配置的回归保护。
+
+## 在线口径文案（`presence-source-label.mjs`，v2.21.0）
+
+只把在线数字做准还不够：多实例部署又没接 Redis 时，后端只知道本实例的连接，
+数字**只对一台机器成立**。这条用例盯的是"界面有没有说出来"：
+
+| # | 检查点 | 断言 |
+|---|--------|------|
+| 1 | 本实例口径写明来源 | 拦截 presence 接口返回 `presenceShared=false` → 文案含「（仅本实例）」 |
+| 2 | 数字没被挤掉 | 文案同时含「N 人在线」与「M 位成员」 |
+| 3 | 有说明入口 | 出现 `.td-chat-header__hint` 图标（悬停/点开给出原因） |
+| 4 | 共享口径不加标注 | `presenceShared=true` → 文案**不含**「仅本实例」 |
+| 5 | 共享口径数字照旧 | 仍含两个数字 |
+| 6 | 共享口径无图标 | 说明图标数量为 0 |
+
+```bash
+node e2e/presence-source-label.mjs http://localhost:5173
+```
+
+用 `page.route()` 直接把 presence 接口拦掉，所以**不需要真起两台后端**，也不依赖本机有没有 Redis。
+实测文案：`2 人在线（仅本实例） · 4 位成员` / `2 人在线 · 4 位成员`。
+
+> 跨实例的真实链路验证（在线状态共享 + 消息跨实例送达）在 `two-instance-presence.mjs`，
+> 那一条需要两台后端共用一个 Redis，所以不并入 `run-all`，见文首说明。
 
 ## 版面探针（`probe-text.mjs`）
 

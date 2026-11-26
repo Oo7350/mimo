@@ -4,6 +4,7 @@ import com.mimo.util.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -27,6 +28,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Autowired(required = false)
     private StringRedisTemplate redisTemplate;
 
+    /**
+     * 单设备登录：默认**关**。
+     *
+     * 这段逻辑原来靠"`StringRedisTemplate` 永远是 null"来跳过（`RedisAutoConfiguration`
+     * 在 `MimoApplication` 里被 exclude 了）。KNOWN-002 接上 Redis 之后这句话就不成立了——
+     * 如果不管，同一个账号在两台浏览器同时登录会互相踢掉，开发调试和 e2e 立刻全崩。
+     * 所以把开关显式化：`mimo.security.single-device-login=true` 才生效。
+     */
+    @Value("${mimo.security.single-device-login:false}")
+    private boolean singleDeviceLogin;
+
     public JwtAuthenticationFilter(JwtUtil jwtUtil) {
         this.jwtUtil = jwtUtil;
     }
@@ -43,8 +55,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 if (jwtUtil.validateToken(token)) {
                     Long userId = jwtUtil.getUserId(token);
 
-                    // 单设备登录校验：Redis 可用时才检查
-                    if (redisTemplate != null) {
+                    // 单设备登录校验：开关打开且 Redis 可用时才检查
+                    if (singleDeviceLogin && redisTemplate != null) {
                         String storedToken = redisTemplate.opsForValue().get("mimo:token:" + userId);
                         if (storedToken != null && !storedToken.equals(token)) {
                             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);

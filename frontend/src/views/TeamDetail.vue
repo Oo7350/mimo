@@ -168,7 +168,14 @@
           </div>
           <div>
             <h3>团队群聊</h3>
-            <span class="td-chat-header__online">{{ onlineCount }} 人在线 · {{ members.length }} 位成员</span>
+            <!-- 在线数只在"跨实例共享"时才敢写成全站口径；否则注明只算本实例（KNOWN-002） -->
+            <span class="td-chat-header__online">
+              {{ onlineCount }} 人在线<template v-if="!presenceShared">（仅本实例）</template>
+              · {{ members.length }} 位成员
+            </span>
+            <el-tooltip v-if="!presenceShared" :content="presenceNote" placement="bottom">
+              <el-icon class="td-chat-header__hint"><QuestionFilled /></el-icon>
+            </el-tooltip>
           </div>
         </div>
 
@@ -404,6 +411,7 @@ import { ElMessage, ElMessageBox } from "element-plus"
 import {
   Plus, ArrowLeft, UserFilled, Folder, ArrowRight,
   ChatDotRound, Promotion, Loading, Delete, Bell, InfoFilled,
+  QuestionFilled,
 } from "@element-plus/icons-vue"
 import { avatarGradient } from "@/utils/color"
 
@@ -595,12 +603,27 @@ const loadingChat = ref(true)
 const unreadCount = ref(0)
 // 在线人数 = 真连着 WebSocket 的人（后端 /teams/{id}/presence）——
 // 以前这里写的是 members.value.length，等于把"成员总数"当"在线人数"显示。
-const presence = ref<{ onlineCount: number; totalMembers: number; onlineUserIds: number[] }>({
+// v2.21.0（KNOWN-002）起后端还会告诉我们这个数字是跨实例共享的、还是只算本实例，
+// 界面据此把口径写出来：看不到"准不准"的数字，比看到一个不准的数字更糟。
+const presence = ref<{
+  onlineCount: number
+  totalMembers: number
+  onlineUserIds: number[]
+  presenceStore?: string
+  presenceShared?: boolean
+  presenceNote?: string
+}>({
   onlineCount: 0,
   totalMembers: 0,
   onlineUserIds: [],
 })
 const onlineCount = computed(() => presence.value.onlineCount)
+const presenceShared = computed(() => presence.value.presenceShared !== false)
+const presenceNote = computed(
+  () =>
+    presence.value.presenceNote ||
+    '在线状态只统计本实例，多实例部署时其他人的在线情况可能看不到',
+)
 const onlineUserIds = computed(() => new Set(presence.value.onlineUserIds || []))
 let presenceTimer: number | undefined
 
@@ -1321,6 +1344,15 @@ onUnmounted(() => {
   &__online {
     font-size: 12px;
     color: var(--text-secondary);
+  }
+
+  /* "仅本实例"的说明图标：点开是一句话解释，避免把局部数字当成全站事实 */
+  &__hint {
+    margin-left: 4px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    cursor: help;
+    vertical-align: middle;
   }
 }
 

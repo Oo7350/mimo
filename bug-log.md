@@ -4,6 +4,96 @@
 
 ---
 
+## v2.21.0 — Redis 真的用起来了：跨实例在线状态与实时广播（关闭 KNOWN-002）(2026-11-26)
+
+> KNOWN-002 一直写着"Redis 已引入但没实际使用"。这一轮查下来，情况比记录里更彻底：
+> `MimoApplication` 把 `RedisAutoConfiguration` 排除了，所以 `StringRedisTemplate` 这个 bean
+> **从来不存在**；两处 `@Autowired(required = false)` 的注入永远是 null，
+> `redisTemplate != null` 的守卫永远不成立——所谓"单设备登录 Token 校验"从来没跑过。
+> 而 WebSocket 用内存简单 broker，多实例部署时在线人数与消息各算各的，且**没有任何提示**。
+
+### 收口 KNOWN-002：可切换的在线状态与广播
+
+- **抽出 `PresenceStore`**：`connect / disconnect / touch / onlineUserIds / isOnline / onlineUserCount`
+  外加 `name()` / `shared()`。原来那堆 `ConcurrentHashMap` 原样搬进 `InMemoryPresenceStore`
+  （行为不变），新增 `RedisPresenceStore`。
+- **Redis 键与 TTL**：`mimo:presence:sess:{sessionId}` = userId（90s）、
+  `mimo:presence:user:{userId}` = SET(sessionId)（90s）、`mimo:presence:online` = SET(userId)。
+  本实例每 30 秒心跳续期一次；心跳发现 TTL 已过期会**重新登记**（`touch` 收的是「会话 → 用户」映射，
+  就是为了自愈）。读在线列表时顺手摘掉索引里的死键，免得越积越多。
+- **为什么用 TTL 而不是"断线就删"**：进程被杀、网络闪断时根本收不到 DISCONNECT，
+  只靠删除会让在线人数只涨不跌。TTL + 心跳保证"最长 90 秒收敛"，
+  代价是刚断线的一小段时间可能多算——比永久多算一个人强。
+- **`RealtimeBridge`**：`WebSocketService` 不再直接调 `SimpMessagingTemplate`。
+  `LocalRealtimeBridge` = 原来行为；`RedisRealtimeBridge` = 本地先投一次 + 发布
+  `{origin, destination, payload}` 到 `mimo:bus:realtime`，各实例收到后投给自己的订阅者，
+  **origin 等于自己的直接丢掉**（否则本机用户会收到两遍，表现为"聊天消息重复"）。
+  payload 用 Spring 那个 `ObjectMapper` 序列化，日期格式与本地投递一致。
+- **装配方式**：`RedisAutoConfiguration` **仍然排除**，连接工厂/模板由 `RealtimeRedisConfig`
+  按 `mimo.realtime.*` 自己建；`mimo.realtime.store=auto`（默认）启动时探一次 Redis（300ms 超时），
+  通就用 Redis、不通就用进程内。两个配置类靠互斥条件（`RedisReachableCondition` +
+  `RedisUnreachableCondition`）装配，不用 `@ConditionalOnMissingBean`——后者取决于配置类解析顺序，
+  顺序一变就是"两套 bean 都在"或"一套都没有"。
+- **降级要说出来**：Redis 一旦抛异常（连不上/超时/命令超时 500ms），`RedisPresenceStore`
+  标记 degraded、之后读写走进程内表、`shared()` 变 false；接口多返回
+  `presenceStore` / `presenceShared` / `presenceNote` 三个字段，团队页写「N 人在线（仅本实例）」
+  + 一个说明图标。**看不见"准不准"的数字，比看到一个不准的数字更糟**——这是 KNOWN-013/025 同一类病。
+- **单设备登录显式化**：接上 Redis 后 `StringRedisTemplate` 真的存在了，原来静默跳过的校验会突然生效，
+  同账号在两个浏览器登录会互相踢掉（开发调试与 e2e 立刻全崩）。加 `mimo.security.single-device-login`
+  开关，默认关，注释里写明原因。
+- **顺手修掉的两个构建/配置坑**（见下方 BUG-119 / BUG-120）。
+
+### BUG-119: `mvn clean package` 产出的是瘦 jar，启动报 "no main manifest attribute" [Medium]
+
+- **现象**：`mimo-app/pom.xml` 声明了 `spring-boot-maven-plugin`，但 `mvn clean package -DskipTests`
+  只产出 0.9MB 的普通 jar；仓库里那个 69MB 可运行 jar 是当初手工跑 `spring-boot:repackage` 得来的，
+  所以"照文档打包"其实拿不到能 `java -jar` 的东西。
+- **根因**：`spring-boot-starter-parent` **不会**自动给你加 `repackage` 执行（那是 Spring Initializr
+  生成项目时才写的），只声明插件不绑执行就等于没接上 package 阶段。
+- **修复**：在 `mimo-app/pom.xml` 显式加 `<executions><execution><id>repackage</id><goals><goal>repackage</goal></goals>
+  </execution></executions>`。现在 `mvn clean package -DskipTests` 直接得到 69MB 可运行 jar，
+  且只有 app 模块被 repackage（common/system 保持普通 jar）。
+- **教训**：打包配置也要按"跑一遍文档里的命令"验证，不能只看"以前能跑起来"。
+
+### BUG-120: 误用 `spring-boot:repackage` 直接把依赖模块打成空壳 jar [High]
+
+- **现象**：为了补上 BUG-119，我先手工跑了 `mvn ... package spring-boot:repackage`（没加 `-pl`），
+  结果 goal 作为 `default-cli` 在所有模块上执行：`mimo-common` 没有 main class，
+  repackage 失败并把 `mimo-common-1.0.0-SNAPSHOT.jar` 替换成 **22 字节的空壳**（原内容进了 `.jar.original`），
+  随后 `mimo-app` 打出来的胖 jar 里缺 `BOOT-INF/lib/mimo-common`，启动时报
+  `NoClassDefFoundError: com/mimo/common/AuditLog`。
+- **根因**：`default-cli` 的 goal 会对 reactor 里每个模块都执行一遍，而 `repackage` 只对"有 main class 的
+  可执行模块"成立。
+- **修复**：`mvn clean package` 重跑整个 reactor（不只是 app），并确认 `mimo-common` 10KB、
+  `mimo-system` 36KB、`mimo-app` 69MB；以后只在 `-pl mimo-app` 上跑 repackage。
+- **教训**：`mvn <goal>` 在聚合工程里的作用范围是"每个模块"，不要拿它当单模块命令用。
+
+### 验证（真机双实例，不是 mock）
+
+- 起了两个后端（:8080 / :8081）共用同一个 MySQL 与 Redis，用 STOMP 客户端连 **B** 实例，然后：
+  - 问 **A** 实例的 `/api/teams/1/presence` → `onlineUserIds` 里出现 B 上的那个用户（跨实例共享）；
+  - 通过 **A** 实例发团队聊天 → 连在 **B** 上的客户端收到同一条消息（跨实例广播）；
+  - 关闭客户端 → A 看到的在线数回落（DISCONNECT 立即清理）。
+  - 脚本：`e2e/two-instance-presence.mjs`（5 项）。
+- **反向对照**：把探针用的实例改成 `MIMO_REALTIME_STORE=memory` 再跑一遍，
+  "跨实例共享"与"跨实例广播"两项**按预期不成立**（`--local` 模式）——
+  证明上面测到的是真共享，而不是巧合或单机路径。
+- 界面口径：新增 `e2e/presence-source-label.mjs`（6 项），用拦截接口的方式覆盖两种口径：
+  `presenceShared=false` 时文案必须出现「（仅本实例）」+ 说明图标，`true` 时不许出现。
+  实测文案：`2 人在线（仅本实例） · 4 位成员` / `2 人在线 · 4 位成员`。
+- **TTL 与心跳实测**（临时脚本挂一个真实页面，不进仓库）：页面保持打开 110 秒，
+  `/teams/1/presence` 每 10 秒采样一次，`onlineCount` **全程为 1**（超过 90 秒 TTL 仍在线，
+  说明 30 秒心跳确实把 session 键续上了）；页面被强杀后 `mimo:presence:*` 在约 10 秒内清空
+  （走 WebSocket 关闭 → `SessionDisconnectEvent`），不会留下长期在线的人。
+  过程中差点误判一次：先看 `mimo:presence:online` 里还留着 userId、而 `redis-cli --scan` 又返回空，
+  差点登记成"索引泄漏"——实际是这个 Redis 5.0 的 `--scan` 在 PowerShell 下没匹配到，
+  换 `keys` 一看键都在，且那条残留属于用户自己开着的浏览器会话。教训：排查用 `KEYS` 复核，别只信一次 `SCAN`。
+- 后端 `mvn test`：**207 项全绿**（新增 15 项：`PresenceServiceTest` +3 委托与心跳、
+  `RedisPresenceStoreTest` 7 项键与 TTL 契约及降级、`RedisRealtimeBridgeTest` 5 项含"自己的消息必须丢掉"）。
+- 全量 e2e：`node e2e/run-all.mjs --probes` → **13 套 132 条 + 3 探针全绿**（退出码 0，Redis 模式下跑）。
+
+---
+
 ## v2.20.1 — 全员任务流：分页、服务端筛选、7 天趋势（关闭 KNOWN-025）(2026-11-25)
 
 > 上一版把"全员任务流"做出来了，但它是**一次把所有成员的所有任务铺开**：
@@ -2273,12 +2363,28 @@
 - **复核（2026-11-23）**: 全后端已搜不到任何 `@PreAuthorize`（0 命中），注解被整体移除，
   前缀陷阱不复存在；权限一律在 Service 层显式判断，本条作废。
 
-### KNOWN-002: Redis 未实际使用 [Low]
+### KNOWN-002: Redis 未实际使用 [Low] — 2026-11-26 已解决（v2.21.0）
 
 - **文件**: `pom.xml`, `application.yml`
 - **现象**: `spring-boot-starter-data-redis` 已引入，Redis 配置已写入，但仅用于单设备登录 Token 校验，WebSocket 仍使用内存代理
 - **影响**: 多实例部署时 WebSocket 消息无法跨实例同步
 - **建议**: 切换到 Redis-backed WebSocket message broker
+- **复核（2026-11-26）**: 实际情况比记录的还严重——`MimoApplication` 排除了 `RedisAutoConfiguration`，
+  `StringRedisTemplate` 从未存在过，两处 `@Autowired(required=false)` 永远是 null，
+  连"单设备登录校验"都从未运行；`spring.redis.*` 是一段死配置。
+- **收口（v2.21.0）**:
+  - 在线状态抽成 `PresenceStore`：默认进程内（行为不变），探测到 Redis 时用 `RedisPresenceStore`
+    （`mimo:presence:sess|user|online` + 90 秒 TTL + 30 秒心跳续期）；
+  - 下行消息抽成 `RealtimeBridge`：`RedisRealtimeBridge` 本地投一次 + 发布到 `mimo:bus:realtime`，
+    各实例按 `origin` 丢自己的那份，保证每个浏览器只收一次；
+  - 连不上 Redis 不影响启动（`mimo.realtime.store=auto` 启动探测），降级后接口下发
+    `presenceShared=false` / `presenceNote`，界面写「N 人在线（仅本实例）」；
+  - 单设备登录改用 `mimo.security.single-device-login`（默认关）——接上 Redis 后它本来会突然生效。
+- **验证**: 双实例真机（:8080 A / :8081 B 共用一个 Redis）——B 上的连接出现在 A 的在线列表、
+  A 发的团队聊天被 B 上的客户端收到、断开后立即回落；改成 `memory` 模式再跑一遍，
+  这两条**按预期不成立**（`e2e/two-instance-presence.mjs`）。后端 207 项测试、e2e 13 套 132 条 + 3 探针全绿。
+- **边界**: 断线到"算离线"最长差一个 TTL（90 秒），因为进程被杀时收不到 DISCONNECT；
+  在线状态仍只表示"连着 WebSocket"，不等于活跃度。
 
 ### KNOWN-003: 上传目录配置缺失 [Low] — 2026-11-23 复核：已修复
 
@@ -2574,15 +2680,16 @@
 | 严重程度 | 数量 |
 |---------|------|
 | Critical | 6 |
-| High | 48 |
-| Medium | 41 |
+| High | 49 |
+| Medium | 42 |
 | Low | 23 |
-| **已修复（BUG 条目）** | **118** |
-| **已知未修复（KNOWN 条目）** | **2** |
-| **总计** | **120** |
+| **已修复（BUG 条目）** | **120** |
+| **已知未修复（KNOWN 条目）** | **1** |
+| **总计** | **121** |
 
 | 版本段 | BUG 条数 |
 |--------|---------|
+| v2.21.0 — Redis 真的用起来了：跨实例在线状态与广播（关闭 KNOWN-002，BUG-119/120）(2026-11-26) | 2 |
 | v2.20.0 — e2e 一键入口 + CI 配置 + 连跑必红的用例（BUG-118）(2026-11-25) | 1 |
 | v2.20.1 — 全员任务流分页 + 服务端筛选 + 7 天趋势（关闭 KNOWN-025，修复测试自身缺陷）(2026-11-25) | 0 |
 | v2.19.8 — 管理员视角：身份徽标 + 全员任务流 + 任务详情抽屉（BUG-110~113）(2026-11-24) | 4 |

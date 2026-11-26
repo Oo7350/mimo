@@ -11,10 +11,10 @@ spring:
     username: ${MIMO_DB_USERNAME:mimo}
     password: ${MIMO_DB_PASSWORD:}
 
-  redis:
-    host: localhost
-    port: 6379
-    password:
+  # 这里原来有一条 spring.redis（host/port/password）。
+  # MimoApplication 一直 exclude 掉 RedisAutoConfiguration，所以那段配置**从来没生效过**
+  # ——这正是 KNOWN-002 说的"Redis 未实际使用"。v2.21.0 起改成下面的 mimo.realtime.*，
+  # 由 RealtimeRedisConfig 自己建连接工厂，Redis 才真的被用起来。
 
   jackson:
     date-format: yyyy-MM-dd HH:mm:ss
@@ -25,6 +25,9 @@ spring:
     multipart:
       max-file-size: 10MB
       max-request-size: 20MB
+
+# 实时能力（在线状态 + 跨实例广播）：KNOWN-002
+# 注意这些键挂在下面已有的 mimo: 段里（第 78 行附近），YAML 不允许重复的顶层键
 
   # 一次性迁移: 由 MigrationRunner 在启动时显式执行 (替代 spring.sql.init, 兼容性更好)
   # V8 工时表 + V9 甘特图字段
@@ -53,6 +56,30 @@ deepseek:
 mimo:
   upload:
     dir: ${MIMO_UPLOAD_DIR:./uploads}
+
+  # ---- 实时能力（在线状态 + 跨实例广播）：KNOWN-002 ----
+  realtime:
+    # auto（默认）：探测到 Redis 就共享，探测不到就用进程内实现
+    # memory：强制进程内（本地开发 / 跑 e2e 最省事）
+    # redis：强制用 Redis（连不上会先降级为进程内，并打 WARN）
+    store: ${MIMO_REALTIME_STORE:auto}
+    redis:
+      host: ${MIMO_REDIS_HOST:localhost}
+      port: ${MIMO_REDIS_PORT:6379}
+      password: ${MIMO_REDIS_PASSWORD:}
+      # 命令超时要短：Redis 卡住时快速失败并降级，不要拖着 HTTP 请求
+      command-timeout-ms: 500
+    # 在线状态在 Redis 里的存活时间（秒），靠心跳续期
+    presence-ttl-seconds: 90
+    presence-heartbeat-seconds: 30
+    channel: mimo:bus:realtime
+    # 留空则自动生成「主机名-进程号-随机4位」，多实例部署时用来区分消息来源
+    instance-id: ${MIMO_INSTANCE_ID:}
+
+  security:
+    # 单设备登录：默认关。打开后同一账号在别处登录会踢掉旧 Token。
+    # 关着是因为开发调试和 e2e 会用同一账号开多个浏览器上下文，开了会互相踢。
+    single-device-login: ${MIMO_SINGLE_DEVICE_LOGIN:false}
 
 ai:
   provider: ${AI_PROVIDER:deepseek}

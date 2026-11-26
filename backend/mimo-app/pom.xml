@@ -128,6 +128,20 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <!--
+                  显式绑定 repackage：父 pom（spring-boot-starter-parent）**不会**自动加这个执行，
+                  只声明插件的话 `mvn package` 只会产出 0.9MB 的瘦 jar，
+                  启动时报 "no main manifest attribute"。这里补上之后
+                  `mvn clean package -DskipTests` 就能得到可直接 java -jar 的胖 jar。
+                -->
+                <executions>
+                    <execution>
+                        <id>repackage</id>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
                 <configuration>
                     <mainClass>com.mimo.MimoApplication</mainClass>
                     <excludes>

@@ -47,6 +47,8 @@ const SUITES = [
   { file: "workflow-guard.mjs", name: "工作流守卫", arg: BASE, kind: "suite" },
   { file: "admin-flow.mjs", name: "管理员视角", arg: BASE, kind: "suite" },
   { file: "presence.mjs", name: "在线状态", arg: BASE, kind: "suite" },
+  // 在线人数的"口径"是否写在界面上（KNOWN-002）：用拦截接口覆盖"仅本实例/跨实例"两种口径
+  { file: "presence-source-label.mjs", name: "在线口径文案", arg: BASE, kind: "suite" },
   { file: "tour.mjs", name: "新手引导", arg: BASE, kind: "suite" },
   { file: "ai-degrade.mjs", name: "AI 降级", arg: BASE, kind: "suite" },
   { file: "xss-markdown.mjs", name: "Markdown XSS", arg: BASE, kind: "suite" },

@@ -12,6 +12,7 @@ import com.mimo.mapper.UserMapper;
 import com.mimo.mapper.UserLevelMapper;
 import com.mimo.util.JwtUtil;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -29,6 +30,10 @@ public class UserService {
     private final AccessControlService accessControlService;
     @Autowired(required = false)
     private StringRedisTemplate redisTemplate;
+
+    /** 单设备登录开关（默认关，见 JwtAuthenticationFilter 里的说明） */
+    @Value("${mimo.security.single-device-login:false}")
+    private boolean singleDeviceLogin;
 
     public UserService(UserMapper userMapper, PasswordEncoder passwordEncoder, JwtUtil jwtUtil,
                        UserLevelMapper userLevelMapper, AccessControlService accessControlService) {
@@ -50,8 +55,8 @@ public class UserService {
         }
         String token = jwtUtil.generateToken(user.getId(), user.getUsername(), user.getRole());
 
-        // 单设备登录：Redis 可用时将新 Token 存入 Redis
-        if (redisTemplate != null) {
+        // 单设备登录：开关打开且 Redis 可用时，把新 Token 存进 Redis（旧 Token 随即失效）
+        if (singleDeviceLogin && redisTemplate != null) {
             redisTemplate.opsForValue().set(
                     "mimo:token:" + user.getId(),
                     token,
