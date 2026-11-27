@@ -58,6 +58,19 @@ async function killTour() {
   });
 }
 
+/**
+ * 失败现场：光一句 "waiting for locator …" 什么也看不出来——2026-11-27 这套用例整组 0/3 时，
+ * 真实原因是本机 Vite dev server 卡住、页面根本没渲染，但报错信息不会告诉你这一点。
+ * 所以把"当时停在哪个 URL、页面上有什么字"一起打出来。
+ */
+async function ctxNote() {
+  const url = page.url().replace(BASE, "") || "/";
+  const text = await page
+    .evaluate(() => document.body.innerText.replace(/\s+/g, " ").slice(0, 60))
+    .catch(() => "(取不到页面文本)");
+  return `url=${url} 页面="${text}"`;
+}
+
 async function login() {
   await page.goto(`${BASE}/login`, { waitUntil: "load" });
   await page.fill('input[placeholder="请输入用户名"]', "admin");
@@ -85,7 +98,7 @@ try {
     );
   } catch (e) {
     await page.screenshot({ path: path.join(SHOTS, "ai-1-notice.png") });
-    rec("1.AI 未配置提示条", false, String(e).slice(0, 160));
+    rec("1.AI 未配置提示条", false, `${String(e).slice(0, 120)} ｜ ${await ctxNote()}`);
   }
 
   // ---- 用例 2：发消息得到中文说明 ----
@@ -102,7 +115,7 @@ try {
     rec("2.对话返回友好说明", n > 0 && friendly && !leaked, `bubbles=${n} reply=${reply.slice(0, 50)}`);
   } catch (e) {
     await page.screenshot({ path: path.join(SHOTS, "ai-2-chat.png") });
-    rec("2.对话返回友好说明", false, String(e).slice(0, 160));
+    rec("2.对话返回友好说明", false, `${String(e).slice(0, 120)} ｜ ${await ctxNote()}`);
   }
 
   // ---- 用例 3：润色失败不改写描述 ----
@@ -140,7 +153,7 @@ try {
     );
   } catch (e) {
     await page.screenshot({ path: path.join(SHOTS, "ai-3-polish.png") });
-    rec("3.润色失败不改写正文", false, String(e).slice(0, 160));
+    rec("3.润色失败不改写正文", false, `${String(e).slice(0, 120)} ｜ ${await ctxNote()}`);
   }
 } finally {
   await page.screenshot({ path: path.join(SHOTS, "ai-final.png") });

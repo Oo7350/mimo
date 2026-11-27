@@ -202,7 +202,27 @@ jobs:
           echo "PLAYWRIGHT_MODULE=$RUNNER_TEMP/pw/node_modules/playwright" >> "$GITHUB_ENV"
 
       - name: 跑全部 e2e（失败即红）
-        run: node e2e/run-all.mjs --probes --base http://localhost:5173 --api http://localhost:8080/api
+        run: |
+          set -o pipefail
+          node e2e/run-all.mjs --probes --base http://localhost:5173 --api http://localhost:8080/api 2>&1 | tee e2e-run.log
+
+      # 红了要能看见原因（BUG-136）。Actions 的**日志下载要鉴权**，这个仓库没配 token，
+      # 于是"e2e 步骤 exit 1"以前是条死胡同：注解只有一句 exit code，产物里也没存 e2e 输出。
+      # 注解（::error::）是**匿名也能读到**的唯一出口，所以把失败套件那几行挤进注解。
+      - name: e2e 失败原因写进注解
+        if: failure()
+        run: |
+          if [ ! -f e2e-run.log ]; then
+            echo "::error::e2e-run.log 不存在，e2e 在启动阶段就挂了"; exit 0
+          fi
+          lines=$(grep -E "▶ |失败项：" e2e-run.log | grep -E "失败" | head -5)
+          if [ -z "$lines" ]; then
+            echo "::error::e2e 失败但没抓到失败行，见 e2e-logs 产物里的 e2e-run.log"
+          else
+            printf '%s\n' "$lines" | while IFS= read -r line; do
+              echo "::error::${line:0:900}"
+            done
+          fi
 
       # ---------------------------------------------------------------- 量级验证
       # 开发库常年是 3 个人 20 个工作项，"性能"这件事一直是推理没数字。这里在 CI 上造一次
@@ -232,6 +252,7 @@ jobs:
           path: |
             backend.log
             frontend.log
+            e2e-run.log
             e2e/xss-report.md
           if-no-files-found: ignore
 
@@ -351,7 +372,19 @@ jobs:
             < backend/mimo-app/src/main/resources/db/seed-demo.sql
 
       - name: 双实例验证（跨实例在线 + 跨实例广播）
-        run: node e2e/two-instance-presence.mjs
+        run: |
+          set -o pipefail
+          node e2e/two-instance-presence.mjs 2>&1 | tee two-instance-run.log
+
+      - name: 双实例失败原因写进注解
+        if: failure()
+        run: |
+          if [ ! -f two-instance-run.log ]; then
+            echo "::error::two-instance-run.log 不存在，脚本没跑起来"; exit 0
+          fi
+          tail -5 two-instance-run.log | while IFS= read -r line; do
+            echo "::error::${line:0:900}"
+          done
 
       - name: 失败时留存日志
         if: failure()
@@ -361,4 +394,5 @@ jobs:
           path: |
             backend-a.log
             backend-b.log
+            two-instance-run.log
           if-no-files-found: ignore

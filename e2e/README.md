@@ -14,6 +14,15 @@ node e2e/run-all.mjs --base http://localhost:5173 --api http://localhost:8080/ap
 
 - 全部通过 → 退出码 **0**；有任何一套失败 → 退出码 **1**，并打印该套输出的尾部（不用再去翻日志）。
 - 前提：后端 `:8080`、前端 `:5173` 已启动；`PLAYWRIGHT_MODULE` / `PLAYWRIGHT_BROWSERS_PATH` 指向装好的 playwright。
+- **本机起前端要显式绑 IPv4，而且要从"真实路径"起**：`cd C:\Users\小晟\Desktop\AItest\mimo\frontend; npx vite --host=127.0.0.1`。
+  - 不写 `--host` 时 Vite 在 Windows 上可能只绑 `::1`，`http://127.0.0.1:5173` 直接"连接被拒绝"；
+  - **别从软链路径起**（本机 `C:\mimo-env\mimo` 是指向 `Desktop\AItest\mimo` 的软链）：
+    从软链目录启动时 Vite 把模块 id 解析成真实路径、却按软链根去找文件，
+    日志里是 `Pre-transform error: Failed to load url /src/main.ts … Does the file exist?`，
+    浏览器拿到的是**未转译的原始 TS**（`Failed to resolve module specifier "vue"`），页面白屏——
+    e2e 里看到的是十几套 `waiting for locator … Timeout 30000ms`，跟"产品坏了"长得一模一样。
+  - 注意 `npm run dev -- --host 127.0.0.1` **不行**：npm 会把 `--host` 吃掉，vite 把 `127.0.0.1` 当成根目录，
+    于是 `/login` 变成 404。要么 `npx vite --host=127.0.0.1`，要么 `npm run dev -- --host=127.0.0.1`（等号）。
 - **Redis 不是前提**：后端不带 Redis 也能跑（在线状态退回进程内实现），
   `presence-source-label.mjs` 用拦截接口的方式覆盖两种口径，不依赖真实 Redis。
 - 跑完执行 `e2e/cleanup-residue.sql` 清临时账号（`run-all` 结束会提醒）。
