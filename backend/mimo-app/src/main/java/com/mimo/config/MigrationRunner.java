@@ -29,6 +29,11 @@ import java.util.stream.Collectors;
  * 会立刻查表；两个 {@code ApplicationRunner} 都不标顺序时，谁先跑是"看扫描顺序"，
  * 空库上就撞过一次——第一个查表的 Runner 抢在建表前面，直接
  * {@code Table 'mimo.users' doesn't exist} 把启动搞崩（v2.22.2，见 bug-log BUG-123）。</p>
+ *
+ * <p><b>就绪信号</b>：最后一行 {@code [MigrationRunner] 全部迁移完成} 才是"库建完了"的证据。
+ * 不要拿 {@code Started MimoApplication} 当信号——那句是 Spring 刷完上下文的日志，
+ * 出现在 {@code ApplicationRunner} **之前**，实测比迁移跑完早 8 秒左右（v2.22.4，BUG-134：
+ * CI 里"启动后端"这步就是靠它判的，等于没判）。</p>
  */
 @Component
 @Slf4j
@@ -62,6 +67,10 @@ public class MigrationRunner implements ApplicationRunner {
                 log.error("[MigrationRunner] 失败: {} -- {}", s, msg.split("\n")[0]);
             }
         }
+        // 这一行是"库建完了"的唯一证据，CI 的就绪判定就等它（BUG-134）。
+        // 别改成按文件名的"完成: V9…"来判：脚本按字典序执行，最后一个可能是 V9，
+        // 中间插一个 V26 就又不准了。
+        log.info("[MigrationRunner] 全部迁移完成: {} 个脚本", scripts.size());
     }
 
     /**
