@@ -114,10 +114,21 @@ WHERE i.issue_key LIKE 'LOAD%'
   AND NOT EXISTS (SELECT 1 FROM comments c WHERE c.issue_id = i.id AND c.content = CONCAT('压测评论：', i.issue_key));
 
 -- 9. 5000 条活动日志（跨 30 天：近 7 天趋势、分页、时间范围查询都有真实量）
+--
+-- detail 要写成真实的移动文案 `移动到 <列名>`（v2.22.4 修正）：
+-- 第一版写成 `压测活动 LOAD1-1 #123`，结果「移动到终态列」的趋势查询因为
+-- `TRIM(SUBSTRING_INDEX(detail,'移动到',-1))` 匹配不上而**一行都统计不到**——
+-- 量出来的是"查询立刻返回空"的时间，等于没量。压测数据也得长得像真数据，
+-- 否则被测的那条路径根本没走。
 INSERT INTO activity_logs (user_id, username, project_id, target_type, target_id, action, detail, created_at)
 SELECT u.id, u.username, i.project_id, 'ISSUE', i.id,
        CASE WHEN t.n % 3 = 0 THEN 'CREATE' ELSE 'MOVE' END,
-       CONCAT('压测活动 ', i.issue_key, ' #', t.n),
+       CASE
+         WHEN t.n % 3 = 0 THEN CONCAT('创建工作项 ', i.issue_key)
+         WHEN t.n % 9 = 4 THEN CONCAT('将 ', i.issue_key, ' 移动到 已完成')
+         WHEN t.n % 9 = 7 THEN CONCAT('将 ', i.issue_key, ' 移动到 进行中')
+         ELSE CONCAT('将 ', i.issue_key, ' 移动到 待办')
+       END,
        NOW() - INTERVAL (t.n % 30) DAY - INTERVAL (t.n % 24) HOUR
 FROM tools_seq t
 JOIN (
@@ -126,7 +137,12 @@ JOIN (
 ) i ON i.rn = (t.n % 500) + 1
 JOIN users u ON u.username = CONCAT('load', LPAD(1 + (t.n % 100), 3, '0'))
 WHERE t.n <= 5000
-  AND NOT EXISTS (SELECT 1 FROM activity_logs WHERE detail LIKE '压测活动 %' LIMIT 1);
+  -- 守卫必须按**项目作用域**判，不能按文案判：演示数据里也有
+  -- `将 X 移动到 已完成` 这种正常日志，用文案当守卫会让整段 INSERT 被跳过（灌出来 0 条）。
+  AND NOT EXISTS (
+    SELECT 1 FROM activity_logs al JOIN projects p ON p.id = al.project_id
+    WHERE p.`key` LIKE 'LOAD%' LIMIT 1
+  );
 
 SELECT '压测团队' AS scope,
        (SELECT COUNT(*) FROM users WHERE username LIKE 'load%') AS users,
@@ -134,4 +150,8 @@ SELECT '压测团队' AS scope,
        (SELECT COUNT(*) FROM projects WHERE `key` LIKE 'LOAD%' AND deleted = 0) AS projects,
        (SELECT COUNT(*) FROM issues WHERE issue_key LIKE 'LOAD%') AS issues,
        (SELECT COUNT(*) FROM comments WHERE content LIKE '压测评论：%') AS comments,
-       (SELECT COUNT(*) FROM activity_logs WHERE detail LIKE '压测活动 %') AS activity_logs;
+       (SELECT COUNT(*) FROM activity_logs al JOIN projects p ON p.id = al.project_id
+         WHERE p.`key` LIKE 'LOAD%') AS activity_logs,
+       (SELECT COUNT(*) FROM activity_logs al JOIN projects p ON p.id = al.project_id
+         WHERE p.`key` LIKE 'LOAD%' AND al.action = 'MOVE'
+           AND TRIM(SUBSTRING_INDEX(al.detail, '移动到', -1)) = '已完成') AS move_to_done;

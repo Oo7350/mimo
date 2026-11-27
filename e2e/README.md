@@ -179,6 +179,37 @@ mysql -u mimo -p mimo < tools/cleanup-load.sql   # 清干净（跑全量 e2e 前
 > 一条踩过的认知：**"分页了"不等于"没白干"**。全员任务流早分了页（每页 8 人），
 > 但它仍然把所有成员 × 所有工作项算了一遍——分页只省带宽，不省查询。
 
+### 索引这一层：条数降下来之后，要改看执行计划（v2.22.4）
+
+`Com_select` 只会告诉你"几条"，不会告诉你"每条扫了多少行"。606 条压到 28 条之后接口还剩
+125ms，剩下的时间全在少数几条"扫得很凶"的查询上，只有 `EXPLAIN ANALYZE` 看得见：
+
+```sql
+EXPLAIN ANALYZE
+SELECT DATE(al.created_at) d, COUNT(*) c
+FROM activity_logs al
+WHERE al.action = 'CREATE' AND al.created_at >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)
+  AND al.project_id IN (…)
+GROUP BY DATE(al.created_at);
+```
+
+量级数据不够大时看不出差别，这一轮把活动日志临时放大到 4 万行（近 7 天窗口 3.6 万行）再量：
+
+| 量什么 | 改前 | 改后（`V25__hot_query_indexes.sql`） |
+|---|---|---|
+| 新建趋势 | 31.4ms，`type=ALL` 扫 40104 行 | **16.4ms**，覆盖索引定位 |
+| 移动趋势 | 63.7ms，每项目先捞 7774 行 | **47.2ms**，索引条件下推，每项目 4008 行 |
+| `/workbench/team`（关掉/装回索引做 A/B，缓存已热、12 轮） | p95 **387ms** | p95 **141ms** |
+
+- **A/B 必须两个方向都做**：第一次量出 759→177ms（4.3 倍）时缓冲池还是冷的，
+  慢里混着"从磁盘读"；反向再量一遍（先撤索引、再装回）才拿到稳的 387→141。
+- **同一轮量掉了两个"看着该建"的索引**：`issues (project_id, deleted)` 在 17% 选择性下
+  扫表 6.45ms、走索引 7.65ms（更慢）→ 不建；`issues (sprint_id, status)` 在 0.9% 选择性下
+  6.47→0.33ms → 建。理由与数字都写在 `V25` 的注释里，省得下次再来一轮。
+- **压测数据要长得像真数据**：第一版活动日志的 `detail` 写成 `压测活动 LOAD1-1 #123`，
+  于是「移动到终态列」那条趋势查询在压测数据上一行都统计不到，量到的"几毫秒"是**空转**。
+  现在 seed 写真实文案（`将 X 移动到 已完成`），末尾还多打一列 `move_to_done` 自证路径有数据。
+
 ## 覆盖范围（`main-chain.mjs`）
 
 | # | 用例 | 断言 |
