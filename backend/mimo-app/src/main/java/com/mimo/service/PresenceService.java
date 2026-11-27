@@ -114,9 +114,13 @@ public class PresenceService {
     /** 在给定用户集合里，谁在线 */
     public Set<Long> filterOnline(Collection<Long> userIds) {
         Set<Long> online = new HashSet<>();
-        if (userIds == null) return online;
+        if (userIds == null || userIds.isEmpty()) return online;
+        // 一次取出在线集合再求交（v2.22.4）：老写法是逐个 isOnline，Redis 实现下
+        // 每个成员 2 次往返，100 个成员就是 200 次网络调用——比查数据库还贵。
+        // 在线人数天然很小（真实连着的标签页数），所以这次"全量"读取比逐个点查便宜得多。
+        Set<Long> onlineIds = store.onlineUserIds();
         for (Long id : userIds) {
-            if (id != null && store.isOnline(id)) online.add(id);
+            if (id != null && onlineIds.contains(id)) online.add(id);
         }
         return online;
     }

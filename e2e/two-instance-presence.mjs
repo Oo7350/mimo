@@ -16,8 +16,15 @@
  */
 import { createRequire } from "node:module";
 import http from "node:http";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const FRONTEND_MODULES = "C:/Users/小晟/Desktop/AItest/mimo/frontend/node_modules";
+// 前端依赖（@stomp/stompjs / sockjs-client / ws）按脚本位置找，不要写死某台机器的绝对路径
+// ——v2.22.2 的跨平台体检里已经踩过一次：写死 Windows 路径的探针在 Linux runner 上必定
+// MODULE_NOT_FOUND。需要特殊位置时用 MIMO_FRONTEND_MODULES 覆盖。
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const FRONTEND_MODULES = process.env.MIMO_FRONTEND_MODULES
+  || path.join(HERE, "..", "frontend", "node_modules");
 const require = createRequire(import.meta.url);
 
 let Client, SockJS;

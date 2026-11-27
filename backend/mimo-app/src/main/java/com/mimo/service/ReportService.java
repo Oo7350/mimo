@@ -189,8 +189,14 @@ public class ReportService {
         Map<Long, Long> memberCount = allDoneIssues.stream()
             .filter(i -> i.getAssigneeId() != null)
             .collect(Collectors.groupingBy(Issue::getAssigneeId, Collectors.counting()));
+        // v2.22.4：原来是每个成员 selectById 一次，100 人项目上就是 100 条 SQL；
+        // 一次批量取回（条数与人数无关）。
+        Map<Long, User> memberUsers = new HashMap<>();
+        if (!memberCount.isEmpty()) {
+            userMapper.selectBatchIds(memberCount.keySet()).forEach(user -> memberUsers.put(user.getId(), user));
+        }
         for (Map.Entry<Long, Long> entry : memberCount.entrySet()) {
-            User user = userMapper.selectById(entry.getKey());
+            User user = memberUsers.get(entry.getKey());
             MemberItem item = new MemberItem();
             item.setUsername(user != null ? user.getUsername() : "未知");
             item.setCount(entry.getValue().intValue());
@@ -207,22 +213,25 @@ public class ReportService {
                 .orderByDesc(Sprint::getEndDate)
                 .last("LIMIT 3")
         );
+        // v2.22.4：原来是每个迭代 2 条 selectCount；这里一次把这几轮的条目取回来数（最多 3 轮）
+        Map<Long, long[]> sprintCounts = new HashMap<>();
+        if (!completedSprints.isEmpty()) {
+            List<Long> sprintIds = completedSprints.stream().map(Sprint::getId).toList();
+            for (Issue issue : issueMapper.selectList(new LambdaQueryWrapper<Issue>()
+                    .eq(Issue::getProjectId, projectId)
+                    .in(Issue::getSprintId, sprintIds)
+                    .select(Issue::getId, Issue::getSprintId, Issue::getStatus))) {
+                long[] counts = sprintCounts.computeIfAbsent(issue.getSprintId(), key -> new long[2]);
+                counts[0]++;
+                if ("DONE".equals(issue.getStatus())) counts[1]++;
+            }
+        }
         for (Sprint s : completedSprints) {
             SprintVelocityItem item = new SprintVelocityItem();
             item.setSprintName(s.getName());
-            Long total = issueMapper.selectCount(
-                new LambdaQueryWrapper<Issue>()
-                    .eq(Issue::getProjectId, projectId)
-                    .eq(Issue::getSprintId, s.getId())
-            );
-            Long done = issueMapper.selectCount(
-                new LambdaQueryWrapper<Issue>()
-                    .eq(Issue::getProjectId, projectId)
-                    .eq(Issue::getSprintId, s.getId())
-                    .eq(Issue::getStatus, "DONE")
-            );
-            item.setTotalPoints(total.intValue());
-            item.setCompletedPoints(done.intValue());
+            long[] counts = sprintCounts.getOrDefault(s.getId(), new long[2]);
+            item.setTotalPoints((int) counts[0]);
+            item.setCompletedPoints((int) counts[1]);
             sprintVelocity.add(item);
         }
 

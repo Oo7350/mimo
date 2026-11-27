@@ -6,6 +6,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
+import java.util.Collection;
 import java.util.List;
 
 @Mapper
@@ -61,4 +62,46 @@ public interface PermissionMapper extends BaseMapper<Permission> {
             "JOIN role_permissions rp ON rp.permission_id = p.id " +
             "WHERE rp.role_id = #{roleId} ORDER BY p.sort_order")
     List<Permission> findByRoleId(@Param("roleId") Integer roleId);
+
+    /**
+     * 批量版 {@link #findByUserAndScope}：这批用户里，谁在 scopeId 作用域下拥有该权限码。
+     *
+     * <p>作用域叠加规则与单条版本一致：GLOBAL 永远生效，TEAM/PROJECT 仅当 scope_id 命中。
+     * 见 v2.22.4 的 N+1 修复说明（{@code AccessControlService#filterTeamAdmins}）。
+     */
+    @Select("""
+        <script>
+        SELECT DISTINCT ur.user_id
+        FROM user_roles ur
+        JOIN role_permissions rp ON rp.role_id = ur.role_id
+        JOIN permissions p ON p.id = rp.permission_id
+        WHERE p.code = #{code}
+          AND ur.user_id IN
+          <foreach collection="userIds" item="uid" open="(" separator="," close=")">#{uid}</foreach>
+          AND (
+                ur.scope_type = 'GLOBAL'
+             OR (ur.scope_type = 'TEAM'    AND ur.scope_id = #{scopeId})
+             OR (ur.scope_type = 'PROJECT' AND ur.scope_id = #{scopeId})
+          )
+        </script>
+        """)
+    List<Long> findUserIdsWithPermissionInScope(@Param("userIds") Collection<Long> userIds,
+                                                @Param("code") String code,
+                                                @Param("scopeId") Long scopeId);
+
+    /** 批量版，只看 GLOBAL 作用域（系统管理员口径） */
+    @Select("""
+        <script>
+        SELECT DISTINCT ur.user_id
+        FROM user_roles ur
+        JOIN role_permissions rp ON rp.role_id = ur.role_id
+        JOIN permissions p ON p.id = rp.permission_id
+        WHERE p.code = #{code}
+          AND ur.user_id IN
+          <foreach collection="userIds" item="uid" open="(" separator="," close=")">#{uid}</foreach>
+          AND ur.scope_type = 'GLOBAL'
+        </script>
+        """)
+    List<Long> findUserIdsWithGlobalPermission(@Param("userIds") Collection<Long> userIds,
+                                               @Param("code") String code);
 }

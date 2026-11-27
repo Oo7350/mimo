@@ -9,7 +9,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 
 /**
  * 管理员判定的**唯一入口**。
@@ -110,6 +114,52 @@ public class AccessControlService {
     /** 是否承认旧字段（供诊断/测试观察当前口径） */
     public boolean isLegacyRoleFallbackEnabled() {
         return legacyRoleFallback;
+    }
+
+    /**
+     * 批量版 {@link #isTeamAdmin(Long, Long)}：这批用户里，谁至少是"可见团队"中某一个的团队管理员。
+     *
+     * <p>起因（v2.22.4）：`/workbench/team` 给每个成员算一个 `admin` 标记，用的就是单人判定；
+     * 单人判定要 6 条 SELECT（旧字段 2 条 + RBAC 角色/权限各 2 条）。开发库 3 个人时看不出来，
+     * 造了 100 个成员之后实测**单次请求 606 条 SELECT / 433ms**——几乎全是这个循环挖出来的。
+     *
+     * <p>口径与单人版严格一致（求并集，任一路成立即管理员）：
+     * 旧字段 {@code users.role}、旧字段 {@code team_members.role}（限定在给定团队内）、
+     * RBAC GLOBAL 的 {@value #PERM_SYSTEM_ADMIN}、RBAC 团队作用域的 {@value #PERM_TEAM_ADMIN}。
+     * 条数固定：4 条 + 每个团队 2 条，与成员数无关。
+     */
+    public Set<Long> filterTeamAdmins(Collection<Long> userIds, Collection<Long> teamIds) {
+        Set<Long> admins = new HashSet<>();
+        if (userIds == null || userIds.isEmpty()) return admins;
+        List<Long> ids = userIds.stream().filter(Objects::nonNull).distinct().toList();
+        if (ids.isEmpty()) return admins;
+
+        if (legacyRoleFallback) {
+            userMapper.selectList(new LambdaQueryWrapper<User>()
+                            .select(User::getId)
+                            .in(User::getId, ids)
+                            .eq(User::getRole, LEGACY_ROLE_ADMIN))
+                    .forEach(user -> admins.add(user.getId()));
+        }
+        // 系统管理员等价（含 SUPER_ADMIN 直通）
+        admins.addAll(roleService.usersWithPermission(ids, PERM_SYSTEM_ADMIN));
+
+        if (teamIds == null || teamIds.isEmpty()) return admins;
+        List<Long> scopedTeamIds = teamIds.stream().filter(Objects::nonNull).distinct().toList();
+        if (scopedTeamIds.isEmpty()) return admins;
+
+        if (legacyRoleFallback) {
+            teamMemberMapper.selectList(new LambdaQueryWrapper<TeamMember>()
+                            .select(TeamMember::getUserId)
+                            .in(TeamMember::getTeamId, scopedTeamIds)
+                            .in(TeamMember::getUserId, ids)
+                            .eq(TeamMember::getRole, LEGACY_ROLE_ADMIN))
+                    .forEach(member -> admins.add(member.getUserId()));
+        }
+        for (Long teamId : scopedTeamIds) {
+            admins.addAll(roleService.usersWithPermissionInScope(ids, PERM_TEAM_ADMIN, SCOPE_TEAM, teamId));
+        }
+        return admins;
     }
 
     // ==================== 旧字段路径 ====================

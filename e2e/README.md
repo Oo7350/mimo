@@ -120,8 +120,54 @@ BUG-123~125）。所以：**改 CI 配置时，先把里面的命令在本机跑
 > `…/actions/runs/<id>/jobs` 看每个 step 的 `conclusion`。
 > 本机用 curl 走代理会被挡（403），用 web_fetch 或浏览器直接打开就行。
 
-CI：`.github/workflows/e2e.yml`（MySQL service + 起前后端 + 跑 `run-all.mjs`）。
-**如实说明**：该 workflow 没在真实 GitHub runner 上跑过，本地同一条命令两轮全绿。
+CI：`.github/workflows/e2e.yml`，**已在真实 runner 上跑通**（v2.22.3 起三次全绿，
+见上表与 bug-log）。v2.22.4 起是两个 job：
+
+| job | 干什么 | 说明 |
+|---|---|---|
+| `e2e`（19 step） | 原链路 + 末尾「造量级数据 → 性能探针 → 清量级数据」 | 探针只出数字、**不设门槛**（机器规格会变，设成红线只会随机红） |
+| `two-instance`（9 step，`needs: e2e`） | mysql + redis 两个 service，jar 从主 job 的 artifact 取回，起 8080/8081 两个后端共用一个 Redis，跑 `two-instance-presence.mjs` | 单独一个 job：主回归跑的是 `store=memory`，两种语义混在一个进程里会互相干扰 |
+
+**v2.22.4 的第一次真实跑（run #12）**：主 job 8 分 35 秒全绿（含量级数据 + 探针三步），
+`two-instance` **红在第 7 步「灌演示账号」**——我把顺序写成了"先灌种子再起后端"，
+而空库的建表是后端启动时 `MigrationRunner` 干的活，于是 1 秒内
+`Table 'mimo.users' doesn't exist`，后三步 skipped（BUG-130）。
+
+**第二次（run #13）**：重排顺序后主 job 反而红了——「建表结果自检」只数到 **25 张表**（应 38），
+而「启动后端」那步是绿的：Spring Boot **先开 HTTP 端口、再跑 `ApplicationRunner`**，
+迁移跑到一半 `users` 表就存在了，`AdminBootstrap` 与登录都正常，
+于是"能登录"被当成了"库建完"（前三次全绿只是迁移够快凑出来的时序运气，BUG-131）。
+现在两处就绪判定都改成：`grep -q "Started MimoApplication"`（这句在 Runner 全部跑完之后才打）
+**且** 登录接口能过；自检改成"最多等 60 秒、最后一次不达标才红"，失败时打印
+`MigrationRunner` 日志与现有表清单（它不写迁移记录表，只打日志）。
+
+> 两条结论：① **步骤顺序在 workflow 里就是依赖关系**（建表 → 种子 → 用例），不是排版，
+> 照旁边已经绿的 job 抄顺序比自己再想一遍快得多；② **"服务能响应"不等于"服务准备好了"**，
+> 就绪信号要选"依赖全部完成之后才出现"的那一个，而不是"最早能用的那一个"。
+
+### 量级验证：先造量，再量（v2.22.4）
+
+开发库常年 3 个用户 / 20 个工作项，所以"性能没问题"这句话以前**没有任何数字支撑**。
+现在这套是配套的两个文件加一个探针：
+
+```bash
+mysql -u mimo -p mimo < tools/seed-load.sql      # 100 用户 / 5 项目 / 500 工作项 / 5000 活动日志
+node e2e/perf-probe.mjs --iters 10               # 18 个读接口的 p50 / p95 / max
+mysql -u mimo -p mimo < tools/cleanup-load.sql   # 清干净（跑全量 e2e 前必须清）
+```
+
+- 压测数据全挂在独立「压测团队」下，**不掺演示数据**；`cleanup-load.sql` 按团队/项目整块删。
+- 探针自己找数据：有「压测团队」就用它，没有就退回演示项目——这时会明确打印
+  "本次只代表空库基线，别拿它下结论"。
+- 退出码：**慢不报错**（`--budget` 才拦），但登录失败 / 有接口没跑通 / `--only` 没匹配一律非 0。
+  第一版写成"永远退出 0"，登录失败也是一片绿——那是 KNOWN-024 老毛病的翻版，已改。
+- 数 SQL 条数用 `SHOW GLOBAL STATUS LIKE 'Com_select'` 前后差值（`mimo` 账号没有 SUPER，
+  `general_log` 开不了）；找热点用 `jcmd <pid> Thread.print` 在压测中采样线程栈。
+- 实测结论（同一份数据、10 轮）：`/workbench/team` 100 成员 **606→28 条 SELECT、540→125ms**；
+  `/reports/stats` **40→8 条**；其余 16 个接口均 < 60ms。
+
+> 一条踩过的认知：**"分页了"不等于"没白干"**。全员任务流早分了页（每页 8 人），
+> 但它仍然把所有成员 × 所有工作项算了一遍——分页只省带宽，不省查询。
 
 ## 覆盖范围（`main-chain.mjs`）
 

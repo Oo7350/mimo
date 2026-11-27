@@ -25,6 +25,9 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class RoleService {
 
+    /** 超级管理员角色编码：判定时直通，不看 permissions 表 */
+    public static final String SUPER_ADMIN_CODE = "SUPER_ADMIN";
+
     private final RoleMapper roleMapper;
     private final PermissionMapper permissionMapper;
     private final RolePermissionMapper rolePermissionMapper;
@@ -220,6 +223,37 @@ public class RoleService {
      */
     public boolean hasPermission(Long userId, String code) {
         return hasPermission(userId, code, "GLOBAL", null);
+    }
+
+    /**
+     * 批量版 {@link #hasPermission(Long, String)}：这批用户里谁拥有该权限码（GLOBAL 作用域）。
+     *
+     * <p>v2.22.4 起因：`/workbench/team` 逐成员判定管理员，单人判定 6 条 SELECT，
+     * 100 个成员 = 606 条查询 / 433ms。批量版条数与人数无关。
+     * 口径与单条版一致：SUPER_ADMIN 直通（不依赖 permissions 表里是否配了这条码）。
+     */
+    public Set<Long> usersWithPermission(Collection<Long> userIds, String code) {
+        if (userIds == null || userIds.isEmpty()) return Collections.emptySet();
+        Set<Long> result = new HashSet<>(permissionMapper.findUserIdsWithGlobalPermission(userIds, code));
+        result.addAll(userRoleMapper.findUserIdsByRoleCode(userIds, SUPER_ADMIN_CODE));
+        return result;
+    }
+
+    /**
+     * 批量版 {@link #hasPermission(Long, String, String, Long)}：叠加 GLOBAL + 指定作用域。
+     *
+     * <p>注意 GLOBAL 已经被 {@link #usersWithPermission} 覆盖，这里只补作用域那一层，
+     * 所以只需要一条 SQL（作用域查询本身包含 GLOBAL，取并集不会漏也不会多）。
+     */
+    public Set<Long> usersWithPermissionInScope(Collection<Long> userIds, String code,
+                                                String scopeType, Long scopeId) {
+        if (userIds == null || userIds.isEmpty()) return Collections.emptySet();
+        Set<Long> result = new HashSet<>(usersWithPermission(userIds, code));
+        if (scopeId == null || (!"TEAM".equals(scopeType) && !"PROJECT".equals(scopeType))) {
+            return result;
+        }
+        result.addAll(permissionMapper.findUserIdsWithPermissionInScope(userIds, code, scopeId));
+        return result;
     }
 
     // ==================== 辅助方法 ====================

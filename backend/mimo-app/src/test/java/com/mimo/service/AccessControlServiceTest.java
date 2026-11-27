@@ -4,6 +4,10 @@ import com.mimo.entity.TeamMember;
 import com.mimo.entity.User;
 import com.mimo.mapper.TeamMemberMapper;
 import com.mimo.mapper.UserMapper;
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -11,11 +15,15 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.util.List;
+import java.util.Set;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -42,6 +50,19 @@ class AccessControlServiceTest {
     @Mock private TeamMemberMapper teamMemberMapper;
 
     private AccessControlService service;
+
+    /**
+     * 批量判定用 LambdaQueryWrapper 拼条件，纯 Mockito 环境没有 MyBatis 上下文，
+     * 得手动灌一次实体元数据，否则抛 "can not find lambda cache for this entity"
+     * （同 WorkbenchServiceTest / RoleServiceTest 的做法）。
+     */
+    @BeforeAll
+    static void initTableInfo() {
+        MapperBuilderAssistant assistant =
+                new MapperBuilderAssistant(new MybatisConfiguration(), "");
+        TableInfoHelper.initTableInfo(assistant, User.class);
+        TableInfoHelper.initTableInfo(assistant, TeamMember.class);
+    }
 
     @BeforeEach
     void setUp() {
@@ -198,5 +219,107 @@ class AccessControlServiceTest {
         when(teamMemberMapper.selectList(any())).thenReturn(java.util.List.of());
         assertThat(service.resolveAdminScope(USER)).isEqualTo(AccessControlService.ADMIN_SCOPE_NONE);
         assertThat(service.resolveAdminScope(null)).isEqualTo(AccessControlService.ADMIN_SCOPE_NONE);
+    }
+
+    // ==================== 批量判定（v2.22.4 的 N+1 修复） ====================
+
+    /**
+     * 这批用例守的是同一件事：**批量版和逐人版必须给出同一个答案**。
+     *
+     * <p>为什么需要批量版：`/workbench/team` 给每个成员算"是不是管理员"，
+     * 单人判定 6 条 SELECT。开发库 3 个人时一次请求几十毫秒，看不出问题；
+     * 造了 100 个成员之后实测 606 条 SELECT / 433ms，而且越加人越慢。
+     * 批量版把条数压到与人数无关的常数条 —— 但如果结论变了，这个"优化"就是 bug。
+     */
+    @Test
+    void batchShouldAgreeWithSingleUserCheck() {
+        long systemAdmin = 4L;   // 旧字段 users.role = ROLE_ADMIN
+        long rbacAdmin = 3L;     // RBAC 全局权限（SUPER_ADMIN 等价）
+        long teamAdmin = 1L;     // RBAC 团队作用域的 team.manage
+        long plain = 2L;
+        List<Long> ids = List.of(1L, 2L, 3L, 4L);
+
+        // 批量侧
+        when(userMapper.selectList(any())).thenReturn(List.of(userOf(systemAdmin, "ROLE_ADMIN")));
+        when(roleService.usersWithPermission(ids, AccessControlService.PERM_SYSTEM_ADMIN))
+                .thenReturn(Set.of(rbacAdmin));
+        when(teamMemberMapper.selectList(any())).thenReturn(List.of());
+        when(roleService.usersWithPermissionInScope(ids, AccessControlService.PERM_TEAM_ADMIN, "TEAM", TEAM))
+                .thenReturn(Set.of(teamAdmin));
+
+        // 逐人侧：同样的世界，一个一个问
+        when(userMapper.selectById(systemAdmin)).thenReturn(userOf(systemAdmin, "ROLE_ADMIN"));
+        when(userMapper.selectById(rbacAdmin)).thenReturn(userOf(rbacAdmin, "ROLE_MEMBER"));
+        when(userMapper.selectById(teamAdmin)).thenReturn(userOf(teamAdmin, "ROLE_MEMBER"));
+        when(userMapper.selectById(plain)).thenReturn(userOf(plain, "ROLE_MEMBER"));
+        when(roleService.hasPermission(rbacAdmin, AccessControlService.PERM_SYSTEM_ADMIN)).thenReturn(true);
+        when(roleService.hasPermission(teamAdmin, AccessControlService.PERM_SYSTEM_ADMIN)).thenReturn(false);
+        when(roleService.hasPermission(plain, AccessControlService.PERM_SYSTEM_ADMIN)).thenReturn(false);
+        when(teamMemberMapper.selectOne(any())).thenReturn(null);
+        // 只有需要走 RBAC 团队作用域的两个人会被问到（另外两人在上面就短路了）
+        when(roleService.hasPermission(teamAdmin, AccessControlService.PERM_TEAM_ADMIN, "TEAM", TEAM)).thenReturn(true);
+        when(roleService.hasPermission(plain, AccessControlService.PERM_TEAM_ADMIN, "TEAM", TEAM)).thenReturn(false);
+
+        Set<Long> batched = service.filterTeamAdmins(ids, List.of(TEAM));
+        Set<Long> oneByOne = new java.util.HashSet<>();
+        for (Long id : ids) {
+            if (service.isTeamAdmin(id, TEAM)) oneByOne.add(id);
+        }
+
+        assertThat(batched).isEqualTo(oneByOne);
+        assertThat(batched).containsExactlyInAnyOrder(systemAdmin, rbacAdmin, teamAdmin);
+    }
+
+    @Test
+    void batchShouldQueryOnceInsteadOfOncePerMember() {
+        List<Long> ids = java.util.stream.LongStream.rangeClosed(1, 100).boxed().toList();
+        when(userMapper.selectList(any())).thenReturn(List.of());
+        when(roleService.usersWithPermission(any(), any())).thenReturn(Set.of());
+        when(teamMemberMapper.selectList(any())).thenReturn(List.of());
+
+        service.filterTeamAdmins(ids, List.of(TEAM));
+
+        // 100 个成员：旧实现是 600 条，这里是常数条
+        verify(userMapper, times(1)).selectList(any());
+        verify(teamMemberMapper, times(1)).selectList(any());
+    }
+
+    @Test
+    void batchShouldCountLegacyTeamAdminFromMembershipRow() {
+        when(userMapper.selectList(any())).thenReturn(List.of());
+        when(roleService.usersWithPermission(any(), any())).thenReturn(Set.of());
+        TeamMember legacyAdmin = new TeamMember();
+        legacyAdmin.setUserId(USER);
+        legacyAdmin.setTeamId(TEAM);
+        legacyAdmin.setRole(AccessControlService.LEGACY_ROLE_ADMIN);
+        when(teamMemberMapper.selectList(any())).thenReturn(List.of(legacyAdmin));
+
+        assertThat(service.filterTeamAdmins(List.of(USER), List.of(TEAM))).containsExactly(USER);
+    }
+
+    @Test
+    void batchShouldIgnoreLegacyFieldsWhenFallbackIsOff() {
+        ReflectionTestUtils.setField(service, "legacyRoleFallback", false);
+        when(roleService.usersWithPermission(any(), any())).thenReturn(Set.of());
+
+        assertThat(service.filterTeamAdmins(List.of(USER), List.of(TEAM))).isEmpty();
+        // 开关关掉后连旧字段表都不查（纯 RBAC）—— 两条 stub 都不该存在，所以这里也不 stub 它们
+        verify(userMapper, never()).selectList(any());
+        verify(teamMemberMapper, never()).selectList(any());
+    }
+
+    @Test
+    void batchShouldShortCircuitOnEmptyInput() {
+        assertThat(service.filterTeamAdmins(null, List.of(TEAM))).isEmpty();
+        assertThat(service.filterTeamAdmins(List.of(), List.of(TEAM))).isEmpty();
+        verify(roleService, never()).usersWithPermission(any(), any());
+        verify(userMapper, never()).selectList(any());
+    }
+
+    private User userOf(long id, String role) {
+        User u = new User();
+        u.setId(id);
+        u.setRole(role);
+        return u;
     }
 }

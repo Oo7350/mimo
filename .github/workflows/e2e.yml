@@ -2,17 +2,21 @@ name: e2e
 
 # 端到端回归：15 套套件 + 3 个探针，入口就是 e2e/run-all.mjs（本地同一条命令）。
 #
-# 诚实声明（v2.22.2 更新）：
-# - 这份配置**仍然没有在真实 GitHub runner 上跑过**，见 bug-log KNOWN-024。
-# - 但"从零到绿"这条链路已经在本机**真的演过一遍**：全新空库（独立 MySQL 实例）
-#   → 后端启动 → 看它自己建表 → 灌演示数据 → 建项目 → 全量 e2e 全绿。
-#   每一步的命令和下面写的完全一致，所以剩下的风险只有"Linux/runner 环境差异"。
+# 实跑记录（v2.22.3 起，真实 GitHub runner）：
+# - run #8（手动 dispatch，5747663）8m36s 全绿；run #9（push，e9a1219）8m57s 全绿；
+#   run #10（push，07780f5）8m31s 全绿。KNOWN-024「CI 从没在真实 runner 上跑过」已关闭。
+# - 归档：v2.22.0 的 run #4 是红的——「启动后端」180 秒等不到登录（BUG-123/125 的症状），
+#   之后 4 个 step 全 skipped。当时文档写成"未验证"，其实是"验证失败没人读结果"。
 #
 # 这轮演练照出三个真问题（都已修，见 bug-log BUG-123）：
 #   1. 基础建表脚本 init.sql **从来没被执行过**——空库上一张表都建不出来；
 #   2. 顺序没定：空库上第一个启动期 Runner 抢在建表前面查表，直接崩；
 #   3. 空库没有任何账号，而 CI 第一步就要 admin/123456 登录。
 # 所以下面的步骤顺序是"踩过坑之后"的顺序，别随意调换。
+#
+# v2.22.4 加了两个 job：
+# - 主 job 末尾跑一次量级压测 + 性能探针（只出数字，不设门槛，跑完清库）；
+# - `two-instance`：两个后端共用一个 Redis，验证跨实例在线/广播（此前只在开发机上跑过）。
 
 on:
   push:
@@ -80,16 +84,31 @@ jobs:
       - name: 打包后端
         run: mvn -B -f backend/pom.xml -DskipTests package
 
+      # 双实例 job 复用同一个 jar：省掉一次 Maven 打包（约 2 分钟）
+      - name: 上传后端 jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-jar
+          path: backend/mimo-app/target/mimo-app-1.0.0-SNAPSHOT.jar
+          retention-days: 1
+
       # 空库首次启动 = 建表（db/migration/V0__init.sql 起）+ 引导管理员。
-      # 就绪判断用登录接口：它需要 users 表 + 管理员同时存在，比只看端口实在。
+      #
+      # 就绪必须**两个条件**都满足，缺一个就会偶尔红（BUG-131）：
+      #   ① 日志里出现 "Started MimoApplication"——它在 ApplicationRunner 之后才打，
+      #      而迁移正是在 ApplicationRunner 里跑的，所以这句等于"表建完了"；
+      #   ② 登录接口能过——比只看端口实在。
+      # 只判 ② 是不够的：Spring Boot 的 **HTTP 端口比 Runner 先开**，迁移跑到一半时
+      # users 表已经存在、登录能成功，但整个库只有 25 张表（实测过一次，红在下一步自检）。
       - name: 启动后端
         run: |
           nohup java -jar backend/mimo-app/target/mimo-app-1.0.0-SNAPSHOT.jar > backend.log 2>&1 &
           for i in $(seq 1 60); do
-            if curl -sf -X POST http://localhost:8080/api/auth/login \
-                 -H 'Content-Type: application/json' \
-                 -d '{"username":"admin","password":"123456"}' > /dev/null; then
-              echo "后端就绪"; exit 0
+            if grep -q "Started MimoApplication" backend.log \
+               && curl -sf -X POST http://localhost:8080/api/auth/login \
+                    -H 'Content-Type: application/json' \
+                    -d '{"username":"admin","password":"123456"}' > /dev/null; then
+              echo "后端就绪（迁移已完成）"; exit 0
             fi
             sleep 3
           done
@@ -99,15 +118,27 @@ jobs:
         run: |
           # 只留数字：docker exec 偶尔会带一行 warning，`[ "" -lt 30 ]` 会报
           # "integer expression expected"，那种错误信息完全看不出真实原因
-          tables=$(docker exec -i ${{ job.services.mysql.id }} \
-            mysql -umimo -pmimo123 -N -B mimo \
-            -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='mimo'" \
-            | tr -dc '0-9')
-          tables=${tables:-0}
+          tables=0
+          for i in $(seq 1 30); do
+            tables=$(docker exec -i ${{ job.services.mysql.id }} \
+              mysql -umimo -pmimo123 -N -B mimo \
+              -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='mimo'" \
+              | tr -dc '0-9')
+            tables=${tables:-0}
+            if [ "$tables" -ge 30 ]; then break; fi
+            echo "第 ${i} 次：已建表 ${tables} 张，等 2 秒再看"
+            sleep 2
+          done
           echo "已建表 ${tables} 张"
           # 38 是 v2.22.2 的实测值；少一半说明迁移链断在中间，早点红比跑完 15 套才发现好
           if [ "$tables" -lt 30 ]; then
             echo "::error::只建出 ${tables} 张表，迁移链可能没跑完整"
+            # MigrationRunner 不往库里写"迁移记录表"，只打日志，所以翻日志才是真相
+            echo "--- backend.log 里的迁移记录（最后 20 行）---"
+            grep "MigrationRunner" backend.log | tail -20 || true
+            echo "--- 现有表 ---"
+            docker exec -i ${{ job.services.mysql.id }} \
+              mysql -umimo -pmimo123 -N -B mimo -e "SHOW TABLES" || true
             exit 1
           fi
 
@@ -160,6 +191,26 @@ jobs:
       - name: 跑全部 e2e（失败即红）
         run: node e2e/run-all.mjs --probes --base http://localhost:5173 --api http://localhost:8080/api
 
+      # ---------------------------------------------------------------- 量级验证
+      # 开发库常年是 3 个人 20 个工作项，"性能"这件事一直是推理没数字。这里在 CI 上造一次
+      # 100 用户 / 500 工作项 / 5000 活动日志，量一遍核心接口的 p50/p95 并写进日志，
+      # **不设门槛**（机器规格会变，拿它当红线只会变成随机红）。跑完立刻清库，不影响后续。
+      - name: 造量级测试数据
+        run: |
+          docker exec -i ${{ job.services.mysql.id }} \
+            mysql -umimo -pmimo123 --default-character-set=utf8mb4 mimo \
+            < tools/seed-load.sql
+
+      - name: 性能探针（只出数字，不作为门槛）
+        run: node e2e/perf-probe.mjs --iters 5
+
+      - name: 清理量级测试数据
+        if: always()
+        run: |
+          docker exec -i ${{ job.services.mysql.id }} \
+            mysql -umimo -pmimo123 --default-character-set=utf8mb4 mimo \
+            < tools/cleanup-load.sql
+
       - name: 失败时留存日志
         if: failure()
         uses: actions/upload-artifact@v4
@@ -169,4 +220,126 @@ jobs:
             backend.log
             frontend.log
             e2e/xss-report.md
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  # 双实例：两个后端进程共用一个 Redis / 一个 MySQL。
+  # 验证"连在 B 上的人，A 的在线列表里也有"以及"从 A 发的消息，B 上的客户端能收到"。
+  #
+  # 为什么单独一个 job 而不是塞进主 job：主 job 的前端 e2e 跑的是 store=memory
+  # （可复现、不依赖 Redis），两套语义混在一个进程里会互相干扰。这里换一个干净的库和 Redis。
+  # v2.22.4 之前，这个用例只在开发机上跑过——"我这能跑"不算证据。
+  # ---------------------------------------------------------------------------
+  two-instance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: e2e
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: mimo
+          MYSQL_USER: mimo
+          MYSQL_PASSWORD: mimo123
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    env:
+      JWT_SECRET: mimo-ci-secret-key-please-change-in-prod-0123456789abcdef
+      JWT_EXPIRATION: "86400000"
+      MIMO_DB_URL: jdbc:mysql://127.0.0.1:3306/mimo?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+      MIMO_DB_USERNAME: mimo
+      MIMO_DB_PASSWORD: mimo123
+      # 这个 job 的全部意义就在这行：强制 Redis，两个实例才共享在线状态与广播
+      MIMO_REALTIME_STORE: redis
+      MIMO_REDIS_HOST: 127.0.0.1
+      MIMO_REDIS_PORT: "6379"
+      MIMO_BOOTSTRAP_ADMIN_USERNAME: admin
+      MIMO_BOOTSTRAP_ADMIN_PASSWORD: "123456"
+      NO_PROXY: localhost,127.0.0.1
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: 取回后端 jar
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-jar
+          path: backend/mimo-app/target
+
+      - name: 前端依赖（只要 STOMP 客户端）
+        run: |
+          cd frontend
+          npm ci
+
+      # 顺序很重要：**先起后端，再灌种子**。空库里还没有表，
+      # 先灌 seed-demo.sql 会 `Table 'mimo.users' doesn't exist` 直接红
+      # （v2.22.4 第一版就是这么写错的，见 bug-log BUG-130）。
+      # 管理员由 MIMO_BOOTSTRAP_ADMIN_* 自动建出来，所以下面的探活不用等种子。
+      - name: 启动两个实例（8080 / 8081）
+        run: |
+          JAR=backend/mimo-app/target/mimo-app-1.0.0-SNAPSHOT.jar
+          nohup java -jar "$JAR" > backend-a.log 2>&1 &
+          nohup java -jar "$JAR" --server.port=8081 > backend-b.log 2>&1 &
+          # 每个实例都要"日志里出现 Started MimoApplication（= 迁移跑完）+ 能登录"，
+          # 只判登录会在迁移中途放行（BUG-131：HTTP 端口比 ApplicationRunner 先开）
+          for port in 8080 8081; do
+            if [ "$port" = "8080" ]; then log=backend-a.log; else log=backend-b.log; fi
+            ok=0
+            for i in $(seq 1 60); do
+              if grep -q "Started MimoApplication" "$log" \
+                 && curl -sf -X POST "http://localhost:${port}/api/auth/login" \
+                      -H 'Content-Type: application/json' \
+                      -d '{"username":"admin","password":"123456"}' > /dev/null; then
+                echo "实例 ${port} 就绪（迁移已完成）"; ok=1; break
+              fi
+              sleep 3
+            done
+            if [ "$ok" -ne 1 ]; then
+              echo "::error::实例 ${port} 180 秒内未就绪"
+              tail -60 backend-a.log backend-b.log
+              exit 1
+            fi
+          done
+
+      - name: 灌演示账号（lisi 与团队 1，双实例用例要它们）
+        run: |
+          docker exec -i ${{ job.services.mysql.id }} \
+            mysql -umimo -pmimo123 --default-character-set=utf8mb4 mimo \
+            < backend/mimo-app/src/main/resources/db/seed-demo.sql
+
+      - name: 双实例验证（跨实例在线 + 跨实例广播）
+        run: node e2e/two-instance-presence.mjs
+
+      - name: 失败时留存日志
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: two-instance-logs
+          path: |
+            backend-a.log
+            backend-b.log
           if-no-files-found: ignore

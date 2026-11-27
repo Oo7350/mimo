@@ -226,10 +226,8 @@ public class WorkbenchService {
         List<TeamMember> teamMembers = teamMemberMapper.selectList(new LambdaQueryWrapper<TeamMember>()
                 .in(TeamMember::getTeamId, teamIds));
         Map<Long, String> memberRoles = new LinkedHashMap<>();
-        Map<Long, List<Long>> memberTeams = new HashMap<>();
         for (TeamMember member : teamMembers) {
             memberRoles.putIfAbsent(member.getUserId(), member.getRole());
-            memberTeams.computeIfAbsent(member.getUserId(), key -> new ArrayList<>()).add(member.getTeamId());
         }
         Map<Long, User> users = new HashMap<>();
         if (!memberRoles.isEmpty()) {
@@ -237,6 +235,8 @@ public class WorkbenchService {
         }
         // 在线状态一次算完，别每个成员问一次
         Set<Long> onlineUserIds = presenceService.filterOnline(memberRoles.keySet());
+        // 管理员标记也一次算完（v2.22.4）：原来是每个成员问 6 条 SELECT，100 人 = 606 条 / 433ms
+        Set<Long> adminUserIds = accessControlService.filterTeamAdmins(memberRoles.keySet(), teamIds);
 
         // 项目与工作项：团队下全部项目（含我不参与的项目）
         List<Long> projectIds = projectMapper.selectList(new LambdaQueryWrapper<Project>()
@@ -290,7 +290,8 @@ public class WorkbenchService {
             stream.setAvatar(user == null ? null : user.getAvatar());
             stream.setRole(entry.getValue());
             stream.setOnline(onlineUserIds.contains(userId));
-            stream.setAdmin(isMemberAdmin(userId, entry.getValue(), user, memberTeams.get(userId)));
+            // 口径仍是「旧字段 ∪ RBAC」，只是从逐人数次查询换成了一次批量判定（结果逐人相同）
+            stream.setAdmin(adminUserIds.contains(userId));
             stream.setTasks(tasks);
             stream.setTaskTotal(allTasks.size());
             // 计数一律按"全部任务"算，不能按被截断的列表算 —— 否则负载标签会说谎
@@ -430,26 +431,24 @@ public class WorkbenchService {
         if (projectIds.isEmpty()) return new ArrayList<>(byDate.values());
 
         LocalDateTime since = today.minusDays(TREND_DAYS - 1L).atStartOfDay();
-        List<ActivityLog> logs = activityLogMapper.selectList(new LambdaQueryWrapper<ActivityLog>()
-                .in(ActivityLog::getProjectId, projectIds)
-                .in(ActivityLog::getAction, List.of("CREATE", "MOVE"))
-                .ge(ActivityLog::getCreatedAt, since)
-                .select(ActivityLog::getProjectId, ActivityLog::getAction,
-                        ActivityLog::getDetail, ActivityLog::getCreatedAt));
-        // 每个项目自己的"终态列名"集合，避免跨项目串味（A 项目的"完成"列在 B 项目可能不存在）
+        // v2.22.4：数在库里数完再回来（原来是把近 7 天明细整批搬进 JVM 再遍历）。
+        // 5000 条活动日志时那一步就把一个 /workbench/team 拖掉了 200ms 以上。
+        for (ActivityLogMapper.TrendCountRow row : activityLogMapper.countCreatedByDay(projectIds, since)) {
+            TrendPointVO point = row.getDay() == null ? null : byDate.get(row.getDay().toString());
+            if (point != null) point.setCreated((int) row.getCnt());
+        }
+        // 终态列名仍然是 Java 侧按 BoardColumnRules 算出来的（判定只在一处），
+        // SQL 只负责"把描述里的目标列名和这个项目现有的列名对一下"。
         Map<Long, Set<String>> terminalCache = new HashMap<>();
-        for (ActivityLog log : logs) {
-            if (log.getCreatedAt() == null) continue;
-            TrendPointVO point = byDate.get(log.getCreatedAt().toLocalDate().toString());
-            if (point == null) continue;
-            if ("CREATE".equals(log.getAction())) {
-                point.setCreated(point.getCreated() + 1);
-                continue;
-            }
-            String target = targetColumnName(log.getDetail());
-            if (target == null) continue;
-            if (terminalColumnsOf(log.getProjectId(), terminalCache).contains(target)) {
-                point.setDone(point.getDone() + 1);
+        Set<String> terminalNames = new HashSet<>();
+        for (Long projectId : projectIds) {
+            terminalNames.addAll(terminalColumnsOf(projectId, terminalCache));
+        }
+        if (!terminalNames.isEmpty()) {
+            for (ActivityLogMapper.TrendCountRow row
+                    : activityLogMapper.countMovedToTerminalByDay(projectIds, since, terminalNames)) {
+                TrendPointVO point = row.getDay() == null ? null : byDate.get(row.getDay().toString());
+                if (point != null) point.setDone((int) row.getCnt());
             }
         }
         return new ArrayList<>(byDate.values());
@@ -539,26 +538,6 @@ public class WorkbenchService {
             stream.setLoadLevel("NORMAL");
             stream.setLoadReason("未完成 " + open + " 项，节奏正常");
         }
-    }
-
-    /**
-     * 这个成员算不算管理员（用来在界面上给皇冠/盾牌）。
-     *
-     * <p>先看旧字段（已经随 `team_members` 一起查出来了，零成本），再按他所在的团队逐个问 RBAC；
-     * 命中即停。团队数是这个人真实的团队数，不是全库团队数，所以最多几次点查。
-     */
-    private boolean isMemberAdmin(Long userId, String legacyTeamRole, User user, List<Long> teamIds) {
-        if (AccessControlService.LEGACY_ROLE_ADMIN.equals(legacyTeamRole)) return true;
-        if (isLegacyAdmin(user)) return true;
-        if (teamIds == null) return false;
-        for (Long teamId : teamIds) {
-            if (accessControlService.isTeamAdmin(userId, teamId)) return true;
-        }
-        return false;
-    }
-
-    private boolean isLegacyAdmin(User user) {
-        return user != null && AccessControlService.LEGACY_ROLE_ADMIN.equals(user.getRole());
     }
 
     private WorkbenchTaskVO toTask(Issue issue, Map<Long, Project> projects,

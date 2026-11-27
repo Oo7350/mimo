@@ -1,6 +1,7 @@
 # AGENTS.md
 
-> **最新版本**：v2.22.3（2026-11-27）— 关闭 KNOWN-024：CI 在真实 runner 上第一次全绿。做法只是"人去点了一下 Run workflow"，结果全绿，再 push 一次又绿一次（#8 手动 8 分 36 秒 / #9 push 8 分 57 秒，35 个 step 全 success，其中「跑全部 e2e」5 分 41 秒 / 5 分 43 秒），两条触发路径都验过了。过程中纠正了一句**性质完全不同的记录**：KNOWN-024 一直写着"从没在真实 runner 上跑过"，查 Actions 历史才发现 v2.22.0 那次（run #4）**跑过、而且红了**——红在「启动后端」：等 180 秒也登不进去（正是 BUG-123/125 的样子），后面 4 个 step 全 skipped。也就是说闸门早就装上了，只是**没人读结果**，而记录把"验证失败"写成了"未验证"——前者是有反证据，后者只是没证据，混在一起写就会带着同一个错再推一遍。账本因此变成 **125 条 BUG 全修 + 0 条 KNOWN 未关闭**。
+> **最新版本**：v2.22.4（2026-11-27）— 量级验证：把「性能」从推理变成数字。前几轮都在补「功能对不对」，这一轮问的是「人多了还站得住吗」，答案是**动手之前不知道**——开发库常年只有 3 个用户 / 20 个工作项，所有"分页了、批量查了"的结论都是读代码推的。做法：新增 `tools/seed-load.sql` 造 **100 用户 / 5 项目 / 500 工作项 / 5000 活动日志**（独立「压测团队」，一键清）→ `e2e/perf-probe.mjs` 量 18 个核心接口的 p50/p95 → 用 `Com_select` 差值数 SQL 条数、`jcmd Thread.print` 采样热点 → 改 → 复测。**四个真问题**：① **BUG-126**：全员任务流给每个成员单独判一次管理员，单人 6 条 SELECT，101 人 = **606 条 / 433ms**；改成批量判定（`AccessControlService#filterTeamAdmins`，条数与人数无关），并写了"批量版必须等于逐人版"的等价性用例 → **606→28 条，p95 540→125ms**。② **BUG-127**：项目统计卡片按成员 `selectById`、按迭代 `selectCount×2`，**40 条 SELECT 只画 2KB 的图**；该接口此前**一个测试都没有**，现在补了 `ReportServiceTest`（4 条，既守数字也守条数）→ **40→8 条**。③ **BUG-128**：近 7 天趋势把明细整批查进 JVM 再数（线程栈采样 6 次有 4 次停在这条查询上）；改成库里 `GROUP BY DATE(created_at)`，终态判定仍只在 `BoardColumnRules` 一处，等价性用真实数据验过（改前改后逐日逐字段完全一致）。④ **BUG-129**：在线状态逐人问 Redis（每人 2 次往返）。**顺手收口**：计划书路线图快照从 v2.19.5 更新到当前版本；新增 `tools/cleanup-soft-deleted.sql` 物理清理逻辑删除的项目（先自测：造一个 → 跑 → 校验，实际清掉 **3 个项目 / 31 工作项**）；双实例（跨实例在线 + 广播）写进 CI（新增 `two-instance` job：mysql + redis 两个 service、两个后端共用一个 Redis），并把 `two-instance-presence.mjs` 写死的 Windows 路径改成按脚本位置解析。**这个新 job 第一次在真实 runner 上跑就红了**（BUG-130）：步骤顺序写成"先灌种子再起后端"，而空库里一张表都没有（建表是后端启动时 `MigrationRunner` 干的）→ 1 秒内 `Table 'mimo.users' doesn't exist`；照主 job 的"启动 → 种子"重排后绿。紧接着又撞出 **BUG-131**：主 job 的「建表结果自检」红在**只建出 25 张表**，而前一步"启动后端"是绿的——因为 Spring Boot **先开 HTTP 端口、再跑 `ApplicationRunner`**，迁移跑到一半 `users` 表已存在、登录能过，于是"探活通过"并不等于"库建完"；之前的绿灯只是迁移够快凑出来的时序运气。现在就绪判定改成 `grep "Started MimoApplication"`（Runner 跑完才打）**且** 登录能过，自检也改成"最多等 60 秒、最后一次不达标才红"，失败时打印迁移日志与表清单。同一轮还发现 `perf-probe` 第一版"永远退出 0"（连登录失败都绿，等于焊了个装样子的闸门）→ 改成慢不报错、跑挂必报错。后端 **230 项**测试。账本 **131 条 BUG 全修 + 0 条 KNOWN 未关闭**。
+> **上一版本**：v2.22.3（2026-11-27）— 关闭 KNOWN-024：CI 在真实 runner 上第一次全绿。做法只是"人去点了一下 Run workflow"，结果全绿，再 push 一次又绿一次（#8 手动 8 分 36 秒 / #9 push 8 分 57 秒，35 个 step 全 success，其中「跑全部 e2e」5 分 41 秒 / 5 分 43 秒），两条触发路径都验过了。过程中纠正了一句**性质完全不同的记录**：KNOWN-024 一直写着"从没在真实 runner 上跑过"，查 Actions 历史才发现 v2.22.0 那次（run #4）**跑过、而且红了**——红在「启动后端」：等 180 秒也登不进去（正是 BUG-123/125 的样子），后面 4 个 step 全 skipped。也就是说闸门早就装上了，只是**没人读结果**，而记录把"验证失败"写成了"未验证"——前者是有反证据，后者只是没证据，混在一起写就会带着同一个错再推一遍。账本因此变成 **125 条 BUG 全修 + 0 条 KNOWN 未关闭**。
 > **上一版本**：v2.22.2（2026-11-26）— 全新环境从零到绿（把 KNOWN-024 的风险压到只剩"Linux 环境差异"）：这一轮冲着"CI 从没跑过"去的，做法不是改 YAML 而是**把 CI 的步骤在本机原样演一遍**（独立空 MySQL 实例 + 空库 + 同一条命令），结果第一个 30 秒就红了，而且不是 YAML 的问题——**仓库根本建不出数据库**：① **BUG-123**：基础建表脚本 `resources/db/init.sql`（18 张表）**从来没被任何程序执行过**，`MigrationRunner` 只扫 `db/migration/V*.sql`，`init.sql` 唯一的引用是 `AGENTS.md` 里一条路径还写错的手工命令；于是空库启动后只有 23 张表、`users/teams/projects/issues` 一个都没有，任何接口都失败。修法：搬到 `db/migration/V0__init.sql`（排序最前、只有 DDL、`IF NOT EXISTS` 幂等），把测试账号与演示团队**拆出去**成 `db/seed-demo.sql`（需要显式执行——建表任何环境都该自动，"默认口令的账号"不该），`application.yml` 的 `url` 改成 `${MIMO_DB_URL:…}`（以前写死，CI 里那行环境变量是句废话）。② **BUG-124**：建表与空库引导都是 `ApplicationRunner`，**谁先跑没写**，空库上引导抢在前面查表 → `Table 'mimo.users' doesn't exist` → 启动直接失败；现在 `@Order(HIGHEST/LOWEST)` 写死，并加单测断言顺序。③ **BUG-125**：空库一个账号都没有，而 CI 第一步就要 `admin/123456` 登录 → 新增显式开启的 `mimo.bootstrap.admin-username/password`（默认留空=不动手，只配用户名不配密码也拒绝），建号时同时写旧字段 `users.role` 与 RBAC `user_roles(SUPER_ADMIN, GLOBAL)`，并先查后插避免撞 `user_levels` 唯一键。**结果**：零起点环境（空库）→ 自动建 **38 张表** → 灌演示账号 → 建项目 → 全量 e2e **15 套 148 条 + 3 探针全绿**；workflow 也改成与本机验证一致（`vite` dev server 而非 `preview`——它不配代理 `/api` 全 404、`docker exec` 灌种子、建表结果自检、预热前端编译、pin `playwright@1.65.1`）。顺手修两个"用例假设本机脏数据"：`admin-flow` 依赖 zhangsan 历史上被加过的全局角色（种子改成 `team_members.role=ROLE_ADMIN` 并加纠正 UPDATE）、`presence` 判总人数在连跑时必然飘（改成判"自己的 id 在不在 `onlineUserIds` 里"）。后端 **225 项**测试（新增 `AdminBootstrapTest` 8 条）。① **BUG-122**：AI 规划面板里候选为空时只有一句写死的「Backlog 暂无可规划工作项」，而候选为空其实有**三种**原因、下一步完全不同（项目没工作项 → 该去建；未完成的都排进迭代了 → 该去干活；全做完了 → 该建下一批）。后端本来就算出了 `summary` / `risks`，是前端空态把它们盖掉了。现在 `SprintPlanVO` 增 `emptyReason`（`NO_ISSUES` / `ALL_DONE` / `ALL_SCHEDULED` / `NOTHING_PLANNABLE`），`summary` 与 `risks` 按原因写具体数字，界面显示原因 + 「下一步」+ 一个「去项目看板建工作项」按钮；有候选时该字段不下发（`NON_NULL`）。② **文档诚实化**：计划书里"仍未做：Wiki 历史版本/差异"其实 **v2.13.7/2.13.8 就做完了**，"仍未做：字号体系收敛（100+ 处 10–11px）"实测 **0 处**（BUG-116 那轮全抬到 12px）——两条就地改成"已做 + 版本号"，因为留着假待办会让下一个人照着重做一遍。后端 **217 项**测试（`SprintPlanningServiceTest` 9 → 12）、新 e2e `sprint-plan-empty.mjs` 6 条 → **15 套 148 条 + 3 探针**全绿。
 > **上一版本**：v2.22.1（2026-11-26）— 迭代规划的空态说清原因（BUG-122）+ 把计划书里两条过时备注改成实话：① **BUG-122**：AI 规划面板里候选为空时只有一句写死的「Backlog 暂无可规划工作项」，而候选为空其实有**三种**原因、下一步完全不同（项目没工作项 → 该去建；未完成的都排进迭代了 → 该去干活；全做完了 → 该建下一批）。后端本来就算出了 `summary` / `risks`，是前端空态把它们盖掉了。现在 `SprintPlanVO` 增 `emptyReason`（`NO_ISSUES` / `ALL_DONE` / `ALL_SCHEDULED` / `NOTHING_PLANNABLE`），`summary` 与 `risks` 按原因写具体数字，界面显示原因 + 「下一步」+ 一个「去项目看板建工作项」按钮；有候选时该字段不下发（`NON_NULL`）。② **文档诚实化**：计划书里"仍未做：Wiki 历史版本/差异"其实 **v2.13.7/2.13.8 就做完了**，"仍未做：字号体系收敛（100+ 处 10–11px）"实测 **0 处**（BUG-116 那轮全抬到 12px）——两条就地改成"已做 + 版本号"，因为留着假待办会让下一个人照着重做一遍。后端 **217 项**测试（`SprintPlanningServiceTest` 9 → 12）、新 e2e `sprint-plan-empty.mjs` 6 条 → **15 套 148 条 + 3 探针**全绿。
 > **上一版本**：v2.22.0（2026-11-26）— 工作流从"拖列进网格"变成真流程：① **节点终于有自己的身份**（`WorkflowNode.nodeKey` + `x/y`，`columnId` 变可空）。以前节点主键就是 `columnId`，等于"流程里的一步必须先是一列"，想加「上线」得先去建列，顺序是反的；现在节点是流程状态、看板列由它投影——保存时链路是 `normalizeConfig`（补身份/坐标、连线两端 key 与 columnId 互相补齐）→ `projectFreeNodes`（缺列的节点建一列并回填）→ `validateConfig`，读出时 `fillNodeIdentity` 给历史配置补身份，**config 是 JSON 所以不动表结构**。② **建列不静默**：`WorkflowVO.createdColumns` 把新建的列名带回，界面弹「为「上线」自动创建了看板列（它们原本没有落脚的地方）」；一个列只能属于一个节点（重复绑定 400）；删节点不删列（列里可能还有工作项）。③ **画布**：节点绝对定位可拖（把手在卡片左上——卡片里全是输入控件，整卡拖动会把点击吞掉，第一版就是这么错的）、SVG 贝塞尔连线 + 箭头，从右侧圆点拖到另一节点就建一条规则（也可以点圆点再点目标）。踩过一个坑：原先 `mouseup` 就清"连线中"状态，而浏览器对"按下在 A、松开在 B"会把 `click` 派发到共同祖先（画布），于是画布先清、目标 click 再执行已经晚了——表现是"拖了半天没连上"。④ **前提条件与角色条件分成两类**：`conditions`（谁可以做，任一命中）vs `prerequisites`（什么情况下才能做，全部满足），首个是 `ACCEPTANCE_DONE`；未勾完时报「还不能进入「已完成」：验收标准还有 2 项没勾完（共 2 项）」，而**一条验收标准都没写的工作项不受限制**（否则老任务永远推不动）。`GET /workflow/transitions` 增可选 `issueId`，给了才提前算得出这句话。⑤ **BUG-121**：设计器的「终态」复选框勾了不生效（看板/工作台判终态用的是 `BoardColumnRules.isTerminalName` 列名规则，`isTerminal` 只用于"至少一个终态"校验），改成只读徽标 + 说明——一个能点但不影响任何行为的控件，比没有更糟。后端 **214 项**测试（`WorkflowServiceTest` 25 → 32）、e2e 新增 `workflow-canvas.mjs` 10 条 → **14 套 142 条 + 3 探针**全绿、`workflow-guard` 8 条回归通过、`vue-tsc`、`npm run build` 全绿。
@@ -83,6 +84,11 @@ Mimo is a lightweight Trello-like project management platform for small teams. I
 | **CI 配置必须在本地按同一命令演一遍** | 改 `.github/workflows/*.yml` 时，先把里面的命令在本机原样执行（可用独立空库），确认从零能绿 | 这份 YAML 看着齐全（service、healthcheck、探活、产物），真跑起来第一个 30 秒就撞死：仓库建不出数据库（BUG-123~125） | 演练要花时间、要真起一个空库；但比"推上去看它红"快 |
 | **"未验证"和"验证失败"分开写** | 记录里写"没跑过"之前，先去 Actions 翻一遍历史；跑过就写结论 + 链接（红就写红在哪一步） | KNOWN-024 写了半年的"从没在真实 runner 上跑过"，实际 v2.22.0 那次跑过并红在「启动后端」（180 秒等不到登录），后面 4 个 step 全 skipped —— 闸门早就装了，只是没人读结果；把"有反证据"写成"没证据"，下一个人就会带着同一个错再推一遍 | 需要能读到 Actions 历史（公开仓库用 `web_fetch` 打 `api.github.com/.../actions/runs` 即可，curl 可能被本机代理挡掉） |
 | **"我这能跑"不算跨平台证据** | 跑不了目标平台时，静态查四件事：绝对路径/盘符、require 本地相对文件的大小写、子进程是否用 `process.execPath`、行尾是否被 `.gitattributes` 钉成 LF | e2e 里曾有一处默认模块路径写死 `C:/mimo-env/…`，在 runner 上只会报 `MODULE_NOT_FOUND`；`core.autocrlf` 是每台机器的设置，靠自觉总有人提 CRLF，`\r` 混进断言就是永远不等的假红 | 静态检查覆盖不了 runner 自身差异（mysql 客户端版本、sudo 装浏览器依赖），最后还是得真跑一次 |
+| **"分页了"不等于"没白干"** | 判断一个列表接口是否真的省了活，要数 **SQL 条数**（`SHOW GLOBAL STATUS LIKE 'Com_select'` 前后差），不看响应体大小 | 全员任务流早就分页（每页 8 人），但它仍把全体成员 × 全体工作项算了一遍：分页只省带宽，不省查询。100 人团队实测 **606 条 SELECT / 433ms**，3 人时完全看不出来（BUG-126） | 计数器是全局的，测的时候别同时跑别的请求；`mimo` 账号没有 SUPER，`general_log` 开不了，只能用 `Com_select` 差值 |
+| **量级数据必须能一键清，且不掺进演示库** | 压测数据单独一个「压测团队」+ 配套 `tools/cleanup-load.sql`；跑全量 e2e 前先清 | 100 个成员一进来，「全员任务流」的耗时和成员数断言全变，回归会莫名红；把数据和演示数据混在一起，清的时候又不敢删 | 每次想量都得先灌一遍（751ms，可接受） |
+| **CI 里的耗时只记录，不设门槛** | `perf-probe` 打印 p50/p95 后照常退出 0；要卡就卡**条数**（查询数、明细行数），不卡毫秒 | runner 规格会变，把 540ms 设成红线，下次机器快一点就没人再关心，慢一点就随机红；条数（606 → 28）才是可复现的结论 | 数字不会自动报警，得有人偶尔看一眼日志 |
+| **"服务能响应"≠"服务准备好了"** | 就绪判定选"依赖全部完成之后才会出现"的证据：`grep -q "Started MimoApplication"`（Runner 跑完才打）**且** 登录能过；不确定的计数检查一律"等一会儿再看" | Spring Boot 先开 HTTP 端口再跑 `ApplicationRunner`，而建表就在 Runner 里：迁移跑到一半 `users` 表已存在、登录能过，于是"探活通过"被当成"库建完"，CI 红在**只建出 25 张表**（BUG-131）。前三次全绿只是迁移够快凑出来的时序运气 | 日志文案变了会失效，改启动类时要一起改；断言仍要留一个真数字（38 张表） |
+| **步骤顺序就是依赖关系** | 排 CI 步骤前先看旁边已经绿的 job 怎么排；建表 → 种子 → 用例，顺序错了就是 `Table … doesn't exist` | 新写的 `two-instance` job 把"灌种子"排在"起后端"前面，1 秒内就红（BUG-130），而同文件的主 job 一直是绿的——不是环境问题，是没照着抄 | 抄顺序不能连"为什么这么排"一起抄丢，否则下次又拧回去 |
 | **访问判定只写一次** | 用 `ProjectAccessService` 的 `canAccessProject` / `canAccessTeam` / `canManageProject`，调用点只保留自己的错误文案 | 同一判断题在 11 个地方各写一遍，每次漏一个角色：管理员"能看不能动"、团队管理员看不到待验收、注释与代码矛盾（BUG-115 + BUG-117） | 团队聊天与建/删项目属于**故意**只给团队权限，别一刀切放宽；关键判定别用 mock 测 |
 | **读门槛与写门槛必须同源** | 写操作统一走 `ProjectAccessService.requireProject(...)`，与读完全一致 | 各服务自己写 `isTeamMember(...)` 会出现"能看进去、一动手就被拦"，系统管理员看别的团队时连写都进不去（BUG-115） | 新增服务不要自己判；已发现 10+ 处同款写法，逐步收敛 |
 | **前端只读后端给的 `adminScope`** | 管理范围由 `AccessControlService#resolveAdminScope` 判定，写进 `/api/user/profile` 与登录响应；前端只用它决定显示什么 | 前端看不到旧字段兜底（`team_members.role`）与其他迁移开关，自己算必然对不上后端（BUG-113） | 多一个字段要跟着判定改；新增权限来源时只改 `resolveAdminScope` 一处 |
@@ -225,6 +231,13 @@ CI：`.github/workflows/e2e.yml`。**已在真实 GitHub runner 上跑通**（v2
 空库启动 → 自建 38 张表 → 灌 `db/seed-demo.sql` → `node e2e/seed-fresh-db.mjs` → `run-all.mjs` 全绿。
 演练照出三个致命坑（建表脚本从没执行 / Runner 顺序未定 / 空库没账号，BUG-123~125），
 所以**别随意调换步骤顺序**——顺序是踩过坑之后的样子。改配置前先在本地演一遍（见决策表末几条）。
+
+v2.22.4 起 workflow 变成**两个 job**（都已在本地按同一命令验过）：
+- `e2e`（19 个 step）：原有链路 + 末尾「造量级数据 → 性能探针 → 清量级数据」三步。
+  探针**只出数字、不设门槛**——机器规格会变，拿它当红线只会变成随机红。
+- `two-instance`（9 个 step，`needs: e2e`）：mysql + redis 两个 service，jar 从主 job 的 artifact 取回，
+  起两个后端（8080 / 8081）共用一个 Redis，跑 `e2e/two-instance-presence.mjs`（跨实例在线 + 跨实例广播）。
+  单独一个 job 是为了不让 `store=memory` 的主回归和 Redis 语义混在一个进程里。
 
 ```bash
 # 全新环境（空库）从零到能跑：后端自动建表 → 演示账号 → 演示项目（幂等，可重复跑）
@@ -378,6 +391,59 @@ All v2.15 AI roadmap items are implemented. Future work may replace the lexical 
   多实例部署需要共享 Redis，否则在线人数与实时消息各算各的（接口会如实下发 `presenceShared=false`，界面写「仅本实例」）。
 
 ## Version History
+
+### v2.22.4 — 量级验证：把「性能」从推理变成数字（BUG-126~129）(2026-11-27)
+
+前几轮补的是"功能对不对"，这一轮问的是"人多了还站得住吗"。答案是动手之前**不知道**：
+开发库常年 3 个用户 / 20 个工作项 / 1156 条活动日志，所有"分页了、批量查了"的结论都是读代码推的。
+
+做法（每一步都能复现）：
+
+1. `tools/seed-load.sql` 造 **100 用户 / 5 项目 / 500 工作项 / 1000 评论 / 5000 活动日志**，
+   全挂在独立「压测团队」下，不掺演示数据；`tools/cleanup-load.sql` 一键删干净。
+2. `e2e/perf-probe.mjs` 对 18 个核心读接口打 N 轮，输出 p50/p95/max，按 p95 倒序。
+3. SQL 条数用 `SHOW GLOBAL STATUS LIKE 'Com_select'` 前后差值（`mimo` 账号没 SUPER，`general_log` 开不了）。
+4. 热点用 `jcmd <pid> Thread.print` 在压测中采样线程栈。
+
+结果（同一台机器、同一份数据、10 轮）：
+
+| 接口 | 改前 p95 | 改后 p95 | 改前 SELECT | 改后 SELECT |
+|---|---|---|---|---|
+| `/workbench/team`（100 成员） | 540ms | **125ms** | 606 | **28** |
+| `/reports/stats/{id}` | 108ms | **< 30ms** | 40 | **8** |
+| 其余 16 个核心接口 | 均 < 60ms | 同量级 | ≤ 3 | 同 |
+
+- **BUG-126**：`isTeamAdmin` 逐成员判定（每人 6 条 SELECT）→ 新增批量
+  `AccessControlService#filterTeamAdmins(userIds, teamIds)`，口径不变（旧字段 ∪ RBAC），
+  并写了"批量版必须等于逐人版"的等价性用例。
+- **BUG-127**：项目统计按成员 `selectById`、按迭代 `selectCount×2` → 各改成一次批量；
+  该接口此前零测试，补了 `ReportServiceTest`（4 条，既守数字也守条数）。
+- **BUG-128**：近 7 天趋势把明细整批搬进 JVM 再数 → 下沉成 `GROUP BY DATE(created_at)`（最多 7 行）；
+  终态判定仍只在 `BoardColumnRules`，等价性用真实数据验（改前改后逐日逐字段一致）。
+- **BUG-129**：在线状态逐人问 Redis（每人 2 次往返）→ 先取在线集合再求交集。
+
+顺带收口：计划书路线图快照 v2.19.5 → 当前版本；新增 `tools/cleanup-soft-deleted.sql`
+物理清理逻辑删除的项目（**先自测**：造一个 → 跑 → 校验，实际清掉 3 个项目 / 31 个工作项）；
+双实例（跨实例在线 + 跨实例广播）写进 CI（新 job `two-instance`，mysql + redis 两个 service，
+两个后端共用一个 Redis），并把 `two-instance-presence.mjs` 写死的 Windows 绝对路径改成按脚本位置解析。
+
+**BUG-130**（新 job 自己抓到的第一个问题）：`two-instance` 第一次在真实 runner 上跑就红了——
+第 7 步「灌演示账号」1 秒内失败（`Table 'mimo.users' doesn't exist`），后三步 skipped。
+原因是我把顺序排成了"先灌种子再起后端"，而空库的建表是后端启动时 `MigrationRunner` 干的活；
+主 job 里同样的命令能跑，只是因为它先起后端。照主 job 的顺序重排
+（启动 → 等就绪 → 灌种子 → 验证）后绿。
+
+**BUG-131**（紧接着的第二个）：重排后主 job 反而红了——「建表结果自检」发现**只建出 25 张表**，
+而「启动后端」那步是绿的。根因是 Spring Boot **先开 HTTP 端口、再跑 `ApplicationRunner`**，
+迁移中途 `users` 表已存在、`AdminBootstrap` 与登录都正常，于是"能登录"被当成了"建完了"；
+前三次的绿灯只是迁移够快（10 秒内跑完）凑出来的时序运气。修法：就绪改成
+`grep -q "Started MimoApplication"`（这句在 Runner 全部跑完之后才打）**且** 登录能过；
+自检改成"最多等 60 秒、最后一次不达标才红"，失败时打印 `MigrationRunner` 日志与现有表清单。
+
+同一轮顺手把 `perf-probe.mjs` 从"永远退出 0"改成"慢不报错、跑挂必报错"——
+前者那种写法就是 KNOWN-024 老毛病（闸门装了没人读结果）的翻版。
+
+后端 **230 项**测试（AccessControlServiceTest +5、新增 ReportServiceTest 4 条）；账本 **131 条 BUG 全修 + 0 条 KNOWN 未关闭**。
 
 ### v2.22.3 — 关闭 KNOWN-024：CI 在真实 runner 上第一次全绿 (2026-11-27)
 

@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mimo.common.BusinessException;
 import com.mimo.dto.ProjectDTO.ProjectVO;
@@ -45,6 +46,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -95,6 +98,16 @@ class WorkbenchServiceTest {
     private AccessControlService accessControlService;
     @Mock
     private PresenceService presenceService;
+
+    /**
+     * 管理员标记现在走批量判定（v2.22.4）：默认"这批人里没有管理员"，
+     * 需要断言皇冠/盾牌的用例自己 stub 一次返回值（见 teamWorkbenchGroupsByMemberAndFlagsOverdue）。
+     * 用 lenient 是因为多数用例并不关心这个标记。
+     */
+    @BeforeEach
+    void defaultNoMemberIsAdmin() {
+        lenient().when(accessControlService.filterTeamAdmins(any(), any())).thenReturn(Set.of());
+    }
 
     @Test
     void shouldReturnCrossProjectTasksRiskAndWeeklySummary() {
@@ -221,6 +234,8 @@ class WorkbenchServiceTest {
                 List.of(zhangsanOverdue, zhangsanTodo, lisiDoing, lisiDone, nobody));
         when(projectMapper.selectBatchIds(any())).thenReturn(List.of(teamProject(100L, 1L)));
         when(presenceService.filterOnline(any())).thenReturn(Set.of(11L));
+        // lisi 是旧字段里的团队管理员（team_members.role = ROLE_ADMIN）：批量判定要把他挑出来
+        when(accessControlService.filterTeamAdmins(any(), any())).thenReturn(Set.of(11L));
 
         TeamWorkbenchVO result = service().getTeamWorkbench(1L);
 
@@ -399,41 +414,48 @@ class WorkbenchServiceTest {
     }
 
     @Test
-    void teamWorkbenchTrendCountsOnlyRealMoveIntoTerminalColumn() {
+    void teamWorkbenchTrendMapsDailyAggregatesIntoPoints() {
         // 趋势必须来自活动日志：新建 = CREATE，完成 = MOVE 且目标列是终态列。
         // 用 updated_at 近似的话，"改个标题"会被算成完成。
+        // v2.22.4 起"数"在库里数完（GROUP BY DATE(created_at)），这里守的是"行 → 点"的映射不错位。
         stubSystemAdminWithMembers(1);
         when(issueMapper.selectList(any())).thenReturn(List.of());
-        LocalDateTime now = LocalDateTime.now();
-        when(activityLogMapper.selectList(any())).thenReturn(List.of(
-                activityLog(100L, "CREATE", "创建了 MIMO-1", now),
-                activityLog(100L, "MOVE", "将 MIMO-1 从 待办 移动到 完成", now),
-                activityLog(100L, "MOVE", "将 MIMO-2 从 待办 移动到 进行中", now),
-                activityLog(100L, "UPDATE", "改了标题", now)));
-        // 项目的列一次取回：完成算终态，进行中不算（判定交给 BoardColumnRules，不靠 SQL 过滤）
-        BoardColumn done = new BoardColumn();
-        done.setProjectId(100L);
-        done.setName("完成");
-        BoardColumn doing = new BoardColumn();
-        doing.setProjectId(100L);
-        doing.setName("进行中");
-        when(boardColumnMapper.selectList(any())).thenReturn(List.of(done, doing));
+        LocalDate today = LocalDate.now();
+        when(activityLogMapper.countCreatedByDay(any(), any())).thenReturn(List.of(
+                trendRow(today, 3), trendRow(today.minusDays(2), 5)));
+        when(activityLogMapper.countMovedToTerminalByDay(any(), any(), any())).thenReturn(List.of(
+                trendRow(today, 2)));
+        when(boardColumnMapper.selectList(any())).thenReturn(List.of(column(100L, "完成"), column(100L, "进行中")));
 
         TeamWorkbenchVO result = service().getTeamWorkbench(1L, 1, 8, 6, null, "all", "overdue");
 
         assertThat(result.getTrend()).hasSize(7);
-        assertThat(result.getTrend().get(6).getDate()).isEqualTo(LocalDate.now().toString());
-        assertThat(result.getTrend().get(6).getCreated()).isEqualTo(1);
-        assertThat(result.getTrend().get(6).getDone()).isEqualTo(1);
+        assertThat(result.getTrend().get(6).getDate()).isEqualTo(today.toString());
+        assertThat(result.getTrend().get(6).getCreated()).isEqualTo(3);
+        assertThat(result.getTrend().get(6).getDone()).isEqualTo(2);
+        // 三天前的 5 条也要落在对应那天，而不是堆到今天
+        assertThat(result.getTrend().get(4).getCreated()).isEqualTo(5);
+        assertThat(result.getTrend().get(5).getCreated()).isZero();
         assertThat(result.getTrendNote()).contains("活动日志");
     }
 
     @Test
-    void trendTargetColumnParsingIgnoresUnknownDetails() {
-        assertThat(WorkbenchService.targetColumnName("将 MIMO-1 从 待办 移动到 完成")).isEqualTo("完成");
-        assertThat(WorkbenchService.targetColumnName("将 MIMO-1 从 待办 移动到进行中")).isEqualTo("进行中");
-        assertThat(WorkbenchService.targetColumnName("随手改了个标题")).isNull();
-        assertThat(WorkbenchService.targetColumnName(null)).isNull();
+    void teamWorkbenchTrendSendsOnlyTerminalColumnNamesToSql() {
+        // 终态判定只在一处（BoardColumnRules）：SQL 拿到的名单里不许出现"进行中"这种非终态列，
+        // 否则"移动到进行中"就会被算成完成。
+        stubSystemAdminWithMembers(1);
+        when(issueMapper.selectList(any())).thenReturn(List.of());
+        when(activityLogMapper.countCreatedByDay(any(), any())).thenReturn(List.of());
+        when(activityLogMapper.countMovedToTerminalByDay(any(), any(), any())).thenReturn(List.of());
+        when(boardColumnMapper.selectList(any())).thenReturn(List.of(
+                column(100L, "待办"), column(100L, "进行中"), column(100L, "完成")));
+
+        service().getTeamWorkbench(1L, 1, 8, 6, null, "all", "overdue");
+
+        org.mockito.ArgumentCaptor<java.util.Collection<String>> names =
+                org.mockito.ArgumentCaptor.forClass(java.util.Collection.class);
+        verify(activityLogMapper).countMovedToTerminalByDay(any(), any(), names.capture());
+        assertThat(names.getValue()).containsExactly("完成");
     }
 
     private void stubSystemAdminWithMembers(int memberCount) {
@@ -452,14 +474,19 @@ class WorkbenchServiceTest {
         when(presenceService.filterOnline(any())).thenReturn(Set.of());
     }
 
-    private ActivityLog activityLog(Long projectId, String action, String detail, LocalDateTime createdAt) {
-        ActivityLog log = new ActivityLog();
-        log.setProjectId(projectId);
-        log.setTargetType("ISSUE");
-        log.setAction(action);
-        log.setDetail(detail);
-        log.setCreatedAt(createdAt);
-        return log;
+    /** 趋势聚合行（库里 GROUP BY 出来的那天 + 条数） */
+    private ActivityLogMapper.TrendCountRow trendRow(LocalDate day, long cnt) {
+        ActivityLogMapper.TrendCountRow row = new ActivityLogMapper.TrendCountRow();
+        row.setDay(day);
+        row.setCnt(cnt);
+        return row;
+    }
+
+    private BoardColumn column(Long projectId, String name) {
+        BoardColumn column = new BoardColumn();
+        column.setProjectId(projectId);
+        column.setName(name);
+        return column;
     }
 
     private Team team(Long id, String name) {
