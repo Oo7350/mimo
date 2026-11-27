@@ -104,6 +104,19 @@ async function dragCard(page, title, targetColumn) {
   await page.waitForTimeout(2200);
 }
 
+/**
+ * 拖一次，然后**等提示条真的出现**（最多 5 秒）。
+ * 固定 `waitForTimeout(2200)` 在共享 runner 上不够稳：v2.22.4 的 CI 就红过一次
+ * 「6/7 通过」，而本地连跑 5 次都是 8/8——典型的"拖拽后消息还没渲染就去读"
+ * （BUG-137）。这里不等死时间，改成等条件；超时了返回 false，由调用方决定要不要再拖一次。
+ */
+async function dragAndWaitForTip(page, title, targetColumn) {
+  await dragCard(page, title, targetColumn);
+  const tip = page.locator(".el-message").first();
+  const appeared = await tip.waitFor({ state: "visible", timeout: 5000 }).then(() => true).catch(() => false);
+  return appeared;
+}
+
 async function main() {
   const token = await login(ADMIN);
 
@@ -150,8 +163,16 @@ async function main() {
         await page.goto(`${BASE}/projects/1/board`, { waitUntil: "domcontentloaded" });
         await page.locator(".board__column").first().waitFor({ state: "visible", timeout: 20000 });
         await page.waitForTimeout(1000);
-        // scrum 模板只允许相邻移动：待办 → 已完成 必须被拦
-        await dragCard(page, TITLE, page.locator(".board__column-body").nth(2));
+        // scrum 模板只允许相邻移动：待办 → 已完成 必须被拦。
+        // 拖拽是鼠标事件序列，慢机上可能没落到目标列（提示条不出现）——那样就**再拖一次**，
+        // 并在 detail 里说明"重试过"，别让一次抖动冒充"功能坏了"。
+        let retried = false;
+        let appeared = await dragAndWaitForTip(page, TITLE, page.locator(".board__column-body").nth(2));
+        if (!appeared) {
+          retried = true;
+          await page.waitForTimeout(500);
+          appeared = await dragAndWaitForTip(page, TITLE, page.locator(".board__column-body").nth(2));
+        }
         const msgs = await page.locator(".el-message").allInnerTexts();
         const text = msgs.join(" | ");
         const blocked = /工作流不允许/.test(text);
@@ -160,7 +181,7 @@ async function main() {
         record(
           "越界的拖拽确实被工作流拦下（卡片留在原列）",
           blocked && after?.data?.columnId === 1,
-          `提示=「${text.slice(0, 70)}」, columnId=${after?.data?.columnId}`
+          `提示=「${text.slice(0, 70)}」, columnId=${after?.data?.columnId}${retried ? "（拖了两次，第一次没出现提示）" : ""}`
         );
         record(
           "被拦时界面告诉用户「还能去哪」，而不是只说不允许",
@@ -181,12 +202,21 @@ async function main() {
         await page.goto(`${BASE}/projects/1/board`, { waitUntil: "domcontentloaded" });
         await page.locator(".board__column").first().waitFor({ state: "visible", timeout: 20000 });
         await page.waitForTimeout(1000);
+        // 允许的移动：拖完先看库里 columnId 变了没有，没变就再拖一次（和上面越界拖同理，
+        // 慢机上鼠标序列可能没落到目标列）。detail 里写明是否重试过。
+        let retried = false;
         await dragCard(page, TITLE, page.locator(".board__column-body").nth(1));
-        const after = await api("GET", `/issues/${issueId}`, null, token);
+        let after = await api("GET", `/issues/${issueId}`, null, token);
+        if (after?.data?.columnId !== 2) {
+          retried = true;
+          await page.waitForTimeout(500);
+          await dragCard(page, TITLE, page.locator(".board__column-body").nth(1));
+          after = await api("GET", `/issues/${issueId}`, null, token);
+        }
         record(
           "规则允许的移动照常成功（待办 → 进行中）",
           after?.data?.columnId === 2 && after?.data?.status === "IN_PROGRESS",
-          `columnId=${after?.data?.columnId}, status=${after?.data?.status}`
+          `columnId=${after?.data?.columnId}, status=${after?.data?.status}${retried ? "（拖了两次，第一次没动）" : ""}`
         );
       } catch (e) {
         record("允许的移动", false, e.message);

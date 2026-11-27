@@ -215,7 +215,7 @@ jobs:
           if [ ! -f e2e-run.log ]; then
             echo "::error::e2e-run.log 不存在，e2e 在启动阶段就挂了"; exit 0
           fi
-          lines=$(grep -E "▶ |失败项：" e2e-run.log | grep -E "失败" | head -5)
+          lines=$(grep -E "FAIL |▶ .*失败|失败项" e2e-run.log | head -6)
           if [ -z "$lines" ]; then
             echo "::error::e2e 失败但没抓到失败行，见 e2e-logs 产物里的 e2e-run.log"
           else
