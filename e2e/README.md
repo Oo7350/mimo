@@ -86,7 +86,7 @@ node e2e/seed-fresh-db.mjs          # MIMO_API=http://127.0.0.1:8080/api 可改�
 BUG-123~125）。所以：**改 CI 配置时，先把里面的命令在本机跑一遍**，
 "看起来对的 YAML"和"能跑的 YAML"是两件事。
 
-### 跨平台：Windows 开发机 ↔ Ubuntu runner（v2.22.2 体检）
+### 跨平台：Windows 开发机 ↔ Ubuntu runner（v2.22.2 体检，v2.22.3 真机确认）
 
 跑不了 CI 的时候，至少把**静态能查的差异**查干净。这套用例现在的规矩：
 
@@ -101,6 +101,24 @@ BUG-123~125）。所以：**改 CI 配置时，先把里面的命令在本机跑
 `.github/workflows/e2e.yml` 那边同步加了两处：`docker exec` 取表数后 `tr -dc '0-9'`
 （多一行 warning 会让 `[ "" -lt 30 ]` 报 `integer expression expected`），
 后台进程用 `nohup`（否则 step 结束时被 SIGHUP 带走，表现成"上一步成功、下一步连不上"）。
+
+### CI 实跑记录（v2.22.3，这一格不再是空的）
+
+| 项 | 实测 |
+|---|---|
+| Run | [#8](https://github.com/Oo7350/mimo/actions/runs/45926155601)，`workflow_dispatch`，commit `5747663` |
+| 结论 | **success**，35 个 step 全绿（skipped 的只有「失败时留存日志」，它只在 failure 时跑） |
+| 总耗时 | **8 分 36 秒** |
+| 空库建表 | 自检通过（门槛 ≥30，本地实测 38） |
+| 后端单测 | 31 秒（225 项） |
+| 前端依赖+类型检查+构建 | 56 秒 |
+| Playwright 安装 | 19 秒（`1.65.1` + `--with-deps chromium`） |
+| **全量 e2e** | **5 分 41 秒通过**（15 套 148 条 + 3 探针） |
+
+> 怎么自己查（不需要 token，仓库是公开的）：
+> `https://api.github.com/repos/Oo7350/mimo/actions/runs` 看列表，
+> `…/actions/runs/<id>/jobs` 看每个 step 的 `conclusion`。
+> 本机用 curl 走代理会被挡（403），用 web_fetch 或浏览器直接打开就行。
 
 CI：`.github/workflows/e2e.yml`（MySQL service + 起前后端 + 跑 `run-all.mjs`）。
 **如实说明**：该 workflow 没在真实 GitHub runner 上跑过，本地同一条命令两轮全绿。
