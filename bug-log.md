@@ -12,7 +12,7 @@
 
 | 指标 | 实测值 |
 |---|---|
-| Run | [#8](https://github.com/Oo7350/mimo/actions/runs/45926155601)，`workflow_dispatch`，run_attempt 1 |
+| Run | [#8](https://github.com/Oo7350/mimo/actions/runs/45926155601)，`workflow_dispatch`，commit `5747663` |
 | 结论 | **success**（job 35 个 step 全绿，唯一 skipped 的是「失败时留存日志」——它本来就只在 failure 时跑） |
 | 总耗时 | **8 分 36 秒**（02:04:39 → 02:13:15 UTC） |
 | 后端单测 | 31 秒（225 项，与本地一致） |
@@ -21,6 +21,11 @@
 | 前端依赖+类型检查+构建 | 56 秒（`npm ci` + `vue-tsc` + `vite build`） |
 | 安装 Playwright | 19 秒（`playwright@1.65.1` + `--with-deps chromium`） |
 | **跑全部 e2e** | **5 分 41 秒，success**（15 套 148 条 + 3 探针） |
+
+**不是一次偶然**：推送文档后由 `push` 触发的
+[#9](https://github.com/Oo7350/mimo/actions/runs/45928085911)（commit `e9a1219`）**再次全绿**——
+8 分 57 秒、e2e 步骤 5 分 43 秒，35 个 step 同样全 success。两条触发路径（手动 dispatch / push）
+都验过了。
 
 **同时纠正一句记录**：KNOWN-024 一直写着"**从没**在真实 runner 上跑过"。查 Actions 历史才发现
 [v2.22.0 的 #4](https://github.com/Oo7350/mimo/actions/runs/45775384583) **就跑过一次，并且红了**——

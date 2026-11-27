@@ -106,14 +106,14 @@ BUG-123~125）。所以：**改 CI 配置时，先把里面的命令在本机跑
 
 | 项 | 实测 |
 |---|---|
-| Run | [#8](https://github.com/Oo7350/mimo/actions/runs/45926155601)，`workflow_dispatch`，commit `5747663` |
-| 结论 | **success**，35 个 step 全绿（skipped 的只有「失败时留存日志」，它只在 failure 时跑） |
-| 总耗时 | **8 分 36 秒** |
+| Run | [#8](https://github.com/Oo7350/mimo/actions/runs/45926155601)（`workflow_dispatch`，`5747663`）+ [#9](https://github.com/Oo7350/mimo/actions/runs/45928085911)（`push`，`e9a1219`） |
+| 结论 | **两次都 success**，35 个 step 全绿（skipped 的只有「失败时留存日志」，它只在 failure 时跑） |
+| 总耗时 | **8 分 36 秒** / **8 分 57 秒** |
 | 空库建表 | 自检通过（门槛 ≥30，本地实测 38） |
 | 后端单测 | 31 秒（225 项） |
 | 前端依赖+类型检查+构建 | 56 秒 |
 | Playwright 安装 | 19 秒（`1.65.1` + `--with-deps chromium`） |
-| **全量 e2e** | **5 分 41 秒通过**（15 套 148 条 + 3 探针） |
+| **全量 e2e** | **5 分 41 秒 / 5 分 43 秒通过**（15 套 148 条 + 3 探针） |
 
 > 怎么自己查（不需要 token，仓库是公开的）：
 > `https://api.github.com/repos/Oo7350/mimo/actions/runs` 看列表，
