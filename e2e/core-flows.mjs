@@ -269,11 +269,15 @@ try {
 // ---------- 6. 新建 Sprint ----------
 try {
   await page.goto(`${BASE}/projects/1/sprints`, { waitUntil: "load" });
-  await page.waitForTimeout(1800);
+  // 别用固定 1800ms：整套连跑时 Vite 可能正在重编译，页面会比平时慢，
+  // 慢一步的结果是"按钮点空了（或弹窗还没挂上就填了）→ POST 一个都没发出去"，
+  // 报出来的却是 `POST /sprints=null`，看着像后端不认（v2.22.2 连跑踩过一次）。
+  const newBtn = page.getByRole("button", { name: /新建 Sprint/ }).first();
+  await newBtn.waitFor({ state: "visible", timeout: 20000 });
   const from = bump();
-  await page.getByRole("button", { name: /新建 Sprint/ }).first().click({ force: true });
-  await page.waitForTimeout(900);
+  await newBtn.click({ force: true });
   const dialog = page.locator(".el-dialog:visible").last();
+  await dialog.waitFor({ state: "visible", timeout: 15000 });
   await dialog.locator('input[placeholder*="名称"], input[type="text"]').first().fill(`E2E迭代${stamp}`);
   // 起止日期
   const dates = dialog.locator('input[placeholder*="日期"], input[placeholder*="开始"], input[placeholder*="结束"]');
@@ -284,11 +288,29 @@ try {
     await dates.nth(1).fill("2026-12-04");
     await page.keyboard.press("Enter");
   }
-  await dialog.getByRole("button", { name: /确定|创建|保存/ }).last().click({ force: true });
-  await page.waitForTimeout(2200);
+  // 等真正的那个请求，而不是等 2200ms 再看记录
+  await Promise.all([
+    page
+      .waitForResponse((r) => r.url().includes("/api/sprints") && r.request().method() === "POST", { timeout: 20000 })
+      .catch(() => null),
+    dialog.getByRole("button", { name: /确定|创建|保存/ }).last().click({ force: true }),
+  ]);
+  await page.waitForTimeout(600);
   const st = lastStatus("POST", "/api/sprints");
   const fails = newFails(from);
-  rec("6.新建 Sprint", (st === 200 || st === 201) && fails.length === 0, `POST /sprints=${st} 4xx=${fails.length}`);
+  let detail = `POST /sprints=${st} 4xx=${fails.length}`;
+  if (!(st === 200 || st === 201)) {
+    // 失败时把"卡在哪儿"说清楚：弹窗还开着多半是表单校验没过
+    const stillOpen = (await page.locator(".el-dialog:visible").count()) > 0;
+    const tips = await page.evaluate(() =>
+      Array.from(document.querySelectorAll(".el-form-item__error"))
+        .map((el) => (el.textContent || "").trim())
+        .filter(Boolean)
+        .slice(0, 3),
+    );
+    detail += ` 弹窗还开着=${stillOpen} 校验提示=${tips.join("；") || "无"}`;
+  }
+  rec("6.新建 Sprint", (st === 200 || st === 201) && fails.length === 0, detail);
 } catch (e) {
   await page.screenshot({ path: path.join(SHOTS, "6-sprint.png") });
   rec("6.新建 Sprint", false, String(e).slice(0, 200));

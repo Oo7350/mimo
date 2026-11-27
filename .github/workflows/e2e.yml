@@ -84,7 +84,7 @@ jobs:
       # 就绪判断用登录接口：它需要 users 表 + 管理员同时存在，比只看端口实在。
       - name: 启动后端
         run: |
-          java -jar backend/mimo-app/target/mimo-app-1.0.0-SNAPSHOT.jar > backend.log 2>&1 &
+          nohup java -jar backend/mimo-app/target/mimo-app-1.0.0-SNAPSHOT.jar > backend.log 2>&1 &
           for i in $(seq 1 60); do
             if curl -sf -X POST http://localhost:8080/api/auth/login \
                  -H 'Content-Type: application/json' \
@@ -97,9 +97,13 @@ jobs:
 
       - name: 建表结果自检
         run: |
+          # 只留数字：docker exec 偶尔会带一行 warning，`[ "" -lt 30 ]` 会报
+          # "integer expression expected"，那种错误信息完全看不出真实原因
           tables=$(docker exec -i ${{ job.services.mysql.id }} \
             mysql -umimo -pmimo123 -N -B mimo \
-            -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='mimo'")
+            -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='mimo'" \
+            | tr -dc '0-9')
+          tables=${tables:-0}
           echo "已建表 ${tables} 张"
           # 38 是 v2.22.2 的实测值；少一半说明迁移链断在中间，早点红比跑完 15 套才发现好
           if [ "$tables" -lt 30 ]; then
@@ -130,7 +134,7 @@ jobs:
       - name: 启动前端
         run: |
           cd frontend
-          npx vite --port 5173 --strictPort > ../frontend.log 2>&1 &
+          nohup npx vite --port 5173 --strictPort > ../frontend.log 2>&1 &
           for i in $(seq 1 60); do
             if curl -sf http://localhost:5173/ > /dev/null; then
               echo "前端就绪"; exit 0

@@ -325,6 +325,14 @@ CI 的步骤原样执行一遍**：起一个独立的空 MySQL 实例、空库�
 `seed-demo.sql` 连跑两遍幂等；后端 **225 项**（新增 `AdminBootstrapTest` 8 条）。
 KNOWN-024 仍挂着，但只剩"Linux/runner 环境差异"这一层。
 
+**跨平台体检（同一轮，跑不了 CI 就先查静态差异）**：e2e 里没有写死盘符 / `process.platform` /
+`cmd.exe`（唯一一处 `C:/mimo-env/…` 默认模块路径已改成退回包名 `playwright`），没有仓库内相对
+`require`（大小写敏感文件系统上会炸），子进程一律 `spawn(process.execPath, …)`；`git ls-files --eol`
+显示索引里 575 个文件**全 LF**，并新增 `.gitattributes` 把 `*.sql/*.mjs/*.ts/*.vue/*.yml/*.sh`
+钉成 `eol=lf`（`core.autocrlf` 是每台机器的设置，靠自觉总会有人提交 CRLF，`\r` 混进断言就是假红）；
+workflow 里 `docker exec` 取表数后 `tr -dc '0-9'` + `${tables:-0}`（多一行 warning 会让
+`[ "" -lt 30 ]` 报 `integer expression expected`），后台进程改 `nohup`（否则 step 结束时被 SIGHUP 带走）。
+
 ### v2.22.1 — 迭代规划的空态说清原因（BUG-122）+ 计划书两条过时备注改成实话 (2026-11-26)
 
 起点是查"计划书还剩什么没做"，结果三条里两条早就做完了——文档在误导人。

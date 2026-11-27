@@ -75,7 +75,7 @@
 - `db/seed-demo.sql` 连跑两遍幂等（`INSERT IGNORE` + 两条纠正目标的 `UPDATE`）。
 - 全量 e2e：**15/15 套、148/148 检查点、3/3 探针**（在这套零起点环境上跑出来的）。
 
-### 顺带修掉的两个"用例假设了本机脏数据"
+### 顺带修掉的"用例假设了本机脏数据 / 假设了页面很快"
 
 | 现象 | 真因 | 改法 |
 |---|---|---|
@@ -83,6 +83,24 @@
 | `admin-flow` 的「管理员代提交」那条红：`提交验收` 按钮不存在 | 两个假设叠在一起：① 它挑的是"进行中、非缺陷"的卡，**没排除已经验收通过的**（那种卡按设计就没有这个按钮）；② 也没排除**自己负责**的卡（自己负责时"能提交"理所当然，验不出代提交）。换台机器/换个库就跑偏 | 候选加两个条件：`owner ≠ admin` 且 `/issues/{id}/reviews` 为空；库里实在没有合适候选时**自己造一张**（TASK 指给 zhangsan、置为进行中）再走看板深链 |
 | 同上，偶发：深链开了但弹窗没出现 | 看板 `?issue=` 的弹窗要等 `fetchBoard()` 回来才开，用例固定等 `2600ms`，项目大时会不够 | 改成等 `.el-dialog` 可见（20 秒），失败时把 `url` / 弹窗数 / 按钮列表打出来——固定毫秒等待是这个仓库里最反复的假红来源 |
 | `presence` 在连跑时红：「关页后在线人数没回落」 | 判的是**总人数**。连跑十几套时，前面套件的浏览器会话正在陆续心跳超时下线，"我加一人、别人掉一人"总数不变。改成比基线也不行（同样在动） | 判"自己的 id 是否在 `onlineUserIds` 里"：开页必须出现、关页必须消失。另外把固定 `waitForTimeout(3000)` 换成"等自己的 id 出现（最多 25 秒）"，慢机器不再假红 |
+| `core-flows` 连跑时偶发：「6.新建 Sprint」报 `POST /sprints=null`（一个请求都没发） | 进页面后固定等 `1800ms` 就点「新建 Sprint」、再固定等 `900ms` 就填表。整套连跑时 Vite 可能正在重编译，页面慢一拍 → 按钮点空、弹窗没挂上就填表，**请求根本没发出去**，报出来却像后端不认 | 改成等按钮可见（20 秒）→ 等弹窗可见（15 秒）→ 等真正的 `POST /api/sprints` 响应（20 秒）；失败时额外打印"弹窗还开着没 / 表单校验提示"，下次一眼能看出是卡在表单还是接口 |
+
+### 跨平台体检（把"Linux 环境差异"这层也先查一遍）
+
+KNOWN-024 剩下的唯一风险是"Windows 上绿、Linux runner 上红"。既然 CI 跑不了，就先把
+**能静态查出来的差异**逐项过一遍（这一节记的是查的过程与结论，不是新 bug）：
+
+| 查什么 | 结果 |
+|---|---|
+| e2e 里有没有写死 `C:\` / `process.platform` / `cmd.exe` / `path.win32` | **0 命中**（唯一一处是 `presence-source-label.mjs` 的默认模块路径 `C:/mimo-env/...`——已改成退回包名 `playwright`，否则 CI 上会报看不懂的 `MODULE_NOT_FOUND`） |
+| 有没有 `require("./本地文件")` 这种大小写敏感引用 | **没有**：所有套件只 require playwright（或 `frontend/node_modules` 里的 esbuild/marked/dompurify，由 `npm ci` 落地），无仓库内相对引用 |
+| 子进程怎么起 | `run-all.mjs` 用 `spawn(process.execPath, …)`，不是 `"node"` 也不是 `shell: true`；`xss-markdown.mjs` 依次试 `$GIT_EXE` → `git` → 一条本机 UCRT 路径，前两个在 Linux 上就是对的 |
+| 仓库里存的行尾 | `git ls-files --eol`：索引里 **575 个文件全 LF、0 个 CRLF、0 个 mixed**，Linux 检出不会踩 `\r` |
+| 那还防什么？ | 加 `.gitattributes` 把 `*.sql / *.mjs / *.ts / *.vue / *.yml / *.sh` 钉成 `eol=lf`，二进制声明 `binary`——`core.autocrlf` 是**每台机器各自的设置**，别人 clone 时不设就又会把 CRLF 带进来 |
+| workflow 的 shell 坑 | ① `tables=$(… docker exec …)` 一旦多一行 warning，`[ "$tables" -lt 30 ]` 会报 `integer expression expected`，看不出真因 → 加 `tr -dc '0-9'` + `${tables:-0}`；② 后台起前后端改用 `nohup`，避免 step 结束时被 SIGHUP 带走（那会让上一步"成功"、下一步"连不上"） |
+
+> 一句话：这批检查**不能代替真跑一次**，但能把"大概率会红"的低级差异先清掉，
+> 让第一次真实运行时剩下的问题确实是环境级的（比如 runner 上 mysql 客户端版本、sudo 装浏览器依赖）。
 
 ### 教训
 

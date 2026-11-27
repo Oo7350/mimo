@@ -1,0 +1,30 @@
+# 行尾统一成 LF，别让"谁在 Windows 上提交的"决定 CI 里读到什么。
+#
+# 背景：这套工程要同时活在两台机器上——Windows 开发机（core.autocrlf=true）和
+# GitHub Actions 的 Ubuntu runner。CRLF 混进来时最容易中招的是：
+#   - db/migration/V0__init.sql：MigrationRunner 按 `;` 切语句、按行判注释，
+#     行尾里多出的 \r 会让"第一条语句"莫名其妙被当成注释吞掉（真踩过，BUG-123 修复过程的第二个坑）；
+#   - e2e/*.mjs：字符串断言里带 \r 时，`textContent` 比对会永远不等；
+#   - .sh / .yml：CRLF 的 shebang 在 Linux 上直接 `bad interpreter`。
+* text=auto
+
+*.sql   text eol=lf
+*.mjs   text eol=lf
+*.js    text eol=lf
+*.ts    text eol=lf
+*.vue   text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.sh    text eol=lf
+*.json  text eol=lf
+*.md    text eol=lf
+
+# 二进制，别碰
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.webp  binary
+*.ico   binary
+*.jar   binary
+*.woff  binary
+*.woff2 binary

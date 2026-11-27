@@ -14,8 +14,9 @@
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const playwrightPath =
-  process.env.PLAYWRIGHT_MODULE || "C:/mimo-env/toolchain/e2e/node_modules/playwright";
+// 只认环境变量，退回到包名——不要写死某台机器上的绝对路径：CI 里那条路径不存在，
+// 报错会变成看不懂的 MODULE_NOT_FOUND（v2.22.2 跨平台体检时改掉）。
+const playwrightPath = process.env.PLAYWRIGHT_MODULE || "playwright";
 const { chromium } = require(playwrightPath);
 
 const BASE = process.argv[2] || "http://localhost:5173";

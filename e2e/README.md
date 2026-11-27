@@ -86,6 +86,22 @@ node e2e/seed-fresh-db.mjs          # MIMO_API=http://127.0.0.1:8080/api 可改�
 BUG-123~125）。所以：**改 CI 配置时，先把里面的命令在本机跑一遍**，
 "看起来对的 YAML"和"能跑的 YAML"是两件事。
 
+### 跨平台：Windows 开发机 ↔ Ubuntu runner（v2.22.2 体检）
+
+跑不了 CI 的时候，至少把**静态能查的差异**查干净。这套用例现在的规矩：
+
+| 规矩 | 为什么 |
+|---|---|
+| 不写死盘符/绝对路径 | 模块位置一律 `PLAYWRIGHT_MODULE`，没有就退回包名 `playwright`；写死 `C:/…` 的结果是 CI 上报 `MODULE_NOT_FOUND`，看不出真因 |
+| 不 require 仓库内的相对文件 | 大小写敏感的文件系统上，`../Views/x.vue` 在本机能过、Linux 上 import 失败 |
+| 子进程用 `process.execPath` | 不依赖 `node` 在 PATH 里、不依赖 `shell: true` 的引号规则 |
+| 行尾 LF 由 `.gitattributes` 钉住 | `core.autocrlf` 是每台机器的设置，靠自觉就会有人提交 CRLF；`\r` 混进 `textContent` 断言里就是永远不等的假红 |
+| 少用固定毫秒等待 | 等待条件（元素可见 / id 出现）比 `waitForTimeout` 稳，慢机器不会假红 |
+
+`.github/workflows/e2e.yml` 那边同步加了两处：`docker exec` 取表数后 `tr -dc '0-9'`
+（多一行 warning 会让 `[ "" -lt 30 ]` 报 `integer expression expected`），
+后台进程用 `nohup`（否则 step 结束时被 SIGHUP 带走，表现成"上一步成功、下一步连不上"）。
+
 CI：`.github/workflows/e2e.yml`（MySQL service + 起前后端 + 跑 `run-all.mjs`）。
 **如实说明**：该 workflow 没在真实 GitHub runner 上跑过，本地同一条命令两轮全绿。
 
